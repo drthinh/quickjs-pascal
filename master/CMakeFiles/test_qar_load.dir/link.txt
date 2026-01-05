@@ -1,0 +1,3 @@
+"C:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\test_qar_load.dir/objects.a
+D:\codeblocks-25.03mingw-nosetup\MinGW\bin\ar.exe qc CMakeFiles\test_qar_load.dir/objects.a @CMakeFiles\test_qar_load.dir\objects1.rsp
+D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe -O3 -DNDEBUG  -Wl,--stack,8388608 -Wl,--whole-archive CMakeFiles\test_qar_load.dir/objects.a -Wl,--no-whole-archive -o test_qar_load.exe -Wl,--out-implib,libtest_qar_load.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\test_qar_load.dir\linkLibs.rsp

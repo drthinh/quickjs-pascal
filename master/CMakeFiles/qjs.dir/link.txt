@@ -1,0 +1,2 @@
+D:\codeblocks-25.03mingw-nosetup\MinGW\bin\ar.exe qc libqjs.a CMakeFiles/qjs.dir/cutils.c.obj CMakeFiles/qjs.dir/dtoa.c.obj CMakeFiles/qjs.dir/libregexp.c.obj CMakeFiles/qjs.dir/libunicode.c.obj CMakeFiles/qjs.dir/quickjs.c.obj CMakeFiles/qjs.dir/qar.c.obj
+D:\codeblocks-25.03mingw-nosetup\MinGW\bin\ranlib.exe libqjs.a
