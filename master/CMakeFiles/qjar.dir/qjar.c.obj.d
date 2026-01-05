@@ -223,4 +223,15 @@ CMakeFiles/qjar.dir/qjar.c.obj: D:\Projects\quickjs\quickjs-master\qjar.c \
  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stdbool.h \
  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/math.h \
  D:\Projects\quickjs\quickjs-master\quickjs-libc.h \
- D:\Projects\quickjs\quickjs-master\quickjs.h
+ D:\Projects\quickjs\quickjs-master\quickjs.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_export.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/time.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sys/timeb.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/sys/timeb_s.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_timeval.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/pthread_time.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_common.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_tdef.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_tinfl.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_zip.h

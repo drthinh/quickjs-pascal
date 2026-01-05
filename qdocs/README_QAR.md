@@ -36,8 +36,8 @@ qjar -o mylib.qar src/math.js src/utils.js
 
 ### 2. Đăng ký QAR từ JavaScript (Đơn giản nhất!)
 ```javascript
-// Chỉ cần gọi registerQar() - tự động có sẵn khi dùng js_std_add_helpers()
-registerQar('mylib.qar');
+// Chỉ cần gọi LoadLibrary() - tự động có sẵn khi dùng js_std_add_helpers()
+LoadLibrary('mylib.qar');
 ```
 
 ### 3. Import và sử dụng modules

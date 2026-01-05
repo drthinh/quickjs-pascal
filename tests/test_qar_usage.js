@@ -6,7 +6,7 @@
  *    qjar -o qar_test.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
  * 
  * 2. Load QAR file từ JavaScript (không cần hardcode trong C):
- *    registerQar('qar_test.qar');
+ *    LoadLibrary('qar_test.qar');
  * 
  * 3. Import và sử dụng modules:
  *    import * as math from './qar_test_lib/math.js';
@@ -18,11 +18,11 @@
  */
 
 // Cách 1: Load QAR file trực tiếp (đơn giản nhất)
-if (typeof registerQar !== 'undefined') {
-    registerQar('qar_test.qar');
-} else {
-    console.warn('registerQar not available. Make sure js_std_add_helpers() is called in C code.');
-}
+// if (typeof LoadLibrary !== 'undefined') {
+//     LoadLibrary('qar_test.qar');
+// } else {
+//     console.warn('LoadLibrary not available. Make sure js_std_add_helpers() is called in C code.');
+// }
 
 // Cách 2: Sử dụng helper module (nếu có)
 // import { loadQar } from './qar_loader.js';

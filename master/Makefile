@@ -663,6 +663,78 @@ libunicode.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\unicode_gen.dir\build.make CMakeFiles/unicode_gen.dir/libunicode.c.s
 .PHONY : libunicode.c.s
 
+miniz/miniz.obj: miniz/miniz.c.obj
+.PHONY : miniz/miniz.obj
+
+# target to build an object file
+miniz/miniz.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz.c.obj
+.PHONY : miniz/miniz.c.obj
+
+miniz/miniz.i: miniz/miniz.c.i
+.PHONY : miniz/miniz.i
+
+# target to preprocess a source file
+miniz/miniz.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz.c.i
+.PHONY : miniz/miniz.c.i
+
+miniz/miniz.s: miniz/miniz.c.s
+.PHONY : miniz/miniz.s
+
+# target to generate assembly for a file
+miniz/miniz.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz.c.s
+.PHONY : miniz/miniz.c.s
+
+miniz/miniz_tdef.obj: miniz/miniz_tdef.c.obj
+.PHONY : miniz/miniz_tdef.obj
+
+# target to build an object file
+miniz/miniz_tdef.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj
+.PHONY : miniz/miniz_tdef.c.obj
+
+miniz/miniz_tdef.i: miniz/miniz_tdef.c.i
+.PHONY : miniz/miniz_tdef.i
+
+# target to preprocess a source file
+miniz/miniz_tdef.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_tdef.c.i
+.PHONY : miniz/miniz_tdef.c.i
+
+miniz/miniz_tdef.s: miniz/miniz_tdef.c.s
+.PHONY : miniz/miniz_tdef.s
+
+# target to generate assembly for a file
+miniz/miniz_tdef.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_tdef.c.s
+.PHONY : miniz/miniz_tdef.c.s
+
+miniz/miniz_tinfl.obj: miniz/miniz_tinfl.c.obj
+.PHONY : miniz/miniz_tinfl.obj
+
+# target to build an object file
+miniz/miniz_tinfl.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj
+.PHONY : miniz/miniz_tinfl.c.obj
+
+miniz/miniz_tinfl.i: miniz/miniz_tinfl.c.i
+.PHONY : miniz/miniz_tinfl.i
+
+# target to preprocess a source file
+miniz/miniz_tinfl.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.i
+.PHONY : miniz/miniz_tinfl.c.i
+
+miniz/miniz_tinfl.s: miniz/miniz_tinfl.c.s
+.PHONY : miniz/miniz_tinfl.s
+
+# target to generate assembly for a file
+miniz/miniz_tinfl.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.s
+.PHONY : miniz/miniz_tinfl.c.s
+
 qar.obj: qar.c.obj
 .PHONY : qar.obj
 
@@ -764,15 +836,7 @@ quickjs-libc.obj: quickjs-libc.c.obj
 
 # target to build an object file
 quickjs-libc.c.obj:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/quickjs-libc.c.obj
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjar.dir\build.make CMakeFiles/qjar.dir/quickjs-libc.c.obj
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/quickjs-libc.c.obj
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/quickjs-libc.c.obj
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/quickjs-libc.c.obj
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\function_source.dir\build.make CMakeFiles/function_source.dir/quickjs-libc.c.obj
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello.dir\build.make CMakeFiles/hello.dir/quickjs-libc.c.obj
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello_module.dir\build.make CMakeFiles/hello_module.dir/quickjs-libc.c.obj
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_fib.dir\build.make CMakeFiles/test_fib.dir/quickjs-libc.c.obj
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/quickjs-libc.c.obj
 .PHONY : quickjs-libc.c.obj
 
 quickjs-libc.i: quickjs-libc.c.i
@@ -780,15 +844,7 @@ quickjs-libc.i: quickjs-libc.c.i
 
 # target to preprocess a source file
 quickjs-libc.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/quickjs-libc.c.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjar.dir\build.make CMakeFiles/qjar.dir/quickjs-libc.c.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/quickjs-libc.c.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/quickjs-libc.c.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/quickjs-libc.c.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\function_source.dir\build.make CMakeFiles/function_source.dir/quickjs-libc.c.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello.dir\build.make CMakeFiles/hello.dir/quickjs-libc.c.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello_module.dir\build.make CMakeFiles/hello_module.dir/quickjs-libc.c.i
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_fib.dir\build.make CMakeFiles/test_fib.dir/quickjs-libc.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/quickjs-libc.c.i
 .PHONY : quickjs-libc.c.i
 
 quickjs-libc.s: quickjs-libc.c.s
@@ -796,15 +852,7 @@ quickjs-libc.s: quickjs-libc.c.s
 
 # target to generate assembly for a file
 quickjs-libc.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/quickjs-libc.c.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjar.dir\build.make CMakeFiles/qjar.dir/quickjs-libc.c.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/quickjs-libc.c.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/quickjs-libc.c.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/quickjs-libc.c.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\function_source.dir\build.make CMakeFiles/function_source.dir/quickjs-libc.c.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello.dir\build.make CMakeFiles/hello.dir/quickjs-libc.c.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello_module.dir\build.make CMakeFiles/hello_module.dir/quickjs-libc.c.s
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_fib.dir\build.make CMakeFiles/test_fib.dir/quickjs-libc.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/quickjs-libc.c.s
 .PHONY : quickjs-libc.c.s
 
 quickjs.obj: quickjs.c.obj
@@ -968,6 +1016,15 @@ help:
 	@echo ... libunicode.obj
 	@echo ... libunicode.i
 	@echo ... libunicode.s
+	@echo ... miniz/miniz.obj
+	@echo ... miniz/miniz.i
+	@echo ... miniz/miniz.s
+	@echo ... miniz/miniz_tdef.obj
+	@echo ... miniz/miniz_tdef.i
+	@echo ... miniz/miniz_tdef.s
+	@echo ... miniz/miniz_tinfl.obj
+	@echo ... miniz/miniz_tinfl.i
+	@echo ... miniz/miniz_tinfl.s
 	@echo ... qar.obj
 	@echo ... qar.i
 	@echo ... qar.s

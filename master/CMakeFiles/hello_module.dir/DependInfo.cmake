@@ -9,7 +9,6 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "D:/Projects/quickjs/quickjs-master/gen/hello_module.c" "CMakeFiles/hello_module.dir/gen/hello_module.c.obj" "gcc" "CMakeFiles/hello_module.dir/gen/hello_module.c.obj.d"
-  "D:/Projects/quickjs/quickjs-master/quickjs-libc.c" "CMakeFiles/hello_module.dir/quickjs-libc.c.obj" "gcc" "CMakeFiles/hello_module.dir/quickjs-libc.c.obj.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

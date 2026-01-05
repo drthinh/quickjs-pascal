@@ -946,13 +946,13 @@ void js_unregister_all_qar_files(JSRuntime *rt)
 }
 
 /* JavaScript function to register QAR file */
-static JSValue js_register_qar(JSContext *ctx, JSValueConst this_val,
+static JSValue js_load_library(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
     const char *filename, *prefix = NULL;
     
     if (argc < 1 || argc > 2) {
-        return JS_ThrowTypeError(ctx, "registerQar expects 1 or 2 arguments");
+        return JS_ThrowTypeError(ctx, "LoadLibrary expects 1 or 2 arguments");
     }
     
     filename = JS_ToCString(ctx, argv[0]);
@@ -4568,8 +4568,8 @@ void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
                       JS_NewCFunction(ctx, js_print, "print", 1));
 
     /* QAR registration function */
-    JS_SetPropertyStr(ctx, global_obj, "registerQar",
-                      JS_NewCFunction(ctx, js_register_qar, "registerQar", 2));
+    JS_SetPropertyStr(ctx, global_obj, "LoadLibrary",
+                      JS_NewCFunction(ctx, js_load_library, "LoadLibrary", 2));
 
     JS_FreeValue(ctx, global_obj);
 }

@@ -15,6 +15,16 @@
 #include "cutils.h"
 #include "qar.h"
 
+/* Disable unused-function warnings for miniz header */
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+#include "miniz/miniz.h"
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+
 #define QAR_MAGIC "QAR\x01"
 #define QAR_MAGIC_SIZE 4
 
@@ -24,8 +34,10 @@ typedef struct {
     uint64_t offset;
     uint64_t bytecode_offset;  // Offset to bytecode data
     uint32_t flags;
-    uint64_t bytecode_size;
-    uint64_t source_size;
+    uint64_t bytecode_size;      // Size in file (compressed if flags & 2)
+    uint64_t source_size;         // Size in file (compressed if flags & 2)
+    uint64_t bytecode_orig_size;  // Original uncompressed size
+    uint64_t source_orig_size;    // Original uncompressed size
     uint8_t *bytecode_cache;
     uint8_t *source_cache;
 } QarEntryInternal;
@@ -154,6 +166,15 @@ QarFile *qar_open(const char *filename)
         e->bytecode_size = read_u64(f);
         e->source_size = read_u64(f);
         
+        // For compressed entries, read original sizes
+        if (e->flags & 2) {
+            e->bytecode_orig_size = read_u64(f);
+            e->source_orig_size = read_u64(f);
+        } else {
+            e->bytecode_orig_size = e->bytecode_size;
+            e->source_orig_size = e->source_size;
+        }
+        
         // Save bytecode offset
         e->bytecode_offset = ftell(f);
         
@@ -280,23 +301,46 @@ int qar_entry_load_data(QarFile *qar, const QarEntry *entry)
             return -1;
         }
         
-        e->bytecode_cache = malloc(e->bytecode_size);
-        if (!e->bytecode_cache) {
-            fprintf(stderr, "[QAR DEBUG] Failed to allocate memory for bytecode\n");
+        // Read compressed data
+        uint8_t *compressed_data = malloc(e->bytecode_size);
+        if (!compressed_data) {
+            fprintf(stderr, "[QAR DEBUG] Failed to allocate memory for compressed bytecode\n");
             return -1;
         }
         
-        size_t read_bytes = fread(e->bytecode_cache, 1, e->bytecode_size, qar->file);
+        size_t read_bytes = fread(compressed_data, 1, e->bytecode_size, qar->file);
         if (read_bytes != e->bytecode_size) {
             fprintf(stderr, "[QAR DEBUG] Failed to read bytecode: expected %llu bytes, got %zu bytes\n",
                     (unsigned long long)e->bytecode_size, read_bytes);
-            free(e->bytecode_cache);
-            e->bytecode_cache = NULL;
+            free(compressed_data);
             return -1;
         }
         
+        // Decompress if needed
+        if (e->flags & 2) {
+            // Compressed - decompress
+            mz_ulong dest_len = (mz_ulong)e->bytecode_orig_size;
+            e->bytecode_cache = malloc(dest_len);
+            if (!e->bytecode_cache) {
+                free(compressed_data);
+                return -1;
+            }
+            
+            int ret = mz_uncompress(e->bytecode_cache, &dest_len, compressed_data, (mz_ulong)e->bytecode_size);
+            free(compressed_data);
+            if (ret != MZ_OK) {
+                fprintf(stderr, "[QAR DEBUG] Failed to decompress bytecode: %d\n", ret);
+                free(e->bytecode_cache);
+                e->bytecode_cache = NULL;
+                return -1;
+            }
+        } else {
+            // Not compressed - use directly
+            e->bytecode_cache = compressed_data;
+        }
+        
         fprintf(stderr, "[QAR DEBUG] Successfully loaded bytecode: %zu bytes, first 4 bytes: %02x %02x %02x %02x\n",
-                read_bytes, 
+                e->bytecode_orig_size, 
                 e->bytecode_cache[0], e->bytecode_cache[1], 
                 e->bytecode_cache[2], e->bytecode_cache[3]);
     } else if (e->bytecode_size == 0) {
@@ -308,14 +352,37 @@ int qar_entry_load_data(QarFile *qar, const QarEntry *entry)
         // Source comes right after bytecode
         fseek(qar->file, e->bytecode_offset + e->bytecode_size, SEEK_SET);
         
-        e->source_cache = malloc(e->source_size);
-        if (!e->source_cache)
+        // Read compressed data
+        uint8_t *compressed_data = malloc(e->source_size);
+        if (!compressed_data)
             return -1;
         
-        if (fread(e->source_cache, 1, e->source_size, qar->file) != e->source_size) {
-            free(e->source_cache);
-            e->source_cache = NULL;
+        if (fread(compressed_data, 1, e->source_size, qar->file) != e->source_size) {
+            free(compressed_data);
             return -1;
+        }
+        
+        // Decompress if needed
+        if (e->flags & 2) {
+            // Compressed - decompress
+            mz_ulong dest_len = (mz_ulong)e->source_orig_size;
+            e->source_cache = malloc(dest_len);
+            if (!e->source_cache) {
+                free(compressed_data);
+                return -1;
+            }
+            
+            int ret = mz_uncompress(e->source_cache, &dest_len, compressed_data, (mz_ulong)e->source_size);
+            free(compressed_data);
+            if (ret != MZ_OK) {
+                fprintf(stderr, "[QAR DEBUG] Failed to decompress source: %d\n", ret);
+                free(e->source_cache);
+                e->source_cache = NULL;
+                return -1;
+            }
+        } else {
+            // Not compressed - use directly
+            e->source_cache = compressed_data;
         }
     }
     
@@ -332,16 +399,16 @@ const uint8_t *qar_entry_get_bytecode(const QarEntry *entry, size_t *len)
     }
     
     // Return NULL if bytecode not loaded or size is 0
-    if (!e->bytecode_cache || e->bytecode_size == 0) {
-        fprintf(stderr, "[QAR DEBUG] qar_entry_get_bytecode: entry %s - bytecode_cache=%p, bytecode_size=%llu\n",
-                e->path, e->bytecode_cache, (unsigned long long)e->bytecode_size);
+    if (!e->bytecode_cache || e->bytecode_orig_size == 0) {
+        fprintf(stderr, "[QAR DEBUG] qar_entry_get_bytecode: entry %s - bytecode_cache=%p, bytecode_orig_size=%llu\n",
+                e->path, e->bytecode_cache, (unsigned long long)e->bytecode_orig_size);
         if (len) *len = 0;
         return NULL;
     }
     
     fprintf(stderr, "[QAR DEBUG] qar_entry_get_bytecode: entry %s - returning bytecode, size=%llu\n",
-            e->path, (unsigned long long)e->bytecode_size);
-    if (len) *len = e->bytecode_size;
+            e->path, (unsigned long long)e->bytecode_orig_size);
+    if (len) *len = e->bytecode_orig_size;
     return e->bytecode_cache;
 }
 
@@ -353,7 +420,7 @@ const uint8_t *qar_entry_get_source(const QarEntry *entry, size_t *len)
         return NULL;
     }
     
-    if (len) *len = e->source_size;
+    if (len) *len = e->source_orig_size;
     return e->source_cache;
 }
 

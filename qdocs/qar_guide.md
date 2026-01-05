@@ -33,11 +33,11 @@ JSRuntime *rt = JS_NewRuntime();
 JSContext *ctx = JS_NewContext(rt);
 
 js_std_init_handlers(rt);
-js_std_add_helpers(ctx, argc, argv);  // Cung cấp registerQar()
+js_std_add_helpers(ctx, argc, argv);  // Cung cấp LoadLibrary()
 JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);
 
 // Sau đó trong JavaScript:
-// registerQar('mathlib.qar');
+// LoadLibrary('mathlib.qar');
 ```
 
 ### Cách 2: Đăng ký từ C code (Nếu cần kiểm soát nhiều hơn)
@@ -119,11 +119,11 @@ js_unregister_all_qar_files(rt);
 
 ```javascript
 // Đơn giản nhất - không cần hardcode trong C
-registerQar('qar_test.qar');
+LoadLibrary('qar_test.qar');
 
 // Hoặc với prefix
-registerQar('mathlib.qar', 'math:');
-registerQar('utilslib.qar', 'utils:');
+LoadLibrary('mathlib.qar', 'math:');
+LoadLibrary('utilslib.qar', 'utils:');
 ```
 
 ### Bước 2: Import và sử dụng modules
@@ -150,7 +150,7 @@ import { greet } from 'utils:utils.js';
 ### Ví dụ hoàn chỉnh đơn giản
 ```javascript
 // File: app.js
-registerQar('mylib.qar');
+LoadLibrary('mylib.qar');
 
 import * as math from './lib/math.js';
 import { greet } from './lib/utils.js';

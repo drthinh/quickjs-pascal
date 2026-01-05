@@ -5,7 +5,13 @@ project(quickjs LANGUAGES C)
 include(CheckCCompilerFlag)
 include(GNUInstallDirs)
 
-set(CMAKE_C_VISIBILITY_PRESET hidden)
+# Set visibility preset - use default for static libraries, hidden for shared
+# Static libraries need default visibility so functions can be linked into executables
+if(BUILD_SHARED_LIBS)
+    set(CMAKE_C_VISIBILITY_PRESET hidden)
+else()
+    set(CMAKE_C_VISIBILITY_PRESET default)
+endif()
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
@@ -109,8 +115,18 @@ endif()
 if(WIN32)
     if(MSVC)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:8388608")
+        # Use static runtime to avoid CRT DLL dependencies (api-ms-win-crt-*.dll)
+        # This sets the default for all targets - individual targets can override
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        # Disable Universal CRT dependencies
+        add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+        # Explicitly link with static runtime libraries to avoid UCRT DLL dependencies
+        # /MT uses libcmt.lib (static) instead of msvcrt.lib (DLL) or ucrt.lib (UCRT DLL)
+        # This should prevent dependencies on api-ms-win-crt-*.dll
     else()
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack,8388608")
+        # Static linking for MinGW to avoid CRT DLL dependencies
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++")
     endif()
 endif()
 
@@ -136,6 +152,21 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
     xcheck_add_c_compiler_flag(-O0)
     xcheck_add_c_compiler_flag(-ggdb)
     xcheck_add_c_compiler_flag(-fno-omit-frame-pointer)
+else()
+    # Size optimizations for Release builds
+    if(MSVC)
+        xcheck_add_c_compiler_flag(/O1)  # Optimize for size
+        xcheck_add_c_compiler_flag(/GL) # Whole program optimization
+        add_link_options(/LTCG)         # Link-time code generation
+    else()
+        xcheck_add_c_compiler_flag(-Os) # Optimize for size
+        xcheck_add_c_compiler_flag(-ffunction-sections)
+        xcheck_add_c_compiler_flag(-fdata-sections)
+        add_link_options(-Wl,--gc-sections)
+        if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
+            add_link_options(-Wl,--strip-all)
+        endif()
+    endif()
 endif()
 
 macro(xoption OPTION_NAME OPTION_TEXT OPTION_DEFAULT)
@@ -236,17 +267,37 @@ macro(add_qjs_libc_if_needed target)
     endif()
 endmacro()
 macro(add_static_if_needed target)
-    if(QJS_BUILD_CLI_STATIC OR MINGW)
-        target_link_options(${target} PRIVATE -static)
-        if(MINGW)
-            target_link_options(${target} PRIVATE -static-libgcc -static-libstdc++)
+    if(QJS_BUILD_CLI_STATIC OR MINGW OR WIN32)
+        if(MSVC)
+            # MSVC static linking - already handled globally above
+            # But ensure this target also uses static runtime
+            set_target_properties(${target} PROPERTIES
+                MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        else()
+            # For MinGW, use -static only if explicitly requested, otherwise just static runtime libs
+            if(QJS_BUILD_CLI_STATIC AND MINGW)
+                target_link_options(${target} PRIVATE -static -static-libgcc -static-libstdc++)
+            else()
+                # Only static runtime libraries, not full static linking
+                target_link_options(${target} PRIVATE -static-libgcc -static-libstdc++)
+            endif()
         endif()
-        # For GCC, ensure static linking and minimal dependencies
-        if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-            target_link_options(${target} PRIVATE -static-libgcc)
-            # Minimize binary size
-            target_compile_options(${target} PRIVATE -Os -ffunction-sections -fdata-sections)
-            target_link_options(${target} PRIVATE -Wl,--gc-sections -Wl,--strip-all)
+        # For GCC/MinGW, ensure static linking and minimal dependencies
+        # Note: --gc-sections is disabled for targets that link quickjs-libc.c
+        # because it may remove symbols needed by the library
+        if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR MINGW)
+            # Minimize binary size, but be careful with gc-sections
+            if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
+                target_compile_options(${target} PRIVATE -Os -ffunction-sections -fdata-sections)
+                # Only use --gc-sections if not linking quickjs-libc.c (which needs all symbols)
+                # Check if target uses quickjs-libc.c by checking if QJS_BUILD_LIBC is OFF
+                if(QJS_BUILD_LIBC)
+                    target_link_options(${target} PRIVATE -Wl,--gc-sections -Wl,--strip-all)
+                else()
+                    # Don't use --gc-sections for targets with quickjs-libc.c to avoid removing needed symbols
+                    target_link_options(${target} PRIVATE -Wl,--strip-all)
+                endif()
+            endif()
         endif()
     endif()
 endmacro()
@@ -258,6 +309,9 @@ set(qjs_sources
     libunicode.c
     quickjs.c
     qar.c
+    miniz/miniz.c
+    miniz/miniz_tinfl.c
+    miniz/miniz_tdef.c
 )
 
 if(QJS_BUILD_LIBC)
@@ -292,7 +346,82 @@ target_include_directories(qjs PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+# Suppress warnings for miniz source files
+if(NOT MSVC)
+    set_source_files_properties(
+        miniz/miniz.c
+        miniz/miniz_tinfl.c
+        miniz/miniz_tdef.c
+        PROPERTIES COMPILE_FLAGS "-Wno-unused-function -Wno-type-limits"
+    )
+endif()
 target_link_libraries(qjs PUBLIC ${qjs_libs})
+
+# Ensure functions are visible for static library linking
+if(NOT BUILD_SHARED_LIBS)
+    set_target_properties(qjs PROPERTIES C_VISIBILITY_PRESET default)
+endif()
+
+# Apply static runtime and size optimizations to library
+if(WIN32 AND MSVC)
+    set_target_properties(qjs PROPERTIES
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
+    if(MSVC)
+        target_compile_options(qjs PRIVATE /O1 /GL)
+        if(BUILD_SHARED_LIBS)
+            target_link_options(qjs PRIVATE /LTCG)
+        endif()
+    else()
+        target_compile_options(qjs PRIVATE -Os -ffunction-sections -fdata-sections)
+        if(BUILD_SHARED_LIBS)
+            target_link_options(qjs PRIVATE -Wl,--gc-sections)
+        endif()
+    endif()
+endif()
+
+# Export functions for QAR compilation, packaging, and loading
+if(BUILD_SHARED_LIBS)
+    # Define BUILD_QJS_DLL so that export macros work
+    target_compile_definitions(qjs PRIVATE BUILD_QJS_DLL)
+    
+    if(WIN32 AND MSVC)
+        # Create a .def file for exporting functions on Windows with MSVC
+        set(QJS_DEF_FILE "${CMAKE_CURRENT_BINARY_DIR}/qjs.def")
+        file(WRITE ${QJS_DEF_FILE} "EXPORTS\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_open\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_close\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_get_entry_count\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_get_entry\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_find_entry\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_entry_get_path\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_entry_get_type\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_entry_get_bytecode\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_entry_get_source\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_entry_load_data\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_get_manifest\n")
+        file(APPEND ${QJS_DEF_FILE} "qar_get_quickjs_version\n")
+        file(APPEND ${QJS_DEF_FILE} "JS_NewRuntime\n")
+        file(APPEND ${QJS_DEF_FILE} "JS_NewContext\n")
+        file(APPEND ${QJS_DEF_FILE} "JS_FreeContext\n")
+        file(APPEND ${QJS_DEF_FILE} "JS_FreeRuntime\n")
+        file(APPEND ${QJS_DEF_FILE} "JS_Eval\n")
+        file(APPEND ${QJS_DEF_FILE} "JS_WriteObject\n")
+        file(APPEND ${QJS_DEF_FILE} "JS_ReadObject\n")
+        file(APPEND ${QJS_DEF_FILE} "JS_GetVersion\n")
+        file(APPEND ${QJS_DEF_FILE} "JS_SetModuleLoaderFunc\n")
+        file(APPEND ${QJS_DEF_FILE} "js_register_qar_file\n")
+        file(APPEND ${QJS_DEF_FILE} "js_unregister_all_qar_files\n")
+        file(APPEND ${QJS_DEF_FILE} "js_load_file\n")
+        file(APPEND ${QJS_DEF_FILE} "js_std_dump_error\n")
+        set_target_properties(qjs PROPERTIES LINK_FLAGS "/DEF:${QJS_DEF_FILE}")
+    else()
+        # For MinGW/GCC and non-Windows, use visibility attributes
+        # QAR_EXPORT and JS_EXTERN macros handle the exports
+        set_target_properties(qjs PROPERTIES C_VISIBILITY_PRESET default)
+    endif()
+endif()
 
 if(EMSCRIPTEN)
     add_executable(qjs_wasm ${qjs_sources})
@@ -321,8 +450,25 @@ add_executable(qjsc
 )
 add_qjs_libc_if_needed(qjsc)
 add_static_if_needed(qjsc)
+# Explicitly set static runtime for qjsc to avoid UCRT DLL dependencies
+if(MSVC)
+    set_target_properties(qjsc PROPERTIES
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    )
+endif()
 target_compile_definitions(qjsc PRIVATE ${qjs_defines})
-target_link_libraries(qjsc qjs)
+# For MinGW, ensure qjs library symbols are fully included
+# Use PUBLIC linking to ensure transitive dependencies are handled correctly
+if(MINGW)
+    # Wrap qjs library with --whole-archive to include all symbols
+    # This is necessary because static libraries may have symbols that appear unused
+    target_link_options(qjsc PRIVATE -Wl,--whole-archive)
+    target_link_libraries(qjsc PUBLIC qjs)
+    target_link_options(qjsc PRIVATE -Wl,--no-whole-archive)
+else()
+    target_link_libraries(qjsc PRIVATE qjs)
+endif()
+add_dependencies(qjsc qjs)
 
 # QuickJS Archive (QAR) packager
 #
@@ -332,6 +478,12 @@ add_executable(qjar
 )
 add_qjs_libc_if_needed(qjar)
 add_static_if_needed(qjar)
+# Explicitly set static runtime for qjar to avoid UCRT DLL dependencies
+if(MSVC)
+    set_target_properties(qjar PROPERTIES
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    )
+endif()
 target_compile_definitions(qjar PRIVATE ${qjs_defines})
 target_link_libraries(qjar qjs)
 
@@ -349,6 +501,12 @@ add_static_if_needed(qjs_exe)
 set_target_properties(qjs_exe PROPERTIES
     OUTPUT_NAME "qjs"
 )
+# Explicitly set static runtime for qjs_exe to avoid UCRT DLL dependencies
+if(MSVC)
+    set_target_properties(qjs_exe PROPERTIES
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    )
+endif()
 target_compile_definitions(qjs_exe PRIVATE ${qjs_defines})
 target_link_libraries(qjs_exe qjs)
 if(NOT WIN32)

@@ -1,8 +1,6 @@
 file(REMOVE_RECURSE
   "CMakeFiles/qjsc.dir/qjsc.c.obj"
   "CMakeFiles/qjsc.dir/qjsc.c.obj.d"
-  "CMakeFiles/qjsc.dir/quickjs-libc.c.obj"
-  "CMakeFiles/qjsc.dir/quickjs-libc.c.obj.d"
   "libqjsc.dll.a"
   "qjsc.exe"
   "qjsc.exe.manifest"

@@ -382,6 +382,7 @@ void help(void)
            "-C  --script       load as JS classic script (default=autodetect)\n"
            "-m  --module       load as ES module (default=autodetect)\n"
            "-I  --include file include an additional file\n"
+           "-l  --load LIST    load QAR files (comma-separated list, e.g., -l mathlib.qar,utilslib.qar)\n"
            "    --std          make 'std', 'os' and 'bjson' available to script\n"
            "-T  --trace        trace memory allocation\n"
            "-d  --dump         dump the memory usage stats\n"
@@ -422,6 +423,7 @@ int main(int argc, char **argv)
     int i, include_count = 0;
     int64_t memory_limit = -1;
     int64_t stack_size = -1;
+    char *qar_list = NULL;
 
     /* save for later */
     qjs__argc = argc;
@@ -490,6 +492,17 @@ int main(int argc, char **argv)
                 }
                 include_list[include_count++] = argv[optind++];
                 continue;
+            }
+            if (opt == 'l' || !strcmp(longopt, "load")) {
+                if (!optarg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "qjs: missing QAR file list for -l\n");
+                        exit(1);
+                    }
+                    optarg = argv[optind++];
+                }
+                qar_list = optarg;
+                break;
             }
             if (opt == 'i' || !strcmp(longopt, "interactive")) {
                 interactive++;
@@ -625,6 +638,28 @@ start:
 
     /* exit on unhandled promise rejections */
     JS_SetHostPromiseRejectionTracker(rt, js_std_promise_rejection_tracker, NULL);
+
+    /* Load QAR files from -l option */
+    if (qar_list) {
+        char *list_copy = strdup(qar_list);
+        if (list_copy) {
+            char *token = strtok(list_copy, ",");
+            while (token) {
+                // Trim whitespace
+                while (*token == ' ' || *token == '\t') token++;
+                char *end = token + strlen(token) - 1;
+                while (end > token && (*end == ' ' || *end == '\t')) *end-- = '\0';
+                
+                if (*token) {
+                    if (js_register_qar_file(ctx, token, NULL) < 0) {
+                        fprintf(stderr, "qjs: warning: failed to load QAR file: %s\n", token);
+                    }
+                }
+                token = strtok(NULL, ",");
+            }
+            free(list_copy);
+        }
+    }
 
     if (!empty_run) {
         js_std_add_helpers(ctx, argc - optind, argv + optind);

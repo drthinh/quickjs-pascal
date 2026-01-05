@@ -10,7 +10,6 @@ set(CMAKE_DEPENDS_LANGUAGES
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "D:/Projects/quickjs/quickjs-master/examples/fib.c" "CMakeFiles/test_fib.dir/examples/fib.c.obj" "gcc" "CMakeFiles/test_fib.dir/examples/fib.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/gen/test_fib.c" "CMakeFiles/test_fib.dir/gen/test_fib.c.obj" "gcc" "CMakeFiles/test_fib.dir/gen/test_fib.c.obj.d"
-  "D:/Projects/quickjs/quickjs-master/quickjs-libc.c" "CMakeFiles/test_fib.dir/quickjs-libc.c.obj" "gcc" "CMakeFiles/test_fib.dir/quickjs-libc.c.obj.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

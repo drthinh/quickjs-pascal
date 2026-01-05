@@ -12,15 +12,15 @@
  * @returns {boolean} true nếu thành công
  */
 export function loadQar(filename, prefix) {
-    if (typeof registerQar === 'undefined') {
-        throw new Error('registerQar is not available. Make sure js_std_add_helpers() is called.');
+    if (typeof LoadLibrary === 'undefined') {
+        throw new Error('LoadLibrary is not available. Make sure js_std_add_helpers() is called.');
     }
     
     try {
         if (prefix) {
-            registerQar(filename, prefix);
+            LoadLibrary(filename, prefix);
         } else {
-            registerQar(filename);
+            LoadLibrary(filename);
         }
         return true;
     } catch (e) {

@@ -1,8 +1,6 @@
 file(REMOVE_RECURSE
   "CMakeFiles/qjar.dir/qjar.c.obj"
   "CMakeFiles/qjar.dir/qjar.c.obj.d"
-  "CMakeFiles/qjar.dir/quickjs-libc.c.obj"
-  "CMakeFiles/qjar.dir/quickjs-libc.c.obj.d"
   "libqjar.dll.a"
   "qjar.exe"
   "qjar.exe.manifest"

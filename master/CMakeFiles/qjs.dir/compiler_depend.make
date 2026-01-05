@@ -880,6 +880,129 @@ CMakeFiles/qjs.dir/libunicode.c.obj: D:/Projects/quickjs/quickjs-master/libunico
   D:/Projects/quickjs/quickjs-master/libunicode-table.h \
   D:/Projects/quickjs/quickjs-master/libunicode.h
 
+CMakeFiles/qjs.dir/miniz/miniz.c.obj: D:/Projects/quickjs/quickjs-master/miniz/miniz.c \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/limits.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/mm_malloc.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stddef.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stdint.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/syslimits.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_mac.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_off_t.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_secapi.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_timeval.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/assert.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/corecrt.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/corecrt_stdio_config.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/corecrt_wstdlib.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/crtdefs.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/errno.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/limits.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/malloc.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/pthread_time.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sdks/_mingw_ddk.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/stdio_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/stdlib_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/string_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/sys/timeb_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stddef.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stdint.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stdio.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stdlib.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/string.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/swprintf.inl \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sys/timeb.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/time.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/vadefs.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_common.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_export.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_tdef.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_tinfl.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_zip.h
+
+CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj: D:/Projects/quickjs/quickjs-master/miniz/miniz_tdef.c \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/limits.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/mm_malloc.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stddef.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stdint.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/syslimits.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_mac.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_off_t.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_secapi.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_timeval.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/assert.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/corecrt.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/corecrt_stdio_config.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/corecrt_wstdlib.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/crtdefs.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/errno.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/limits.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/malloc.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/pthread_time.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sdks/_mingw_ddk.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/stdio_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/stdlib_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/string_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/sys/timeb_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stddef.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stdint.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stdio.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stdlib.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/string.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/swprintf.inl \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sys/timeb.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/time.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/vadefs.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_common.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_export.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_tdef.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_tinfl.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_zip.h
+
+CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj: D:/Projects/quickjs/quickjs-master/miniz/miniz_tinfl.c \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/limits.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/mm_malloc.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stddef.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stdint.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/syslimits.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_mac.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_off_t.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_secapi.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_timeval.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/assert.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/corecrt.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/corecrt_stdio_config.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/corecrt_wstdlib.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/crtdefs.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/errno.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/limits.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/malloc.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/pthread_time.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sdks/_mingw_ddk.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/stdio_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/stdlib_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/string_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/sys/timeb_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stddef.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stdint.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stdio.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stdlib.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/string.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/swprintf.inl \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sys/timeb.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/time.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/vadefs.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_common.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_export.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_tdef.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_tinfl.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_zip.h
+
 CMakeFiles/qjs.dir/qar.c.obj: D:/Projects/quickjs/quickjs-master/qar.c \
   D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/adxintrin.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/ammintrin.h \
@@ -998,8 +1121,10 @@ CMakeFiles/qjs.dir/qar.c.obj: D:/Projects/quickjs/quickjs-master/qar.c \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_secapi.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_stdarg.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_mingw_unicode.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_timeval.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/apiset.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/apisetcconv.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/assert.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/basetsd.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/bemapiset.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/concurrencysal.h \
@@ -1046,6 +1171,7 @@ CMakeFiles/qjs.dir/qar.c.obj: D:/Projects/quickjs/quickjs-master/qar.c \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/pshpack2.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/pshpack4.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/pshpack8.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/pthread_time.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/realtimeapiset.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/reason.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sal.h \
@@ -1055,6 +1181,7 @@ CMakeFiles/qjs.dir/qar.c.obj: D:/Projects/quickjs/quickjs-master/qar.c \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/stdlib_s.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/stralign_s.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/string_s.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/sys/timeb_s.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/securityappcontainer.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/securitybaseapi.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/specstrings.h \
@@ -1068,10 +1195,12 @@ CMakeFiles/qjs.dir/qar.c.obj: D:/Projects/quickjs/quickjs-master/qar.c \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/stringapiset.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/swprintf.inl \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/synchapi.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sys/timeb.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sysinfoapi.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/systemtopologyapi.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/threadpoolapiset.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/threadpoollegacyapiset.h \
+  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/time.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/timezoneapi.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/tvout.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/utilapiset.h \
@@ -1094,6 +1223,12 @@ CMakeFiles/qjs.dir/qar.c.obj: D:/Projects/quickjs/quickjs-master/qar.c \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/wnnc.h \
   D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/wow64apiset.h \
   D:/Projects/quickjs/quickjs-master/cutils.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_common.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_export.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_tdef.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_tinfl.h \
+  D:/Projects/quickjs/quickjs-master/miniz/miniz_zip.h \
   D:/Projects/quickjs/quickjs-master/qar.h
 
 CMakeFiles/qjs.dir/quickjs.c.obj: D:/Projects/quickjs/quickjs-master/quickjs.c \
@@ -1398,6 +1533,8 @@ D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include
 
 D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/avx512bitalgintrin.h:
 
+D:/Projects/quickjs/quickjs-master/miniz/miniz_export.h:
+
 D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/errhandlingapi.h:
 
 D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/avx512bitalgvlintrin.h:
@@ -1497,6 +1634,8 @@ D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include
 D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/fmaintrin.h:
 
 D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/fxsrintrin.h:
+
+D:/Projects/quickjs/quickjs-master/miniz/miniz.h:
 
 D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/keylockerintrin.h:
 
@@ -1628,6 +1767,8 @@ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_timeval.h:
 
 D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/apiset.h:
 
+D:/Projects/quickjs/quickjs-master/miniz/miniz_tdef.h:
+
 D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/apisetcconv.h:
 
 D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/basetsd.h:
@@ -1651,6 +1792,8 @@ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/ctype.h:
 D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/datetimeapi.h:
 
 D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/driverspecs.h:
+
+D:/Projects/quickjs/quickjs-master/miniz/miniz.c:
 
 D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/excpt.h:
 
@@ -1756,6 +1899,8 @@ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sys/types.h:
 
 D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sysinfoapi.h:
 
+D:/Projects/quickjs/quickjs-master/miniz/miniz_tdef.c:
+
 D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/threadpoolapiset.h:
 
 D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/threadpoollegacyapiset.h:
@@ -1801,6 +1946,14 @@ D:/Projects/quickjs/quickjs-master/libregexp-opcode.h:
 D:/Projects/quickjs/quickjs-master/libregexp.h:
 
 D:/Projects/quickjs/quickjs-master/libunicode.c:
+
+D:/Projects/quickjs/quickjs-master/miniz/miniz_common.h:
+
+D:/Projects/quickjs/quickjs-master/miniz/miniz_tinfl.h:
+
+D:/Projects/quickjs/quickjs-master/miniz/miniz_zip.h:
+
+D:/Projects/quickjs/quickjs-master/miniz/miniz_tinfl.c:
 
 D:/Projects/quickjs/quickjs-master/qar.c:
 

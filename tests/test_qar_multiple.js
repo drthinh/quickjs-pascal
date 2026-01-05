@@ -9,8 +9,8 @@
  */
 
 // Cách 1: Load nhiều QAR files không dùng prefix
-registerQar('mathlib.qar');
-registerQar('utilslib.qar');
+LoadLibrary('mathlib.qar');
+LoadLibrary('utilslib.qar');
 
 // Import như bình thường (module loader sẽ tìm trong tất cả QAR files)
 import * as math from './qar_test_lib/math.js';
@@ -21,8 +21,8 @@ console.log("Math:", math.add(2, 3));
 console.log("Utils:", greet("World"));
 
 // Cách 2: Load với prefix để phân biệt
-// registerQar('mathlib.qar', 'math:');
-// registerQar('utilslib.qar', 'utils:');
+// LoadLibrary('mathlib.qar', 'math:');
+// LoadLibrary('utilslib.qar', 'utils:');
 // 
 // Sau đó import với prefix:
 // import * as math from 'math:math.js';

@@ -12,7 +12,7 @@ qjar -o qar_test.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
 // File: app.js
 
 // Đăng ký QAR file (tự động có sẵn!)
-registerQar('qar_test.qar');
+LoadLibrary('qar_test.qar');
 
 // Import và sử dụng modules
 import * as math from './qar_test_lib/math.js';
@@ -33,8 +33,8 @@ qjs --module app.js
 
 ```javascript
 // Load nhiều QAR files
-registerQar('mathlib.qar');
-registerQar('utilslib.qar');
+LoadLibrary('mathlib.qar');
+LoadLibrary('utilslib.qar');
 
 // Module loader sẽ tìm trong tất cả QAR files
 import * as math from './lib/math.js';
@@ -45,8 +45,8 @@ import { greet } from './lib/utils.js';
 
 ```javascript
 // Đăng ký với prefix
-registerQar('mathlib.qar', 'math:');
-registerQar('utilslib.qar', 'utils:');
+LoadLibrary('mathlib.qar', 'math:');
+LoadLibrary('utilslib.qar', 'utils:');
 
 // Import với prefix
 import * as math from 'math:math.js';
@@ -61,7 +61,7 @@ import { greet } from 'utils:utils.js';
 
 ## Lưu ý
 
-- `registerQar()` tự động có sẵn khi dùng `js_std_add_helpers()` trong C code
+- `LoadLibrary()` tự động có sẵn khi dùng `js_std_add_helpers()` trong C code
 - QAR files phải được tạo trước khi chạy JavaScript
 - Module paths trong import phải khớp với paths trong QAR file
 

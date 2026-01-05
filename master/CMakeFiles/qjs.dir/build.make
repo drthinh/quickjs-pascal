@@ -161,6 +161,66 @@ CMakeFiles/qjs.dir/qar.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/qjs.dir/qar.c.s"
 	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S D:\Projects\quickjs\quickjs-master\qar.c -o CMakeFiles\qjs.dir\qar.c.s
 
+CMakeFiles/qjs.dir/miniz/miniz.c.obj: CMakeFiles/qjs.dir/flags.make
+CMakeFiles/qjs.dir/miniz/miniz.c.obj: CMakeFiles/qjs.dir/includes_C.rsp
+CMakeFiles/qjs.dir/miniz/miniz.c.obj: D:/Projects/quickjs/quickjs-master/miniz/miniz.c
+CMakeFiles/qjs.dir/miniz/miniz.c.obj: CMakeFiles/qjs.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building C object CMakeFiles/qjs.dir/miniz/miniz.c.obj"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -Wno-unused-function -Wno-type-limits -MD -MT CMakeFiles/qjs.dir/miniz/miniz.c.obj -MF CMakeFiles\qjs.dir\miniz\miniz.c.obj.d -o CMakeFiles\qjs.dir\miniz\miniz.c.obj -c D:\Projects\quickjs\quickjs-master\miniz\miniz.c
+
+CMakeFiles/qjs.dir/miniz/miniz.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/qjs.dir/miniz/miniz.c.i"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -Wno-unused-function -Wno-type-limits -E D:\Projects\quickjs\quickjs-master\miniz\miniz.c > CMakeFiles\qjs.dir\miniz\miniz.c.i
+
+CMakeFiles/qjs.dir/miniz/miniz.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/qjs.dir/miniz/miniz.c.s"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -Wno-unused-function -Wno-type-limits -S D:\Projects\quickjs\quickjs-master\miniz\miniz.c -o CMakeFiles\qjs.dir\miniz\miniz.c.s
+
+CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj: CMakeFiles/qjs.dir/flags.make
+CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj: CMakeFiles/qjs.dir/includes_C.rsp
+CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj: D:/Projects/quickjs/quickjs-master/miniz/miniz_tinfl.c
+CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj: CMakeFiles/qjs.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building C object CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -Wno-unused-function -Wno-type-limits -MD -MT CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj -MF CMakeFiles\qjs.dir\miniz\miniz_tinfl.c.obj.d -o CMakeFiles\qjs.dir\miniz\miniz_tinfl.c.obj -c D:\Projects\quickjs\quickjs-master\miniz\miniz_tinfl.c
+
+CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.i"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -Wno-unused-function -Wno-type-limits -E D:\Projects\quickjs\quickjs-master\miniz\miniz_tinfl.c > CMakeFiles\qjs.dir\miniz\miniz_tinfl.c.i
+
+CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.s"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -Wno-unused-function -Wno-type-limits -S D:\Projects\quickjs\quickjs-master\miniz\miniz_tinfl.c -o CMakeFiles\qjs.dir\miniz\miniz_tinfl.c.s
+
+CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj: CMakeFiles/qjs.dir/flags.make
+CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj: CMakeFiles/qjs.dir/includes_C.rsp
+CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj: D:/Projects/quickjs/quickjs-master/miniz/miniz_tdef.c
+CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj: CMakeFiles/qjs.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building C object CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -Wno-unused-function -Wno-type-limits -MD -MT CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj -MF CMakeFiles\qjs.dir\miniz\miniz_tdef.c.obj.d -o CMakeFiles\qjs.dir\miniz\miniz_tdef.c.obj -c D:\Projects\quickjs\quickjs-master\miniz\miniz_tdef.c
+
+CMakeFiles/qjs.dir/miniz/miniz_tdef.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/qjs.dir/miniz/miniz_tdef.c.i"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -Wno-unused-function -Wno-type-limits -E D:\Projects\quickjs\quickjs-master\miniz\miniz_tdef.c > CMakeFiles\qjs.dir\miniz\miniz_tdef.c.i
+
+CMakeFiles/qjs.dir/miniz/miniz_tdef.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/qjs.dir/miniz/miniz_tdef.c.s"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -Wno-unused-function -Wno-type-limits -S D:\Projects\quickjs\quickjs-master\miniz\miniz_tdef.c -o CMakeFiles\qjs.dir\miniz\miniz_tdef.c.s
+
+CMakeFiles/qjs.dir/quickjs-libc.c.obj: CMakeFiles/qjs.dir/flags.make
+CMakeFiles/qjs.dir/quickjs-libc.c.obj: CMakeFiles/qjs.dir/includes_C.rsp
+CMakeFiles/qjs.dir/quickjs-libc.c.obj: D:/Projects/quickjs/quickjs-master/quickjs-libc.c
+CMakeFiles/qjs.dir/quickjs-libc.c.obj: CMakeFiles/qjs.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building C object CMakeFiles/qjs.dir/quickjs-libc.c.obj"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/qjs.dir/quickjs-libc.c.obj -MF CMakeFiles\qjs.dir\quickjs-libc.c.obj.d -o CMakeFiles\qjs.dir\quickjs-libc.c.obj -c D:\Projects\quickjs\quickjs-master\quickjs-libc.c
+
+CMakeFiles/qjs.dir/quickjs-libc.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/qjs.dir/quickjs-libc.c.i"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E D:\Projects\quickjs\quickjs-master\quickjs-libc.c > CMakeFiles\qjs.dir\quickjs-libc.c.i
+
+CMakeFiles/qjs.dir/quickjs-libc.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/qjs.dir/quickjs-libc.c.s"
+	D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S D:\Projects\quickjs\quickjs-master\quickjs-libc.c -o CMakeFiles\qjs.dir\quickjs-libc.c.s
+
 # Object files for target qjs
 qjs_OBJECTS = \
 "CMakeFiles/qjs.dir/cutils.c.obj" \
@@ -168,7 +228,11 @@ qjs_OBJECTS = \
 "CMakeFiles/qjs.dir/libregexp.c.obj" \
 "CMakeFiles/qjs.dir/libunicode.c.obj" \
 "CMakeFiles/qjs.dir/quickjs.c.obj" \
-"CMakeFiles/qjs.dir/qar.c.obj"
+"CMakeFiles/qjs.dir/qar.c.obj" \
+"CMakeFiles/qjs.dir/miniz/miniz.c.obj" \
+"CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj" \
+"CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj" \
+"CMakeFiles/qjs.dir/quickjs-libc.c.obj"
 
 # External object files for target qjs
 qjs_EXTERNAL_OBJECTS =
@@ -179,9 +243,13 @@ libqjs.a: CMakeFiles/qjs.dir/libregexp.c.obj
 libqjs.a: CMakeFiles/qjs.dir/libunicode.c.obj
 libqjs.a: CMakeFiles/qjs.dir/quickjs.c.obj
 libqjs.a: CMakeFiles/qjs.dir/qar.c.obj
+libqjs.a: CMakeFiles/qjs.dir/miniz/miniz.c.obj
+libqjs.a: CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj
+libqjs.a: CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj
+libqjs.a: CMakeFiles/qjs.dir/quickjs-libc.c.obj
 libqjs.a: CMakeFiles/qjs.dir/build.make
 libqjs.a: CMakeFiles/qjs.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Linking C static library libqjs.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Linking C static library libqjs.a"
 	$(CMAKE_COMMAND) -P CMakeFiles\qjs.dir\cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles\qjs.dir\link.txt --verbose=$(VERBOSE)
 

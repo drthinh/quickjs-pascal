@@ -9,7 +9,6 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "D:/Projects/quickjs/quickjs-master/qjsc.c" "CMakeFiles/qjsc.dir/qjsc.c.obj" "gcc" "CMakeFiles/qjsc.dir/qjsc.c.obj.d"
-  "D:/Projects/quickjs/quickjs-master/quickjs-libc.c" "CMakeFiles/qjsc.dir/quickjs-libc.c.obj" "gcc" "CMakeFiles/qjsc.dir/quickjs-libc.c.obj.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

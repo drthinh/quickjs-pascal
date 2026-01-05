@@ -5,8 +5,6 @@ file(REMOVE_RECURSE
   "CMakeFiles/qjs_exe.dir/gen/standalone.c.obj.d"
   "CMakeFiles/qjs_exe.dir/qjs.c.obj"
   "CMakeFiles/qjs_exe.dir/qjs.c.obj.d"
-  "CMakeFiles/qjs_exe.dir/quickjs-libc.c.obj"
-  "CMakeFiles/qjs_exe.dir/quickjs-libc.c.obj.d"
   "libqjs.dll.a"
   "qjs.exe"
   "qjs.exe.manifest"

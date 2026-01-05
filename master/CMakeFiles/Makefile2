@@ -121,12 +121,12 @@ clean: CMakeFiles/test_fib.dir/clean
 CMakeFiles/qjs.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=19,20,21,22,23,24,25 "Built target qjs"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=15,16,17,18,19,20,21,22,23,24,25 "Built target qjs"
 .PHONY : CMakeFiles/qjs.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/qjs.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 7
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 11
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/qjs.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/qjs.dir/rule
@@ -138,7 +138,7 @@ qjs: CMakeFiles/qjs.dir/rule
 # codegen rule for target.
 CMakeFiles/qjs.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=19,20,21,22,23,24,25 "Finished codegen for target qjs"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=15,16,17,18,19,20,21,22,23,24,25 "Finished codegen for target qjs"
 .PHONY : CMakeFiles/qjs.dir/codegen
 
 # clean rule for target.
@@ -153,12 +153,12 @@ CMakeFiles/qjs.dir/clean:
 CMakeFiles/qjsc.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=31,32,33 "Built target qjsc"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=30,31 "Built target qjsc"
 .PHONY : CMakeFiles/qjsc.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/qjsc.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 10
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/qjsc.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/qjsc.dir/rule
@@ -168,9 +168,9 @@ qjsc: CMakeFiles/qjsc.dir/rule
 .PHONY : qjsc
 
 # codegen rule for target.
-CMakeFiles/qjsc.dir/codegen:
+CMakeFiles/qjsc.dir/codegen: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=31,32,33 "Finished codegen for target qjsc"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=30,31 "Finished codegen for target qjsc"
 .PHONY : CMakeFiles/qjsc.dir/codegen
 
 # clean rule for target.
@@ -185,12 +185,12 @@ CMakeFiles/qjsc.dir/clean:
 CMakeFiles/qjar.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjar.dir\build.make CMakeFiles/qjar.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjar.dir\build.make CMakeFiles/qjar.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=16,17,18 "Built target qjar"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=13,14 "Built target qjar"
 .PHONY : CMakeFiles/qjar.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/qjar.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 10
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/qjar.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/qjar.dir/rule
@@ -202,7 +202,7 @@ qjar: CMakeFiles/qjar.dir/rule
 # codegen rule for target.
 CMakeFiles/qjar.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjar.dir\build.make CMakeFiles/qjar.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=16,17,18 "Finished codegen for target qjar"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=13,14 "Finished codegen for target qjar"
 .PHONY : CMakeFiles/qjar.dir/codegen
 
 # clean rule for target.
@@ -217,12 +217,12 @@ CMakeFiles/qjar.dir/clean:
 CMakeFiles/qjs_exe.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=26,27,28,29,30 "Built target qjs_exe"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=26,27,28,29 "Built target qjs_exe"
 .PHONY : CMakeFiles/qjs_exe.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/qjs_exe.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 15
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/qjs_exe.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/qjs_exe.dir/rule
@@ -234,7 +234,7 @@ qjs_exe: CMakeFiles/qjs_exe.dir/rule
 # codegen rule for target.
 CMakeFiles/qjs_exe.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=26,27,28,29,30 "Finished codegen for target qjs_exe"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=26,27,28,29 "Finished codegen for target qjs_exe"
 .PHONY : CMakeFiles/qjs_exe.dir/codegen
 
 # clean rule for target.
@@ -249,12 +249,12 @@ CMakeFiles/qjs_exe.dir/clean:
 CMakeFiles/run-test262.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=34,35,36 "Built target run-test262"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=32,33 "Built target run-test262"
 .PHONY : CMakeFiles/run-test262.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/run-test262.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 10
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/run-test262.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/run-test262.dir/rule
@@ -266,7 +266,7 @@ run-test262: CMakeFiles/run-test262.dir/rule
 # codegen rule for target.
 CMakeFiles/run-test262.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=34,35,36 "Finished codegen for target run-test262"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=32,33 "Finished codegen for target run-test262"
 .PHONY : CMakeFiles/run-test262.dir/codegen
 
 # clean rule for target.
@@ -286,7 +286,7 @@ CMakeFiles/api-test.dir/all: CMakeFiles/qjs.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/api-test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 9
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/api-test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/api-test.dir/rule
@@ -313,12 +313,12 @@ CMakeFiles/api-test.dir/clean:
 CMakeFiles/test_qar_load.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=41,42,43 "Built target test_qar_load"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=37,38 "Built target test_qar_load"
 .PHONY : CMakeFiles/test_qar_load.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_qar_load.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 10
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/test_qar_load.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/test_qar_load.dir/rule
@@ -330,7 +330,7 @@ test_qar_load: CMakeFiles/test_qar_load.dir/rule
 # codegen rule for target.
 CMakeFiles/test_qar_load.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=41,42,43 "Finished codegen for target test_qar_load"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=37,38 "Finished codegen for target test_qar_load"
 .PHONY : CMakeFiles/test_qar_load.dir/codegen
 
 # clean rule for target.
@@ -345,7 +345,7 @@ CMakeFiles/test_qar_load.dir/clean:
 CMakeFiles/unicode_gen.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\unicode_gen.dir\build.make CMakeFiles/unicode_gen.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\unicode_gen.dir\build.make CMakeFiles/unicode_gen.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=44,45,46,47 "Built target unicode_gen"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=39,40,41,42 "Built target unicode_gen"
 .PHONY : CMakeFiles/unicode_gen.dir/all
 
 # Build rule for subdir invocation for target.
@@ -362,7 +362,7 @@ unicode_gen: CMakeFiles/unicode_gen.dir/rule
 # codegen rule for target.
 CMakeFiles/unicode_gen.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\unicode_gen.dir\build.make CMakeFiles/unicode_gen.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=44,45,46,47 "Finished codegen for target unicode_gen"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=39,40,41,42 "Finished codegen for target unicode_gen"
 .PHONY : CMakeFiles/unicode_gen.dir/codegen
 
 # clean rule for target.
@@ -377,12 +377,12 @@ CMakeFiles/unicode_gen.dir/clean:
 CMakeFiles/function_source.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\function_source.dir\build.make CMakeFiles/function_source.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\function_source.dir\build.make CMakeFiles/function_source.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=5,6,7 "Built target function_source"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=5,6 "Built target function_source"
 .PHONY : CMakeFiles/function_source.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/function_source.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 10
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/function_source.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/function_source.dir/rule
@@ -394,7 +394,7 @@ function_source: CMakeFiles/function_source.dir/rule
 # codegen rule for target.
 CMakeFiles/function_source.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\function_source.dir\build.make CMakeFiles/function_source.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=5,6,7 "Finished codegen for target function_source"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=5,6 "Finished codegen for target function_source"
 .PHONY : CMakeFiles/function_source.dir/codegen
 
 # clean rule for target.
@@ -409,12 +409,12 @@ CMakeFiles/function_source.dir/clean:
 CMakeFiles/hello.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello.dir\build.make CMakeFiles/hello.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello.dir\build.make CMakeFiles/hello.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=8,9,10 "Built target hello"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=7,8 "Built target hello"
 .PHONY : CMakeFiles/hello.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/hello.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 10
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/hello.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/hello.dir/rule
@@ -426,7 +426,7 @@ hello: CMakeFiles/hello.dir/rule
 # codegen rule for target.
 CMakeFiles/hello.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello.dir\build.make CMakeFiles/hello.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=8,9,10 "Finished codegen for target hello"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=7,8 "Finished codegen for target hello"
 .PHONY : CMakeFiles/hello.dir/codegen
 
 # clean rule for target.
@@ -441,12 +441,12 @@ CMakeFiles/hello.dir/clean:
 CMakeFiles/hello_module.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello_module.dir\build.make CMakeFiles/hello_module.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello_module.dir\build.make CMakeFiles/hello_module.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=11,12,13 "Built target hello_module"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=9,10 "Built target hello_module"
 .PHONY : CMakeFiles/hello_module.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/hello_module.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 10
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/hello_module.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/hello_module.dir/rule
@@ -458,7 +458,7 @@ hello_module: CMakeFiles/hello_module.dir/rule
 # codegen rule for target.
 CMakeFiles/hello_module.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\hello_module.dir\build.make CMakeFiles/hello_module.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=11,12,13 "Finished codegen for target hello_module"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=9,10 "Finished codegen for target hello_module"
 .PHONY : CMakeFiles/hello_module.dir/codegen
 
 # clean rule for target.
@@ -478,7 +478,7 @@ CMakeFiles/fib.dir/all: CMakeFiles/qjs.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/fib.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 9
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/fib.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/fib.dir/rule
@@ -505,12 +505,12 @@ CMakeFiles/fib.dir/clean:
 CMakeFiles/point.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\point.dir\build.make CMakeFiles/point.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\point.dir\build.make CMakeFiles/point.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=14,15 "Built target point"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=11,12 "Built target point"
 .PHONY : CMakeFiles/point.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/point.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 9
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/point.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/point.dir/rule
@@ -522,7 +522,7 @@ point: CMakeFiles/point.dir/rule
 # codegen rule for target.
 CMakeFiles/point.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\point.dir\build.make CMakeFiles/point.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=14,15 "Finished codegen for target point"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=11,12 "Finished codegen for target point"
 .PHONY : CMakeFiles/point.dir/codegen
 
 # clean rule for target.
@@ -537,12 +537,12 @@ CMakeFiles/point.dir/clean:
 CMakeFiles/test_fib.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_fib.dir\build.make CMakeFiles/test_fib.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_fib.dir\build.make CMakeFiles/test_fib.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=37,38,39,40 "Built target test_fib"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=34,35,36 "Built target test_fib"
 .PHONY : CMakeFiles/test_fib.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_fib.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 11
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/test_fib.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\master\CMakeFiles 0
 .PHONY : CMakeFiles/test_fib.dir/rule
@@ -554,7 +554,7 @@ test_fib: CMakeFiles/test_fib.dir/rule
 # codegen rule for target.
 CMakeFiles/test_fib.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_fib.dir\build.make CMakeFiles/test_fib.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=37,38,39,40 "Finished codegen for target test_fib"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\master\CMakeFiles --progress-num=34,35,36 "Finished codegen for target test_fib"
 .PHONY : CMakeFiles/test_fib.dir/codegen
 
 # clean rule for target.

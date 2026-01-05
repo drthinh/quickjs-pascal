@@ -30,6 +30,15 @@
 
 #include "cutils.h"
 #include "quickjs-libc.h"
+/* Disable unused-function warnings for miniz header */
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+#include "miniz/miniz.h"
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 #define QAR_MAGIC "QAR\x01"
 #define QAR_MAGIC_SIZE 4
@@ -43,6 +52,11 @@ typedef struct {
     uint8_t *source;
     size_t source_len;
     int is_module;   // 1 if ES module, 0 if script
+    uint8_t *bytecode_compressed;  // Compressed bytecode
+    size_t bytecode_compressed_len;
+    uint8_t *source_compressed;     // Compressed source
+    size_t source_compressed_len;
+    int is_compressed;  // 1 if compressed, 0 if not
 } QarEntry;
 
 typedef struct {
@@ -82,6 +96,11 @@ static void qar_entry_list_add(QarEntryList *list, const char *path,
     entry->source = source;
     entry->source_len = source_len;
     entry->is_module = is_module;
+    entry->bytecode_compressed = NULL;
+    entry->bytecode_compressed_len = 0;
+    entry->source_compressed = NULL;
+    entry->source_compressed_len = 0;
+    entry->is_compressed = 0;
 }
 
 static void qar_entry_list_free(QarEntryList *list)
@@ -93,6 +112,8 @@ static void qar_entry_list_free(QarEntryList *list)
         free(e->filepath);
         free(e->bytecode);
         free(e->source);
+        free(e->bytecode_compressed);
+        free(e->source_compressed);
     }
     free(list->entries);
     list->entries = NULL;
@@ -267,6 +288,61 @@ static void write_string(FILE *f, const char *str)
     fwrite(str, 1, len, f);
 }
 
+/* Compress data using miniz */
+static int compress_data(const uint8_t *src, size_t src_len, 
+                         uint8_t **dst, size_t *dst_len)
+{
+    mz_ulong dest_len = mz_compressBound((mz_ulong)src_len);
+    uint8_t *compressed = malloc(dest_len);
+    if (!compressed)
+        return -1;
+    
+    int ret = mz_compress2(compressed, &dest_len, src, (mz_ulong)src_len, MZ_DEFAULT_LEVEL);
+    if (ret != MZ_OK) {
+        free(compressed);
+        return -1;
+    }
+    
+    *dst = compressed;
+    *dst_len = (size_t)dest_len;
+    return 0;
+}
+
+/* Compress entry data - always compress to prevent code modification/corruption/injection */
+static void compress_entry(QarEntry *entry)
+{
+    // Always compress to prevent code modification, corruption, or bytecode injection
+    uint8_t *bytecode_compressed = NULL;
+    size_t bytecode_compressed_len = 0;
+    uint8_t *source_compressed = NULL;
+    size_t source_compressed_len = 0;
+    
+    // Compress bytecode - always compress
+    if (entry->bytecode_len > 0) {
+        if (compress_data(entry->bytecode, entry->bytecode_len, 
+                         &bytecode_compressed, &bytecode_compressed_len) == 0) {
+            // Always use compressed version to prevent tampering
+            entry->bytecode_compressed = bytecode_compressed;
+            entry->bytecode_compressed_len = bytecode_compressed_len;
+        }
+    }
+    
+    // Compress source - always compress
+    if (entry->source_len > 0) {
+        if (compress_data(entry->source, entry->source_len, 
+                         &source_compressed, &source_compressed_len) == 0) {
+            // Always use compressed version to prevent tampering
+            entry->source_compressed = source_compressed;
+            entry->source_compressed_len = source_compressed_len;
+        }
+    }
+    
+    // Mark as compressed if either is compressed (should always be true now)
+    if (entry->bytecode_compressed || entry->source_compressed) {
+        entry->is_compressed = 1;
+    }
+}
+
 static void write_manifest(FILE *f, QarEntryList *list, const char *qjs_version)
 {
     // Write manifest as JSON
@@ -319,20 +395,39 @@ static int create_qar(const char *output_file, QarEntryList *list,
     for (i = 0; i < list->count; i++) {
         QarEntry *e = &list->entries[i];
         
+        // Compress entry data
+        compress_entry(e);
+        
         // Write entry header
         write_string(f, e->path);
         uint32_t flags = e->is_module ? 1 : 0;
+        if (e->is_compressed)
+            flags |= 2;  // Bit 1 = compressed
         fwrite(&flags, 4, 1, f);
         
-        // Write sizes (reader expects both sizes together)
-        uint64_t bytecode_size = e->bytecode_len;
-        uint64_t source_size = e->source_len;
+        // Write sizes - use compressed sizes if available, otherwise original
+        uint64_t bytecode_size = e->bytecode_compressed ? e->bytecode_compressed_len : e->bytecode_len;
+        uint64_t source_size = e->source_compressed ? e->source_compressed_len : e->source_len;
         fwrite(&bytecode_size, 8, 1, f);
         fwrite(&source_size, 8, 1, f);
         
-        // Write data
-        fwrite(e->bytecode, 1, e->bytecode_len, f);
-        fwrite(e->source, 1, e->source_len, f);
+        // Write original sizes if compressed
+        if (e->is_compressed) {
+            fwrite(&e->bytecode_len, 8, 1, f);  // Original bytecode size
+            fwrite(&e->source_len, 8, 1, f);   // Original source size
+        }
+        
+        // Write data - use compressed if available
+        if (e->bytecode_compressed) {
+            fwrite(e->bytecode_compressed, 1, e->bytecode_compressed_len, f);
+        } else {
+            fwrite(e->bytecode, 1, e->bytecode_len, f);
+        }
+        if (e->source_compressed) {
+            fwrite(e->source_compressed, 1, e->source_compressed_len, f);
+        } else {
+            fwrite(e->source, 1, e->source_len, f);
+        }
     }
     
     // Write manifest

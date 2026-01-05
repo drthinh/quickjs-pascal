@@ -11,7 +11,6 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "D:/Projects/quickjs/quickjs-master/gen/repl.c" "CMakeFiles/qjs_exe.dir/gen/repl.c.obj" "gcc" "CMakeFiles/qjs_exe.dir/gen/repl.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/gen/standalone.c" "CMakeFiles/qjs_exe.dir/gen/standalone.c.obj" "gcc" "CMakeFiles/qjs_exe.dir/gen/standalone.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/qjs.c" "CMakeFiles/qjs_exe.dir/qjs.c.obj" "gcc" "CMakeFiles/qjs_exe.dir/qjs.c.obj.d"
-  "D:/Projects/quickjs/quickjs-master/quickjs-libc.c" "CMakeFiles/qjs_exe.dir/quickjs-libc.c.obj" "gcc" "CMakeFiles/qjs_exe.dir/quickjs-libc.c.obj.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

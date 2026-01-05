@@ -7,7 +7,7 @@
  */
 
 // Bước 1: Đăng ký QAR file (tự động có sẵn trong JavaScript)
-registerQar('qar_test.qar');
+LoadLibrary('qar_test.qar');
 
 // Bước 2: Import và sử dụng modules từ QAR
 import * as math from './qar_test_lib/math.js';

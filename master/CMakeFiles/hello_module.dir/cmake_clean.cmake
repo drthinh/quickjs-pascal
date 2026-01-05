@@ -1,8 +1,6 @@
 file(REMOVE_RECURSE
   "CMakeFiles/hello_module.dir/gen/hello_module.c.obj"
   "CMakeFiles/hello_module.dir/gen/hello_module.c.obj.d"
-  "CMakeFiles/hello_module.dir/quickjs-libc.c.obj"
-  "CMakeFiles/hello_module.dir/quickjs-libc.c.obj.d"
   "hello_module.exe"
   "hello_module.exe.manifest"
   "hello_module.pdb"

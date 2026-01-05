@@ -216,4 +216,16 @@ CMakeFiles/qjs.dir/qar.c.obj: D:\Projects\quickjs\quickjs-master\qar.c \
  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/winsvc.h \
  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/mcx.h \
  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/imm.h \
- D:\Projects\quickjs\quickjs-master\qar.h
+ D:\Projects\quickjs\quickjs-master\qar.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_export.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/time.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sys/timeb.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sec_api/sys/timeb_s.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/_timeval.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/pthread_time.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_common.h \
+ D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/assert.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_tdef.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_tinfl.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_zip.h

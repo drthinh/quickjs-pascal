@@ -8,7 +8,6 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "D:/Projects/quickjs/quickjs-master/quickjs-libc.c" "CMakeFiles/test_qar_load.dir/quickjs-libc.c.obj" "gcc" "CMakeFiles/test_qar_load.dir/quickjs-libc.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/tests/test_qar_load.c" "CMakeFiles/test_qar_load.dir/tests/test_qar_load.c.obj" "gcc" "CMakeFiles/test_qar_load.dir/tests/test_qar_load.c.obj.d"
   )
 

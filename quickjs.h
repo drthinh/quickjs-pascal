@@ -42,6 +42,12 @@ extern "C" {
 #if defined(__GNUC__) || defined(__clang__)
 #define js_force_inline       inline __attribute__((always_inline))
 #define JS_EXTERN __attribute__((visibility("default")))
+#elif defined(_WIN32) && defined(BUILD_QJS_DLL)
+#define js_force_inline  inline
+#define JS_EXTERN __declspec(dllexport)
+#elif defined(_WIN32) && defined(USE_QJS_DLL)
+#define js_force_inline  inline
+#define JS_EXTERN __declspec(dllimport)
 #else
 #define js_force_inline  inline
 #define JS_EXTERN /* nothing */

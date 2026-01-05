@@ -294,7 +294,7 @@ CMAKE_VERBOSE_MAKEFILE:BOOL=OFF
 M_LIBRARIES:FILEPATH=M_LIBRARIES-NOTFOUND
 
 //Build a static qjs executable
-QJS_BUILD_CLI_STATIC:BOOL=ON
+QJS_BUILD_CLI_STATIC:BOOL=OFF
 
 //Build the qjs executable with mimalloc
 QJS_BUILD_CLI_WITH_MIMALLOC:BOOL=OFF
@@ -306,7 +306,7 @@ QJS_BUILD_CLI_WITH_STATIC_MIMALLOC:BOOL=OFF
 QJS_BUILD_EXAMPLES:BOOL=ON
 
 //Build standard library modules as part of the library
-QJS_BUILD_LIBC:BOOL=OFF
+QJS_BUILD_LIBC:BOOL=ON
 
 //Disable JS source code parser
 QJS_DISABLE_PARSER:BOOL=OFF
@@ -325,9 +325,6 @@ QJS_ENABLE_UBSAN:BOOL=OFF
 
 //Dependencies for the target
 fib_LIB_DEPENDS:STATIC=general;qjs;
-
-//The directory containing a CMake configuration file for mimalloc.
-mimalloc_DIR:PATH=mimalloc_DIR-NOTFOUND
 
 //Dependencies for the target
 point_LIB_DEPENDS:STATIC=general;qjs;
@@ -524,6 +521,8 @@ CMAKE_STRIP-ADVANCED:INTERNAL=1
 CMAKE_TAPI-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_VERBOSE_MAKEFILE
 CMAKE_VERBOSE_MAKEFILE-ADVANCED:INTERNAL=1
+//Test COMPILER_SUPPORTS_Os
+COMPILER_SUPPORTS_Os:INTERNAL=1
 //Test COMPILER_SUPPORTS_Wall
 COMPILER_SUPPORTS_Wall:INTERNAL=1
 //Test COMPILER_SUPPORTS_Werror
@@ -548,6 +547,10 @@ COMPILER_SUPPORTS_Wnounusedbutsetvariable:INTERNAL=1
 COMPILER_SUPPORTS_Wnounusedparameter:INTERNAL=1
 //Test COMPILER_SUPPORTS_Wnounusedresult
 COMPILER_SUPPORTS_Wnounusedresult:INTERNAL=1
+//Test COMPILER_SUPPORTS_fdatasections
+COMPILER_SUPPORTS_fdatasections:INTERNAL=1
+//Test COMPILER_SUPPORTS_ffunctionsections
+COMPILER_SUPPORTS_ffunctionsections:INTERNAL=1
 //Test COMPILER_SUPPORTS_funsignedchar
 COMPILER_SUPPORTS_funsignedchar:INTERNAL=1
 //Details about finding Threads
