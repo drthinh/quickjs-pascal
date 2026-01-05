@@ -95,7 +95,7 @@ hello_EXTERNAL_OBJECTS =
 
 hello.exe: CMakeFiles/hello.dir/gen/hello.c.obj
 hello.exe: CMakeFiles/hello.dir/build.make
-hello.exe: libqjs.a
+hello.exe: libqjs.dll.a
 hello.exe: CMakeFiles/hello.dir/linkLibs.rsp
 hello.exe: CMakeFiles/hello.dir/objects1.rsp
 hello.exe: CMakeFiles/hello.dir/link.txt

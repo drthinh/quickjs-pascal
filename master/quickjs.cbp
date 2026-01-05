@@ -18,15 +18,18 @@
 				</MakeCommands>
 			</Target>
 			<Target title="qjs">
-				<Option output="D:/Projects/quickjs/quickjs-master/master/libqjs.a" prefix_auto="0" extension_auto="0"/>
+				<Option output="D:/Projects/quickjs/quickjs-master/master/libqjs.dll" prefix_auto="0" extension_auto="0"/>
 				<Option working_dir="D:/Projects/quickjs/quickjs-master/master"/>
 				<Option object_output="./"/>
-				<Option type="2"/>
+				<Option type="3"/>
 				<Option compiler="gcc"/>
 				<Compiler>
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DMINIZ_EXPORT=__declspec(dllexport)"/>
+					<Add option="-DBUILD_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -43,15 +46,18 @@
 				</MakeCommands>
 			</Target>
 			<Target title="qjs/fast">
-				<Option output="D:/Projects/quickjs/quickjs-master/master/libqjs.a" prefix_auto="0" extension_auto="0"/>
+				<Option output="D:/Projects/quickjs/quickjs-master/master/libqjs.dll" prefix_auto="0" extension_auto="0"/>
 				<Option working_dir="D:/Projects/quickjs/quickjs-master/master"/>
 				<Option object_output="./"/>
-				<Option type="2"/>
+				<Option type="3"/>
 				<Option compiler="gcc"/>
 				<Compiler>
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DMINIZ_EXPORT=__declspec(dllexport)"/>
+					<Add option="-DBUILD_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -77,6 +83,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -102,6 +110,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -127,6 +137,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -152,6 +164,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -177,6 +191,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -202,6 +218,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -227,6 +245,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -252,6 +272,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -277,6 +299,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -302,6 +326,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -327,6 +353,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -352,6 +380,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -377,6 +407,7 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/codeblocks-25.03mingw-nosetup/MinGW/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/include"/>
@@ -401,6 +432,7 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/codeblocks-25.03mingw-nosetup/MinGW/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/include"/>
@@ -425,6 +457,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -450,6 +484,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -475,6 +511,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -500,6 +538,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -525,6 +565,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -550,6 +592,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -573,6 +617,8 @@
 				<Option compiler="gcc"/>
 				<Compiler>
 					<Add option="-DJS_SHARED_LIBRARY"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -596,6 +642,8 @@
 				<Option compiler="gcc"/>
 				<Compiler>
 					<Add option="-DJS_SHARED_LIBRARY"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -619,6 +667,8 @@
 				<Option compiler="gcc"/>
 				<Compiler>
 					<Add option="-DJS_SHARED_LIBRARY"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -642,6 +692,8 @@
 				<Option compiler="gcc"/>
 				<Compiler>
 					<Add option="-DJS_SHARED_LIBRARY"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -667,6 +719,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -692,6 +746,8 @@
 					<Add option="-D_GNU_SOURCE"/>
 					<Add option="-DWIN32_LEAN_AND_MEAN"/>
 					<Add option="-D_WIN32_WINNT=0x0601"/>
+					<Add option="-DUSE_QJS_DLL"/>
+					<Add option="-DBUILD_SHARED_LIBS"/>
 					<Add option="-DQJS_BUILD_EXAMPLES"/>
 					<Add option="-DQJS_BUILD_LIBC"/>
 					<Add directory="D:/Projects/quickjs/quickjs-master"/>
@@ -773,10 +829,18 @@
 		</Unit>
 		<Unit filename="D:/Projects/quickjs/quickjs-master/cutils.c">
 			<Option target="qjs"/>
+			<Option target="qjsc"/>
+			<Option target="qjar"/>
+			<Option target="qjs_exe"/>
+			<Option target="run-test262"/>
 			<Option target="unicode_gen"/>
 		</Unit>
 		<Unit filename="D:/Projects/quickjs/quickjs-master/cutils.h">
 			<Option target="qjs"/>
+			<Option target="qjsc"/>
+			<Option target="qjar"/>
+			<Option target="qjs_exe"/>
+			<Option target="run-test262"/>
 			<Option target="unicode_gen"/>
 		</Unit>
 		<Unit filename="D:/Projects/quickjs/quickjs-master/dtoa.c">

@@ -95,7 +95,7 @@ fib_EXTERNAL_OBJECTS =
 
 fib.dll: CMakeFiles/fib.dir/examples/fib.c.obj
 fib.dll: CMakeFiles/fib.dir/build.make
-fib.dll: libqjs.a
+fib.dll: libqjs.dll.a
 fib.dll: CMakeFiles/fib.dir/linkLibs.rsp
 fib.dll: CMakeFiles/fib.dir/objects1.rsp
 fib.dll: CMakeFiles/fib.dir/link.txt

@@ -460,7 +460,20 @@ fail:
 #pragma GCC diagnostic pop // ignored "-Wformat-nonliteral"
 #endif // __GNUC__
 
-uint8_t *js_load_file(JSContext *ctx, size_t *pbuf_len, const char *filename)
+// Ensure JS_EXTERN is defined for function definitions
+#ifndef JS_EXTERN
+#if defined(_WIN32) && defined(BUILD_QJS_DLL)
+#define JS_EXTERN __declspec(dllexport)
+#elif defined(_WIN32) && defined(USE_QJS_DLL)
+#define JS_EXTERN __declspec(dllimport)
+#elif defined(__GNUC__) || defined(__clang__)
+#define JS_EXTERN __attribute__((visibility("default")))
+#else
+#define JS_EXTERN /* nothing */
+#endif
+#endif
+
+JS_EXTERN uint8_t *js_load_file(JSContext *ctx, size_t *pbuf_len, const char *filename)
 {
     FILE *f;
     size_t n, len;
@@ -4685,7 +4698,7 @@ static void js_std_dump_error1(JSContext *ctx, JSValueConst exception_val)
     }
 }
 
-void js_std_dump_error(JSContext *ctx)
+JS_EXTERN void js_std_dump_error(JSContext *ctx)
 {
     JSValue exception_val;
 

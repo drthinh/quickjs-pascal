@@ -372,6 +372,10 @@ cutils.obj: cutils.c.obj
 # target to build an object file
 cutils.c.obj:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/cutils.c.obj
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/cutils.c.obj
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjar.dir\build.make CMakeFiles/qjar.dir/cutils.c.obj
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/cutils.c.obj
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/cutils.c.obj
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\unicode_gen.dir\build.make CMakeFiles/unicode_gen.dir/cutils.c.obj
 .PHONY : cutils.c.obj
 
@@ -381,6 +385,10 @@ cutils.i: cutils.c.i
 # target to preprocess a source file
 cutils.c.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/cutils.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/cutils.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjar.dir\build.make CMakeFiles/qjar.dir/cutils.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/cutils.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/cutils.c.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\unicode_gen.dir\build.make CMakeFiles/unicode_gen.dir/cutils.c.i
 .PHONY : cutils.c.i
 
@@ -390,6 +398,10 @@ cutils.s: cutils.c.s
 # target to generate assembly for a file
 cutils.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/cutils.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/cutils.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjar.dir\build.make CMakeFiles/qjar.dir/cutils.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/cutils.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/cutils.c.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\unicode_gen.dir\build.make CMakeFiles/unicode_gen.dir/cutils.c.s
 .PHONY : cutils.c.s
 

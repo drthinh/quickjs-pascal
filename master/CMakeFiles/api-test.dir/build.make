@@ -95,7 +95,7 @@ api__test_EXTERNAL_OBJECTS =
 
 api-test.exe: CMakeFiles/api-test.dir/api-test.c.obj
 api-test.exe: CMakeFiles/api-test.dir/build.make
-api-test.exe: libqjs.a
+api-test.exe: libqjs.dll.a
 api-test.exe: CMakeFiles/api-test.dir/linkLibs.rsp
 api-test.exe: CMakeFiles/api-test.dir/objects1.rsp
 api-test.exe: CMakeFiles/api-test.dir/link.txt

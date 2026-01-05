@@ -95,7 +95,7 @@ hello_module_EXTERNAL_OBJECTS =
 
 hello_module.exe: CMakeFiles/hello_module.dir/gen/hello_module.c.obj
 hello_module.exe: CMakeFiles/hello_module.dir/build.make
-hello_module.exe: libqjs.a
+hello_module.exe: libqjs.dll.a
 hello_module.exe: CMakeFiles/hello_module.dir/linkLibs.rsp
 hello_module.exe: CMakeFiles/hello_module.dir/objects1.rsp
 hello_module.exe: CMakeFiles/hello_module.dir/link.txt

@@ -50,7 +50,6 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
   if (!ctx)
     return NULL;
   {
-    extern JSModuleDef *js_init_module_os(JSContext *ctx, const char *name);
     js_init_module_os(ctx, "qjs:os");
   }
   return ctx;

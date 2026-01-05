@@ -1,4 +1,6 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/qjar.dir/cutils.c.obj"
+  "CMakeFiles/qjar.dir/cutils.c.obj.d"
   "CMakeFiles/qjar.dir/qjar.c.obj"
   "CMakeFiles/qjar.dir/qjar.c.obj.d"
   "libqjar.dll.a"

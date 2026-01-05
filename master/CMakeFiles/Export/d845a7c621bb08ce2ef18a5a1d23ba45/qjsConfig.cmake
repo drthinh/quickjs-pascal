@@ -56,7 +56,7 @@ if(_IMPORT_PREFIX STREQUAL "/")
 endif()
 
 # Create imported target qjs
-add_library(qjs STATIC IMPORTED)
+add_library(qjs SHARED IMPORTED)
 
 set_target_properties(qjs PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"

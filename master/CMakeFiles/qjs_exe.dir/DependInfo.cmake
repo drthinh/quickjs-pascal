@@ -8,6 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "D:/Projects/quickjs/quickjs-master/cutils.c" "CMakeFiles/qjs_exe.dir/cutils.c.obj" "gcc" "CMakeFiles/qjs_exe.dir/cutils.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/gen/repl.c" "CMakeFiles/qjs_exe.dir/gen/repl.c.obj" "gcc" "CMakeFiles/qjs_exe.dir/gen/repl.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/gen/standalone.c" "CMakeFiles/qjs_exe.dir/gen/standalone.c.obj" "gcc" "CMakeFiles/qjs_exe.dir/gen/standalone.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/qjs.c" "CMakeFiles/qjs_exe.dir/qjs.c.obj" "gcc" "CMakeFiles/qjs_exe.dir/qjs.c.obj.d"

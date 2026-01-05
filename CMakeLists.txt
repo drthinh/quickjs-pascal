@@ -126,6 +126,12 @@ if(WIN32)
     else()
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack,8388608")
         # Static linking for MinGW to avoid CRT DLL dependencies
+        # NOTE: On Windows 10/11, MinGW-w64 uses Universal C Runtime (UCRT) by default.
+        # This creates dependencies on api-ms-win-crt-*.dll, which are system DLLs
+        # that come with Windows 10/11. These dependencies are normal and acceptable.
+        # To completely avoid UCRT dependencies, you would need:
+        # 1. Use MSVC compiler with static runtime (handled above), OR
+        # 2. Use an older MinGW build configured for msvcrt.dll instead of UCRT
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++")
     endif()
 endif()
@@ -264,6 +270,18 @@ xoption(QJS_BUILD_LIBC "Build standard library modules as part of the library" O
 macro(add_qjs_libc_if_needed target)
     if(NOT QJS_BUILD_LIBC)
         target_sources(${target} PRIVATE quickjs-libc.c)
+        # When building with DLL and quickjs-libc.c is in the target (not in DLL),
+        # functions in quickjs-libc.c need BUILD_QJS_DLL to be exported correctly
+        if(BUILD_SHARED_LIBS AND WIN32)
+            # Mark that this target has quickjs-libc.c
+            set_target_properties(${target} PROPERTIES
+                _HAS_QUICKJS_LIBC TRUE
+            )
+            # Define BUILD_QJS_DLL for the entire target so functions in quickjs-libc.c use dllexport
+            # This will also affect other files, but functions from qjs library will still be
+            # linked from DLL (they just won't use dllimport, which should work with MinGW)
+            target_compile_definitions(${target} PRIVATE BUILD_QJS_DLL)
+        endif()
     endif()
 endmacro()
 macro(add_static_if_needed target)
@@ -299,6 +317,31 @@ macro(add_static_if_needed target)
                 endif()
             endif()
         endif()
+    endif()
+endmacro()
+
+# Macro to add USE_QJS_DLL definition when linking with shared library
+# Note: When QJS_BUILD_LIBC is OFF, targets have quickjs-libc.c directly.
+# For those targets, we don't use USE_QJS_DLL because functions in quickjs-libc.c
+# are defined in the same target and need BUILD_QJS_DLL (handled in add_qjs_libc_if_needed).
+# Functions from qjs library will be linked from DLL without dllimport (works with MinGW).
+macro(add_use_qjs_dll_if_needed target)
+    if(BUILD_SHARED_LIBS)
+        # Check if target has quickjs-libc.c (when QJS_BUILD_LIBC is OFF)
+        get_target_property(HAS_QUICKJS_LIBC ${target} _HAS_QUICKJS_LIBC)
+        if(NOT HAS_QUICKJS_LIBC)
+            # Only use USE_QJS_DLL if target doesn't have quickjs-libc.c
+            # (i.e., when QJS_BUILD_LIBC is ON, functions are in DLL)
+            target_compile_definitions(${target} PRIVATE USE_QJS_DLL)
+        endif()
+    endif()
+endmacro()
+
+# Macro to add cutils.c when building with DLL for internal functions
+# Internal functions like js__pstrcpy are not exported from DLL
+macro(add_cutils_if_dll target)
+    if(BUILD_SHARED_LIBS)
+        target_sources(${target} PRIVATE cutils.c)
     endif()
 endmacro()
 
@@ -342,6 +385,16 @@ endif()
 
 add_library(qjs ${qjs_sources})
 target_compile_definitions(qjs PRIVATE ${qjs_defines})
+# Define MINIZ_EXPORT for DLL builds to export miniz functions
+if(BUILD_SHARED_LIBS)
+    if(WIN32)
+        # For Windows (both MSVC and MinGW), use __declspec(dllexport)
+        target_compile_definitions(qjs PRIVATE "MINIZ_EXPORT=__declspec(dllexport)")
+    else()
+        # For non-Windows, use visibility attribute
+        target_compile_definitions(qjs PRIVATE "MINIZ_EXPORT=__attribute__((visibility(\\\"default\\\")))")
+    endif()
+endif()
 target_include_directories(qjs PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -384,39 +437,14 @@ endif()
 # Export functions for QAR compilation, packaging, and loading
 if(BUILD_SHARED_LIBS)
     # Define BUILD_QJS_DLL so that export macros work
+    # JS_EXTERN and QAR_EXPORT will use __declspec(dllexport) on Windows with MSVC
+    # This automatically exports all functions marked with JS_EXTERN/QAR_EXPORT
     target_compile_definitions(qjs PRIVATE BUILD_QJS_DLL)
     
-    if(WIN32 AND MSVC)
-        # Create a .def file for exporting functions on Windows with MSVC
-        set(QJS_DEF_FILE "${CMAKE_CURRENT_BINARY_DIR}/qjs.def")
-        file(WRITE ${QJS_DEF_FILE} "EXPORTS\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_open\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_close\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_get_entry_count\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_get_entry\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_find_entry\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_entry_get_path\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_entry_get_type\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_entry_get_bytecode\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_entry_get_source\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_entry_load_data\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_get_manifest\n")
-        file(APPEND ${QJS_DEF_FILE} "qar_get_quickjs_version\n")
-        file(APPEND ${QJS_DEF_FILE} "JS_NewRuntime\n")
-        file(APPEND ${QJS_DEF_FILE} "JS_NewContext\n")
-        file(APPEND ${QJS_DEF_FILE} "JS_FreeContext\n")
-        file(APPEND ${QJS_DEF_FILE} "JS_FreeRuntime\n")
-        file(APPEND ${QJS_DEF_FILE} "JS_Eval\n")
-        file(APPEND ${QJS_DEF_FILE} "JS_WriteObject\n")
-        file(APPEND ${QJS_DEF_FILE} "JS_ReadObject\n")
-        file(APPEND ${QJS_DEF_FILE} "JS_GetVersion\n")
-        file(APPEND ${QJS_DEF_FILE} "JS_SetModuleLoaderFunc\n")
-        file(APPEND ${QJS_DEF_FILE} "js_register_qar_file\n")
-        file(APPEND ${QJS_DEF_FILE} "js_unregister_all_qar_files\n")
-        file(APPEND ${QJS_DEF_FILE} "js_load_file\n")
-        file(APPEND ${QJS_DEF_FILE} "js_std_dump_error\n")
-        set_target_properties(qjs PROPERTIES LINK_FLAGS "/DEF:${QJS_DEF_FILE}")
-    else()
+    # For all platforms, ensure visibility is set correctly
+    # On Windows with MSVC, __declspec(dllexport) in JS_EXTERN/QAR_EXPORT handles exports
+    # On MinGW/GCC and non-Windows, use visibility attributes
+    if(NOT WIN32 OR NOT MSVC)
         # For MinGW/GCC and non-Windows, use visibility attributes
         # QAR_EXPORT and JS_EXTERN macros handle the exports
         set_target_properties(qjs PROPERTIES C_VISIBILITY_PRESET default)
@@ -448,6 +476,7 @@ endif()
 add_executable(qjsc
     qjsc.c
 )
+add_cutils_if_dll(qjsc)
 add_qjs_libc_if_needed(qjsc)
 add_static_if_needed(qjsc)
 # Explicitly set static runtime for qjsc to avoid UCRT DLL dependencies
@@ -457,9 +486,10 @@ if(MSVC)
     )
 endif()
 target_compile_definitions(qjsc PRIVATE ${qjs_defines})
+add_use_qjs_dll_if_needed(qjsc)
 # For MinGW, ensure qjs library symbols are fully included
 # Use PUBLIC linking to ensure transitive dependencies are handled correctly
-if(MINGW)
+if(MINGW AND NOT BUILD_SHARED_LIBS)
     # Wrap qjs library with --whole-archive to include all symbols
     # This is necessary because static libraries may have symbols that appear unused
     target_link_options(qjsc PRIVATE -Wl,--whole-archive)
@@ -476,6 +506,7 @@ add_dependencies(qjsc qjs)
 add_executable(qjar
     qjar.c
 )
+add_cutils_if_dll(qjar)
 add_qjs_libc_if_needed(qjar)
 add_static_if_needed(qjar)
 # Explicitly set static runtime for qjar to avoid UCRT DLL dependencies
@@ -485,6 +516,7 @@ if(MSVC)
     )
 endif()
 target_compile_definitions(qjar PRIVATE ${qjs_defines})
+add_use_qjs_dll_if_needed(qjar)
 target_link_libraries(qjar qjs)
 
 
@@ -496,6 +528,7 @@ add_executable(qjs_exe
     gen/standalone.c
     qjs.c
 )
+add_cutils_if_dll(qjs_exe)
 add_qjs_libc_if_needed(qjs_exe)
 add_static_if_needed(qjs_exe)
 set_target_properties(qjs_exe PROPERTIES
@@ -508,6 +541,7 @@ if(MSVC)
     )
 endif()
 target_compile_definitions(qjs_exe PRIVATE ${qjs_defines})
+add_use_qjs_dll_if_needed(qjs_exe)
 target_link_libraries(qjs_exe qjs)
 if(NOT WIN32)
     set_target_properties(qjs_exe PROPERTIES ENABLE_EXPORTS TRUE)
@@ -529,8 +563,10 @@ if(NOT EMSCRIPTEN)
     add_executable(run-test262
         run-test262.c
     )
+    add_cutils_if_dll(run-test262)
     add_qjs_libc_if_needed(run-test262)
     target_compile_definitions(run-test262 PRIVATE ${qjs_defines})
+    add_use_qjs_dll_if_needed(run-test262)
     target_link_libraries(run-test262 qjs)
 endif()
 
@@ -541,6 +577,7 @@ add_executable(api-test
     api-test.c
 )
 target_compile_definitions(api-test PRIVATE ${qjs_defines})
+add_use_qjs_dll_if_needed(api-test)
 target_link_libraries(api-test qjs)
 
 # QAR test loader
@@ -549,6 +586,7 @@ add_executable(test_qar_load
 )
 add_qjs_libc_if_needed(test_qar_load)
 target_compile_definitions(test_qar_load PRIVATE ${qjs_defines})
+add_use_qjs_dll_if_needed(test_qar_load)
 target_link_libraries(test_qar_load qjs)
 
 # Unicode generator
@@ -567,6 +605,7 @@ add_executable(function_source
 add_qjs_libc_if_needed(function_source)
 target_include_directories(function_source PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(function_source PRIVATE ${qjs_defines})
+add_use_qjs_dll_if_needed(function_source)
 target_link_libraries(function_source qjs)
 
 # Examples
@@ -579,6 +618,7 @@ if(QJS_BUILD_EXAMPLES)
     add_qjs_libc_if_needed(hello)
     target_include_directories(hello PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(hello PRIVATE ${qjs_defines})
+    add_use_qjs_dll_if_needed(hello)
     target_link_libraries(hello qjs)
 
     add_executable(hello_module
@@ -587,6 +627,7 @@ if(QJS_BUILD_EXAMPLES)
     add_qjs_libc_if_needed(hello_module)
     target_include_directories(hello_module PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(hello_module PRIVATE ${qjs_defines})
+    add_use_qjs_dll_if_needed(hello_module)
     target_link_libraries(hello_module qjs)
 
     add_library(fib MODULE examples/fib.c)
@@ -595,6 +636,7 @@ if(QJS_BUILD_EXAMPLES)
         C_VISIBILITY_PRESET default
     )
     target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
+    add_use_qjs_dll_if_needed(fib)
     if(WIN32)
         target_link_libraries(fib qjs)
     elseif(APPLE)
@@ -607,6 +649,7 @@ if(QJS_BUILD_EXAMPLES)
         C_VISIBILITY_PRESET default
     )
     target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
+    add_use_qjs_dll_if_needed(point)
     if(WIN32)
         target_link_libraries(point qjs)
     elseif(APPLE)
@@ -620,6 +663,7 @@ if(QJS_BUILD_EXAMPLES)
     add_qjs_libc_if_needed(test_fib)
     target_include_directories(test_fib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(test_fib PRIVATE ${qjs_defines})
+    add_use_qjs_dll_if_needed(test_fib)
     target_link_libraries(test_fib qjs)
 endif()
 

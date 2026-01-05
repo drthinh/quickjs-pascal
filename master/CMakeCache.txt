@@ -15,7 +15,7 @@
 ########################
 
 //Build a shared library
-BUILD_SHARED_LIBS:BOOL=OFF
+BUILD_SHARED_LIBS:BOOL=ON
 
 //Path to a program.
 CMAKE_ADDR2LINE:FILEPATH=D:/codeblocks-25.03mingw-nosetup/MinGW/bin/addr2line.exe
@@ -289,6 +289,9 @@ CMAKE_TAPI:FILEPATH=CMAKE_TAPI-NOTFOUND
 // during the make.  This is useful for debugging only. With Visual
 // Studio IDE projects all commands are done without /nologo.
 CMAKE_VERBOSE_MAKEFILE:BOOL=OFF
+
+//Test COMPILER_SUPPORTS_Wformat=2
+COMPILER_SUPPORTS_Wformat:UNINITIALIZED=2:INTERNAL=1
 
 //Path to a library.
 M_LIBRARIES:FILEPATH=M_LIBRARIES-NOTFOUND

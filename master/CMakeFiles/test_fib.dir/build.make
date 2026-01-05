@@ -112,7 +112,7 @@ test_fib_EXTERNAL_OBJECTS =
 test_fib.exe: CMakeFiles/test_fib.dir/examples/fib.c.obj
 test_fib.exe: CMakeFiles/test_fib.dir/gen/test_fib.c.obj
 test_fib.exe: CMakeFiles/test_fib.dir/build.make
-test_fib.exe: libqjs.a
+test_fib.exe: libqjs.dll.a
 test_fib.exe: CMakeFiles/test_fib.dir/linkLibs.rsp
 test_fib.exe: CMakeFiles/test_fib.dir/objects1.rsp
 test_fib.exe: CMakeFiles/test_fib.dir/link.txt

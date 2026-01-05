@@ -8,6 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "D:/Projects/quickjs/quickjs-master/cutils.c" "CMakeFiles/run-test262.dir/cutils.c.obj" "gcc" "CMakeFiles/run-test262.dir/cutils.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/run-test262.c" "CMakeFiles/run-test262.dir/run-test262.c.obj" "gcc" "CMakeFiles/run-test262.dir/run-test262.c.obj.d"
   )
 

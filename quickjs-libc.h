@@ -34,7 +34,11 @@
 extern "C" {
 #endif
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(_WIN32) && defined(BUILD_QJS_DLL)
+#define JS_EXTERN __declspec(dllexport)
+#elif defined(_WIN32) && defined(USE_QJS_DLL)
+#define JS_EXTERN __declspec(dllimport)
+#elif defined(__GNUC__) || defined(__clang__)
 #define JS_EXTERN __attribute__((visibility("default")))
 #else
 #define JS_EXTERN /* nothing */

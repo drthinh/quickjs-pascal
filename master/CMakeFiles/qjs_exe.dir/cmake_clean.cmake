@@ -1,4 +1,6 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/qjs_exe.dir/cutils.c.obj"
+  "CMakeFiles/qjs_exe.dir/cutils.c.obj.d"
   "CMakeFiles/qjs_exe.dir/gen/repl.c.obj"
   "CMakeFiles/qjs_exe.dir/gen/repl.c.obj.d"
   "CMakeFiles/qjs_exe.dir/gen/standalone.c.obj"

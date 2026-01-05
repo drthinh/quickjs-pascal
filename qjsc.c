@@ -586,6 +586,21 @@ int main(int argc, char **argv)
         fprintf(fo, "#include \"quickjs-libc.h\"\n"
                 "\n"
                 );
+        // Define JS_EXTERN if not already defined (quickjs-libc.h undefs it at the end)
+        fprintf(fo,
+                "#ifndef JS_EXTERN\n"
+                "#if defined(_WIN32) && defined(BUILD_QJS_DLL)\n"
+                "#define JS_EXTERN __declspec(dllexport)\n"
+                "#elif defined(_WIN32) && defined(USE_QJS_DLL)\n"
+                "#define JS_EXTERN __declspec(dllimport)\n"
+                "#elif defined(__GNUC__) || defined(__clang__)\n"
+                "#define JS_EXTERN __attribute__((visibility(\"default\")))\n"
+                "#else\n"
+                "#define JS_EXTERN /* nothing */\n"
+                "#endif\n"
+                "#endif\n"
+                "\n"
+                );
     } else if (output_type == OUTPUT_C) {
         fprintf(fo, "#include <inttypes.h>\n"
                 "\n"
@@ -621,10 +636,9 @@ int main(int argc, char **argv)
 
             fprintf(fo,
                     "  {\n"
-                    "    extern JSModuleDef *js_init_module_%s(JSContext *ctx, const char *name);\n"
                     "    js_init_module_%s(ctx, \"%s\");\n"
                     "  }\n",
-                    e->short_name, e->short_name, e->name);
+                    e->short_name, e->name);
         }
         for(i = 0; i < cname_list.count; i++) {
             namelist_entry_t *e = &cname_list.array[i];

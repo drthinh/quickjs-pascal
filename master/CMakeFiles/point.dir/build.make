@@ -95,7 +95,7 @@ point_EXTERNAL_OBJECTS =
 
 point.dll: CMakeFiles/point.dir/examples/point.c.obj
 point.dll: CMakeFiles/point.dir/build.make
-point.dll: libqjs.a
+point.dll: libqjs.dll.a
 point.dll: CMakeFiles/point.dir/linkLibs.rsp
 point.dll: CMakeFiles/point.dir/objects1.rsp
 point.dll: CMakeFiles/point.dir/link.txt

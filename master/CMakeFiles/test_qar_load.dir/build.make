@@ -95,7 +95,7 @@ test_qar_load_EXTERNAL_OBJECTS =
 
 test_qar_load.exe: CMakeFiles/test_qar_load.dir/tests/test_qar_load.c.obj
 test_qar_load.exe: CMakeFiles/test_qar_load.dir/build.make
-test_qar_load.exe: libqjs.a
+test_qar_load.exe: libqjs.dll.a
 test_qar_load.exe: CMakeFiles/test_qar_load.dir/linkLibs.rsp
 test_qar_load.exe: CMakeFiles/test_qar_load.dir/objects1.rsp
 test_qar_load.exe: CMakeFiles/test_qar_load.dir/link.txt

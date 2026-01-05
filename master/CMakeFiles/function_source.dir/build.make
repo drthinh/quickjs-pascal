@@ -95,7 +95,7 @@ function_source_EXTERNAL_OBJECTS =
 
 function_source.exe: CMakeFiles/function_source.dir/gen/function_source.c.obj
 function_source.exe: CMakeFiles/function_source.dir/build.make
-function_source.exe: libqjs.a
+function_source.exe: libqjs.dll.a
 function_source.exe: CMakeFiles/function_source.dir/linkLibs.rsp
 function_source.exe: CMakeFiles/function_source.dir/objects1.rsp
 function_source.exe: CMakeFiles/function_source.dir/link.txt

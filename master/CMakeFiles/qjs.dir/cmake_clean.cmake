@@ -19,7 +19,9 @@ file(REMOVE_RECURSE
   "CMakeFiles/qjs.dir/quickjs-libc.c.obj.d"
   "CMakeFiles/qjs.dir/quickjs.c.obj"
   "CMakeFiles/qjs.dir/quickjs.c.obj.d"
-  "libqjs.a"
+  "libqjs.dll"
+  "libqjs.dll.a"
+  "libqjs.dll.manifest"
   "libqjs.pdb"
 )
 
