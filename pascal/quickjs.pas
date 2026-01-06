@@ -350,6 +350,10 @@ function JS_GetGlobalObject(ctx: PJSContext): JSValue; cdecl; external libqjs;
 // Version
 function JS_GetVersion: PChar; cdecl; external libqjs;
 
+// Memory management
+procedure js_free(ctx: PJSContext; ptr: pointer); cdecl; external libqjs;
+procedure js_free_rt(rt: PJSRuntime; ptr: pointer); cdecl; external libqjs;
+
 // Error throwing functions
 function JS_ThrowTypeError(ctx: PJSContext; fmt: PChar): JSValue; cdecl; external libqjs;
 function JS_ThrowReferenceError(ctx: PJSContext; fmt: PChar): JSValue; cdecl; external libqjs;
