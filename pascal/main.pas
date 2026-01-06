@@ -13,81 +13,7 @@ type
 var
   CurrentScriptDir: string = '';
 
-// QAR building types and functions
-type
-  TQarEntry = record
-    path: string;        // Path in archive (e.g., "lib/utils.js")
-    filepath: string;    // Real file path
-    bytecode: Pcuint8;
-    bytecode_len: csize_t;
-    source: Pcuint8;
-    source_len: csize_t;
-    is_module: cint;     // 1 if ES module, 0 if script
-  end;
-  PQarEntry = ^TQarEntry;
-  
-  TQarEntryList = class
-  private
-    FEntries: array of TQarEntry;
-    FCount: integer;
-  public
-    constructor Create;
-    destructor Destroy; override;
-    procedure Add(const path, filepath: string; bytecode: Pcuint8; bytecode_len: csize_t;
-                  source: Pcuint8; source_len: csize_t; is_module: cint);
-    function GetEntry(index: integer): PQarEntry;
-    property Count: integer read FCount;
-  end;
-
-constructor TQarEntryList.Create;
-begin
-  inherited;
-  FCount := 0;
-  SetLength(FEntries, 0);
-end;
-
-destructor TQarEntryList.Destroy;
-var
-  i: integer;
-begin
-  for i := 0 to FCount - 1 do
-  begin
-    // bytecode is allocated by JS_WriteObject, needs js_free_rt
-    // But we don't have rt here, so we'll free it in BuildQar
-    // source is allocated by GetMem, needs FreeMem
-    if FEntries[i].source <> nil then
-      FreeMem(FEntries[i].source);
-  end;
-  SetLength(FEntries, 0);
-  inherited;
-end;
-
-procedure TQarEntryList.Add(const path, filepath: string; bytecode: Pcuint8; bytecode_len: csize_t;
-                            source: Pcuint8; source_len: csize_t; is_module: cint);
-begin
-  if FCount >= Length(FEntries) then
-    SetLength(FEntries, Length(FEntries) + 10);
-  
-  FEntries[FCount].path := path;
-  FEntries[FCount].filepath := filepath;
-  FEntries[FCount].bytecode := bytecode;
-  FEntries[FCount].bytecode_len := bytecode_len;
-  FEntries[FCount].source := source;
-  FEntries[FCount].source_len := source_len;
-  FEntries[FCount].is_module := is_module;
-  Inc(FCount);
-end;
-
-function TQarEntryList.GetEntry(index: integer): PQarEntry;
-begin
-  if (index >= 0) and (index < FCount) then
-    Result := @FEntries[index]
-  else
-    Result := nil;
-end;
-
-// Forward declarations
-function BuildQar(const output_file: string; const input_files: array of string): cint; forward;
+// QAR building functions are now in qar.pas unit
 
 // Helper function to find QAR file in multiple locations
 function FindQarFile(const qar_filename: string): string;
@@ -617,7 +543,7 @@ begin
   for i := 0 to input_count - 1 do
     WriteLn('  ', input_files[i]);
   
-  ret := BuildQar(output_file_str, input_files);
+  ret := qar.BuildQar(output_file_str, input_files);
   
   if ret < 0 then
   begin
@@ -663,32 +589,47 @@ begin
     Exit;
   end;
   
+  // NOTE: Code below is a workaround for path mismatch issues.
+  // It handles specific test paths that may not match QAR entry paths.
+  // 
+  // WHY THIS EXISTS:
+  // - When JS code imports 'qar_test_lib/math.js' but QAR stores 'math.js',
+  //   the import fails. This code tries removing the prefix as a fallback.
+  // 
+  // WHEN TO REMOVE:
+  // - If all QAR files are built with correct paths matching import statements,
+  //   this code is NOT necessary and can be removed.
+  // - This is a temporary workaround, not a permanent solution.
+  // - Better solution: Build QAR files with paths that match import statements.
+  //
   // Try removing common path prefixes first (more specific)
-  if Pos('qar_test_lib/', module_name_str) > 0 then
-  begin
-    basename := StringReplace(module_name_str, 'qar_test_lib/', '', []);
-    WriteLn('[DEBUG] Module not found with path "', module_name_str, '", trying without "qar_test_lib/" prefix: "', basename, '"');
-    Flush(Output);
-    m := js_module_loader(ctx, PChar(basename), opaque);
-    if m <> nil then
-    begin
-      Result := m;
-      Exit;
-    end;
-  end;
+  // TODO: Consider removing this if QAR files are built with correct paths
+
+//   if Pos('qar_test_lib/', module_name_str) > 0 then
+//   begin
+//     basename := StringReplace(module_name_str, 'qar_test_lib/', '', []);
+//     WriteLn('[DEBUG] Module not found with path "', module_name_str, '", trying without "qar_test_lib/" prefix: "', basename, '"');
+//     Flush(Output);
+//     m := js_module_loader(ctx, PChar(basename), opaque);
+//     if m <> nil then
+//     begin
+//       Result := m;
+//       Exit;
+//     end;
+//   end;
   
-  if Pos('tests/qar_test_lib/', module_name_str) > 0 then
-  begin
-    basename := StringReplace(module_name_str, 'tests/qar_test_lib/', '', []);
-    WriteLn('[DEBUG] Trying without "tests/qar_test_lib/" prefix: "', basename, '"');
-    Flush(Output);
-    m := js_module_loader(ctx, PChar(basename), opaque);
-    if m <> nil then
-    begin
-      Result := m;
-      Exit;
-    end;
-  end;
+//   if Pos('tests/qar_test_lib/', module_name_str) > 0 then
+//   begin
+//     basename := StringReplace(module_name_str, 'tests/qar_test_lib/', '', []);
+//     WriteLn('[DEBUG] Trying without "tests/qar_test_lib/" prefix: "', basename, '"');
+//     Flush(Output);
+//     m := js_module_loader(ctx, PChar(basename), opaque);
+//     if m <> nil then
+//     begin
+//       Result := m;
+//       Exit;
+//     end;
+//   end;
   
   // Last resort: try extracting basename (filename only)
   last_slash := LastDelimiter('/\', module_name_str);
@@ -828,373 +769,7 @@ begin
   qar_close(qar);
 end;
 
-// Helper function to check if file is JS file
-function IsJSFile(const filename: string): boolean;
-begin
-  Result := (LowerCase(ExtractFileExt(filename)) = '.js') or
-            (LowerCase(ExtractFileExt(filename)) = '.mjs');
-end;
-
-// Helper function to normalize path (convert \ to /)
-procedure NormalizePath(var path: string);
-var
-  i: integer;
-begin
-  for i := 1 to Length(path) do
-    if path[i] = '\' then
-      path[i] := '/';
-end;
-
-// Recursively add JS files from directory or single file
-procedure AddFileToList(list: TQarEntryList; const base_dir, filepath: string);
-var
-  search_rec: TSearchRec;
-  fullpath, rel_path: string;
-  base_len: integer;
-  basename: string;
-begin
-  if DirectoryExists(filepath) then
-  begin
-    // Recursively add directory contents
-    if FindFirst(IncludeTrailingPathDelimiter(filepath) + '*', faAnyFile, search_rec) = 0 then
-    begin
-      repeat
-        if (search_rec.Name = '.') or (search_rec.Name = '..') then
-          Continue;
-        
-        fullpath := IncludeTrailingPathDelimiter(filepath) + search_rec.Name;
-        
-        if (search_rec.Attr and faDirectory) <> 0 then
-        begin
-          // It's a directory, recurse
-          AddFileToList(list, base_dir, fullpath);
-        end
-        else if IsJSFile(search_rec.Name) then
-        begin
-          // It's a JS file, add it
-          AddFileToList(list, base_dir, fullpath);
-        end;
-      until FindNext(search_rec) <> 0;
-      FindClose(search_rec);
-    end;
-  end
-  else if FileExists(filepath) and IsJSFile(filepath) then
-  begin
-    // Add single file
-    base_len := Length(base_dir);
-    if (base_len > 0) and (Copy(filepath, 1, base_len) = base_dir) then
-    begin
-      rel_path := Copy(filepath, base_len + 1, Length(filepath));
-      if (Length(rel_path) > 0) and ((rel_path[1] = '/') or (rel_path[1] = '\')) then
-        rel_path := Copy(rel_path, 2, Length(rel_path));
-    end
-    else
-    begin
-      // Use basename only
-      basename := ExtractFileName(filepath);
-      rel_path := basename;
-    end;
-    NormalizePath(rel_path);
-    
-    // Add entry with empty data (will be compiled later)
-    list.Add(rel_path, filepath, nil, 0, nil, 0, 0);
-  end;
-end;
-
-// Compile JS file to bytecode
-function CompileAndAddEntry(ctx: PJSContext; entry: PQarEntry): cint;
-var
-  buf: Pcuint8;
-  buf_len: csize_t;
-  obj: JSValue;
-  eval_flags: cint;
-  is_module: cint;
-  source_buf: Pcuint8;
-begin
-  Result := -1;
-  
-  // Load source file
-  buf := js_load_file(ctx, @buf_len, PChar(entry^.filepath));
-  if buf = nil then
-  begin
-    WriteLn('Could not load file: ', entry^.filepath);
-    Exit;
-  end;
-  
-  // Save source code - allocate regular memory and copy
-  source_buf := GetMem(buf_len);
-  if source_buf = nil then
-  begin
-    js_free(ctx, buf);
-    Exit;
-  end;
-  Move(buf^, source_buf^, buf_len);
-  entry^.source := source_buf;
-  entry^.source_len := buf_len;
-  
-  // Detect module type
-  is_module := 0;
-  if (LowerCase(ExtractFileExt(entry^.filepath)) = '.mjs') or
-     (JS_DetectModule(PChar(buf), buf_len) <> 0) then
-    is_module := 1;
-  entry^.is_module := is_module;
-  
-  // Compile to bytecode
-  eval_flags := JS_EVAL_FLAG_COMPILE_ONLY;
-  if is_module <> 0 then
-    eval_flags := eval_flags or JS_EVAL_TYPE_MODULE
-  else
-    eval_flags := eval_flags or JS_EVAL_TYPE_GLOBAL;
-  
-  obj := JS_Eval(ctx, PChar(buf), buf_len, PChar(entry^.filepath), eval_flags);
-  js_free(ctx, buf);
-  
-  if JS_IsException(obj) <> 0 then
-  begin
-    WriteLn('Compilation error in ', entry^.filepath, ':');
-    js_std_dump_error(ctx);
-    FreeMem(source_buf);
-    entry^.source := nil;
-    Exit;
-  end;
-  
-  // Write bytecode
-  entry^.bytecode := JS_WriteObject(ctx, @entry^.bytecode_len, obj, 
-                                    JS_WRITE_OBJ_BYTECODE or JS_WRITE_OBJ_REFERENCE);
-  JS_FreeValue(ctx, obj);
-  
-  if entry^.bytecode = nil then
-  begin
-    WriteLn('Failed to write bytecode for ', entry^.filepath);
-    FreeMem(source_buf);
-    entry^.source := nil;
-    Exit;
-  end;
-  
-  Result := 0;
-end;
-
-// Write string to file (length + data)
-procedure WriteString(var f: File; const str: string);
-var
-  len: uint32;
-begin
-  len := Length(str);
-  BlockWrite(f, len, 4);
-  if len > 0 then
-    BlockWrite(f, str[1], len);
-end;
-
-// Write manifest as JSON
-procedure WriteManifest(var f: File; list: TQarEntryList; const qjs_version: string);
-var
-  manifest: string;
-  i: integer;
-  entry: PQarEntry;
-begin
-  manifest := '{' + LineEnding;
-  manifest := manifest + '  "format": "qar",' + LineEnding;
-  manifest := manifest + '  "version": 1,' + LineEnding;
-  manifest := manifest + '  "quickjs_version": "' + qjs_version + '",' + LineEnding;
-  manifest := manifest + '  "entries": [' + LineEnding;
-  
-  for i := 0 to list.Count - 1 do
-  begin
-    entry := list.GetEntry(i);
-    manifest := manifest + '    {' + LineEnding;
-    manifest := manifest + '      "path": "' + entry^.path + '",' + LineEnding;
-    if entry^.is_module <> 0 then
-      manifest := manifest + '      "type": "module",' + LineEnding
-    else
-      manifest := manifest + '      "type": "script",' + LineEnding;
-    manifest := manifest + '      "bytecode_size": ' + IntToStr(entry^.bytecode_len) + ',' + LineEnding;
-    manifest := manifest + '      "source_size": ' + IntToStr(entry^.source_len) + LineEnding;
-    manifest := manifest + '    }';
-    if i < list.Count - 1 then
-      manifest := manifest + ',';
-    manifest := manifest + LineEnding;
-  end;
-  
-  manifest := manifest + '  ]' + LineEnding;
-  manifest := manifest + '}' + LineEnding;
-  
-  BlockWrite(f, manifest[1], Length(manifest));
-end;
-
-// Create QAR file
-function CreateQar(const output_file: string; list: TQarEntryList; const qjs_version: string): cint;
-var
-  f: File;
-  magic: array[0..3] of char = ('Q', 'A', 'R', #$01);
-  version: uint32 = 1;
-  manifest_offset, manifest_size: uint64;
-  manifest_offset_pos: int64;
-  entry_count: uint32;
-  i: integer;
-  flags: uint32;
-  bytecode_size, source_size: uint64;
-  entry: PQarEntry;
-begin
-  Result := -1;
-  
-  AssignFile(f, output_file);
-  try
-    Rewrite(f, 1); // Binary mode
-  except
-    WriteLn('Cannot create output file: ', output_file);
-    Exit;
-  end;
-  
-  try
-    // Write magic and version
-    BlockWrite(f, magic, 4);
-    BlockWrite(f, version, 4);
-    
-    // Write manifest offset placeholder (will update later)
-    manifest_offset := 0;
-    manifest_size := 0;
-    manifest_offset_pos := FilePos(f);
-    BlockWrite(f, manifest_offset, 8);
-    BlockWrite(f, manifest_size, 8);
-    
-    // Write entries
-    entry_count := list.Count;
-    BlockWrite(f, entry_count, 4);
-    
-    for i := 0 to list.Count - 1 do
-    begin
-      entry := list.GetEntry(i);
-      // Write entry header
-      WriteString(f, entry^.path);
-      flags := 0;
-      if entry^.is_module <> 0 then
-        flags := flags or 1;  // Bit 0 = module
-      // Note: We don't compress in this simple version
-      BlockWrite(f, flags, 4);
-      
-      // Write sizes
-      bytecode_size := entry^.bytecode_len;
-      source_size := entry^.source_len;
-      BlockWrite(f, bytecode_size, 8);
-      BlockWrite(f, source_size, 8);
-      
-      // Write data
-      if entry^.bytecode <> nil then
-        BlockWrite(f, entry^.bytecode^, entry^.bytecode_len);
-      if entry^.source <> nil then
-        BlockWrite(f, entry^.source^, entry^.source_len);
-    end;
-    
-    // Write manifest
-    manifest_offset := FilePos(f);
-    WriteManifest(f, list, qjs_version);
-    manifest_size := FilePos(f) - manifest_offset;
-    
-    // Update manifest offset and size
-    Seek(f, manifest_offset_pos);
-    BlockWrite(f, manifest_offset, 8);
-    BlockWrite(f, manifest_size, 8);
-    
-    Result := 0;
-  finally
-    CloseFile(f);
-  end;
-end;
-
-// Build QAR from files/directories
-function BuildQar(const output_file: string; const input_files: array of string): cint;
-var
-  list: TQarEntryList;
-  rt: PJSRuntime;
-  ctx: PJSContext;
-  i: integer;
-  base_dir: string;
-  qjs_version: string;
-  entry: PQarEntry;
-begin
-  Result := -1;
-  
-  list := TQarEntryList.Create;
-  try
-    // Initialize QuickJS
-    rt := JS_NewRuntime;
-    if rt = nil then
-    begin
-      WriteLn('Failed to create JS runtime');
-      Exit;
-    end;
-    
-    ctx := JS_NewContext(rt);
-    if ctx = nil then
-    begin
-      WriteLn('Failed to create JS context');
-      JS_FreeRuntime(rt);
-      Exit;
-    end;
-    
-    try
-      // Collect files
-      for i := 0 to Length(input_files) - 1 do
-      begin
-        // Determine base directory
-        if DirectoryExists(input_files[i]) then
-          base_dir := input_files[i]
-        else
-          base_dir := ExtractFileDir(input_files[i]);
-        
-        if base_dir = '' then
-          base_dir := '.';
-        
-        AddFileToList(list, base_dir, input_files[i]);
-      end;
-      
-      if list.Count = 0 then
-      begin
-        WriteLn('No JavaScript files found');
-        Exit;
-      end;
-      
-      // Compile all files
-      WriteLn('Compiling ', list.Count, ' files...');
-      for i := 0 to list.Count - 1 do
-      begin
-        entry := list.GetEntry(i);
-        WriteLn('  ', entry^.path);
-        if CompileAndAddEntry(ctx, entry) < 0 then
-        begin
-          WriteLn('Failed to compile ', entry^.filepath);
-          Exit;
-        end;
-      end;
-      
-      // Create QAR file
-      WriteLn('Creating QAR file: ', output_file);
-      qjs_version := string(JS_GetVersion);
-      if CreateQar(output_file, list, qjs_version) < 0 then
-      begin
-        WriteLn('Failed to create QAR file');
-        Exit;
-      end;
-      
-      WriteLn('Done! Created ', output_file, ' with ', list.Count, ' entries');
-      
-      // Free bytecode (allocated by JS_WriteObject)
-      for i := 0 to list.Count - 1 do
-      begin
-        entry := list.GetEntry(i);
-        if entry^.bytecode <> nil then
-          js_free_rt(rt, entry^.bytecode);
-      end;
-      
-      Result := 0;
-    finally
-      JS_FreeContext(ctx);
-      JS_FreeRuntime(rt);
-    end;
-  finally
-    list.Free;
-  end;
-end;
+// QAR building functions are now in qar.pas unit
 
 // Example: Execute QAR entry directly
 procedure ExampleExecuteQarEntry(ctx: PJSContext; qar_filename, entry_path: string);
@@ -1396,7 +971,7 @@ begin
     end;
     
     SetLength(input_files, input_count);
-    if BuildQar(output_file, input_files) < 0 then
+    if qar.BuildQar(output_file, input_files) < 0 then
       Halt(1)
     else
       Halt(0);
@@ -1717,7 +1292,7 @@ begin
                   WriteLn('  ', build_inputs[j]);
                 Flush(Output);
                 
-                if BuildQar(build_output, build_inputs) < 0 then
+                if qar.BuildQar(build_output, build_inputs) < 0 then
                 begin
                   WriteLn('Error: Failed to build QAR file');
                   Flush(Output);
