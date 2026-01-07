@@ -3,7 +3,8 @@ program QuickJSPascal;
 {$mode objfpc}{$H+}
 
 uses
-  SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_std, quickjs_qar, quickjs_miniz, quickjs_debug, quickjslibc, qar, Classes,
+  SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_intrinsics, quickjs_memdebug,
+  quickjs_std, quickjs_qar, quickjs_miniz, quickjs_debug, quickjslibc, qar, Classes,
   fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers;
 
@@ -136,6 +137,19 @@ begin
   end;
 end;
 
+procedure ApplyDebugSettings(rt: PJSRuntime);
+begin
+  if qar_helpers.DebugLevel > 1 then
+    EnableAllDebugDumps(rt)
+  else
+    DisableAllDebugDumps(rt);
+
+  if qar_helpers.DebugLevel > 0 then
+    JS_InstallLoggingPromiseRejectionTracker(rt)
+  else
+    JS_InstallStdPromiseRejectionTracker(rt);
+end;
+
 // Helper function to find example config index by name
 function FindExampleConfig(const name: string): integer;
 var
@@ -253,6 +267,10 @@ var
   entry_count_debug, i_debug: cint;
   entry_debug: qar_helpers.PQarEntryRead;
   entry_path_debug: PChar;
+  // For .qar code command
+  qar_source_len: csize_t;
+  qar_source_ptr: qar.Pcuint8;
+  qar_source_str: string;
   // For QAR building
   build_mode: boolean;
   output_file: string;
@@ -274,6 +292,7 @@ var
   qar_ret: cint;
   qar_inspection: TQarInspectionResult;
   k_qar: integer;
+  newDebugLevel: integer;
 begin
   // Check for build QAR mode
   build_mode := False;
@@ -408,6 +427,8 @@ begin
   // Initialize standard handlers
   js_std_init_handlers(rt);
 
+  ApplyDebugSettings(rt);
+
   // Set up module loader (required for QAR module resolution)
   JS_SetModuleLoaderFunc(rt, nil, @qar_helpers.js_module_loader_wrapper, nil);
 
@@ -478,6 +499,69 @@ begin
 
     if script <> '' then
     begin
+      if (Copy(script, 1, 5) = '.mem ') or (script = '.mem') then
+      begin
+        DumpRuntimeMemoryUsageToConsole(rt);
+        Flush(Output);
+        Continue;
+      end;
+
+      if (Copy(script, 1, 7) = '.debug ') or (script = '.debug') then
+      begin
+        cmdLine := '';
+        if Length(script) > 7 then
+          cmdLine := Trim(Copy(script, 8, Length(script)));
+
+        if cmdLine = '' then
+        begin
+          WriteLn('Current debug level: ', qar_helpers.DebugLevel);
+          WriteLn('Usage: .debug on | off | 0 | 1 | 2');
+          Flush(Output);
+        end
+        else
+        begin
+          cmdLine := LowerCase(cmdLine);
+          newDebugLevel := qar_helpers.DebugLevel;
+
+          if cmdLine = 'on' then
+            newDebugLevel := 1
+          else if cmdLine = 'off' then
+            newDebugLevel := 0
+          else
+          begin
+            try
+              newDebugLevel := StrToInt(cmdLine);
+            except
+              WriteLn('Warning: Invalid debug level, must be 0, 1, or 2');
+              Flush(Output);
+              Continue;
+            end;
+          end;
+
+          if (newDebugLevel < 0) or (newDebugLevel > 2) then
+          begin
+            WriteLn('Warning: Debug level must be between 0 and 2');
+            Flush(Output);
+            Continue;
+          end;
+
+          if newDebugLevel = qar_helpers.DebugLevel then
+          begin
+            WriteLn('Debug level is already ', qar_helpers.DebugLevel);
+            Flush(Output);
+          end
+          else
+          begin
+            qar_helpers.DebugLevel := newDebugLevel;
+            ApplyDebugSettings(rt);
+            WriteLn('Debug level set to ', qar_helpers.DebugLevel);
+            Flush(Output);
+          end;
+        end;
+
+        Continue;
+      end;
+
       // Xử lý lệnh .load để load và chạy file JS
       if (Copy(script, 1, 6) = '.load ') or (Copy(script, 1, 5) = '.load') then
       begin
@@ -1021,6 +1105,7 @@ begin
             WriteLn('  build <out.qar> <files...>  - Tạo QAR từ file JS/thư mục');
             WriteLn('  inspect <file.qar>          - Kiểm tra chi tiết file QAR');
             WriteLn('  rebuild <in.qar> <out.qar>  - Biên dịch lại QAR');
+            WriteLn('  code <file.qar> <entry>     - Hiển thị source code của entry');
             WriteLn('  version                     - Phiên bản QAR/QuickJS');
             WriteLn('  help                        - Hiển thị trợ giúp');
             WriteLn;
@@ -1043,6 +1128,7 @@ begin
             WriteLn('  build <out.qar> <files...>  - Tạo QAR từ file JS/thư mục');
             WriteLn('  inspect <file.qar>          - Kiểm tra chi tiết file QAR');
             WriteLn('  rebuild <in.qar> <out.qar>  - Biên dịch lại QAR');
+            WriteLn('  code <file.qar> <entry>     - Hiển thị source code của entry');
             WriteLn('  version                     - Phiên bản QAR/QuickJS');
             WriteLn('  help                        - Hiển thị trợ giúp');
           end
@@ -1127,6 +1213,70 @@ begin
             qar_ret := qar.RebuildQarFile(qar_input, qar_output);
             if qar_ret < 0 then
               WriteLn('Error: Failed to rebuild QAR file');
+          end
+          else if (subcmd = 'code') then
+          begin
+            if cmdArgs.Count < 3 then
+            begin
+              WriteLn('Usage: .qar code <file.qar> <entryPath>');
+              Flush(Output);
+              Continue;
+            end;
+
+            qar_input := cmdArgs[1];
+            if not FileExists(qar_input) then
+            begin
+              WriteLn('Error: QAR file not found: ', qar_input);
+              Flush(Output);
+              Continue;
+            end;
+
+            // Open QAR file
+            qar_debug := qar_open(PChar(qar_input));
+            if qar_debug = nil then
+            begin
+              WriteLn('Error: Failed to open QAR file: ', qar_input);
+              Flush(Output);
+              Continue;
+            end;
+
+            // Find entry by path
+            entry_debug := qar_find_entry(qar_debug, PChar(cmdArgs[2]));
+            if entry_debug = nil then
+            begin
+              WriteLn('Error: Entry not found in QAR file: ', cmdArgs[2]);
+              qar_close(qar_debug);
+              Flush(Output);
+              Continue;
+            end;
+
+            // Load entry data (bytecode + source)
+            if qar_entry_load_data(qar_debug, entry_debug) < 0 then
+            begin
+              WriteLn('Error: Failed to load entry data');
+              qar_close(qar_debug);
+              Flush(Output);
+              Continue;
+            end;
+
+            // Get source code buffer
+            qar_source_len := 0;
+            qar_source_ptr := qar_entry_get_source(entry_debug, @qar_source_len);
+            if (qar_source_ptr = nil) or (qar_source_len = 0) then
+            begin
+              WriteLn('Error: Entry has no source code available');
+              qar_close(qar_debug);
+              Flush(Output);
+              Continue;
+            end;
+
+            // Convert to Pascal string and print
+            SetString(qar_source_str, PChar(qar_source_ptr), qar_source_len);
+            WriteLn('--- QAR source: ', qar_input, ' -> ', cmdArgs[2], ' ---');
+            WriteLn(qar_source_str);
+            Flush(Output);
+
+            qar_close(qar_debug);
           end
           else
           begin
@@ -1285,6 +1435,9 @@ begin
   end;
 
   // Cleanup
+  if qar_helpers.DebugLevel > 1 then
+    DumpRuntimeMemoryUsageToConsole(rt);
+
   js_std_free_handlers(rt);
   JS_FreeContext(ctx);
   JS_FreeRuntime(rt);
