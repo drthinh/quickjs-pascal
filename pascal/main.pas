@@ -4,6 +4,7 @@ program QuickJSPascal;
 
 uses
   SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_std, quickjs_qar, quickjs_miniz, quickjs_debug, quickjslibc, qar, Classes,
+  fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers;
 
 // Example test configuration type
@@ -25,165 +26,114 @@ procedure LoadExamplesConfig(ctx: PJSContext);
 var
   json_content, line: string;
   f: TextFile;
-  json_val, examples_obj, value: JSValue;
-  prop_names: JSValue;
-  prop_count, i: cint;
-  len32: cint32;
-  prop_name: PChar;
-  prop_name_str: string;
+  jsonData, examplesData: TJSONData;
+  rootObj, examplesObj: TJSONObject;
+  i, count: integer;
+  key: string;
+  item: TJSONData;
   enabled: boolean;
 begin
+  // Start with empty configuration
   SetLength(ExampleConfigs, 0);
-  
-  // Default config if file doesn't exist
+
+  // If config file does not exist, leave the list empty
   if not FileExists(ExamplesConfigFile) then
-  begin
-    SetLength(ExampleConfigs, 4);
-    ExampleConfigs[0].name := 'example1_basic.js';
-    ExampleConfigs[0].enabled := True;
-    ExampleConfigs[1].name := 'example2_qar_info.js';
-    ExampleConfigs[1].enabled := True;
-    ExampleConfigs[2].name := 'example3_qar_usage.js';
-    ExampleConfigs[2].enabled := True;
-    ExampleConfigs[3].name := 'example4_dll_test.js';
-    ExampleConfigs[3].enabled := True;
-    // Save default config to file
-    SaveExamplesConfig(ctx);
     Exit;
-  end;
-  
-  // Read JSON file
+
+  // Read JSON file into a single string
   json_content := '';
   AssignFile(f, ExamplesConfigFile);
   Reset(f);
-  while not EOF(f) do
-  begin
-    ReadLn(f, line);
-    if json_content <> '' then
-      json_content := json_content + LineEnding;
-    json_content := json_content + line;
+  try
+    while not EOF(f) do
+    begin
+      ReadLn(f, line);
+      if json_content <> '' then
+        json_content := json_content + LineEnding;
+      json_content := json_content + line;
+    end;
+  finally
+    CloseFile(f);
   end;
-  CloseFile(f);
-  
+
   if json_content = '' then
     Exit;
-  
-  // Parse JSON using QuickJS
-  json_val := JS_ParseJSON(ctx, PChar(json_content), Length(json_content), '<config>');
-  if JS_IsException(json_val) <> 0 then
-  begin
-    if qar_helpers.DebugLevel > 0 then
-      WriteLn('[DEBUG] Failed to parse examples config JSON');
-    JS_FreeValue(ctx, json_val);
-    Exit;
-  end;
-  
-  // Get examples object
-  examples_obj := JS_GetPropertyStr(ctx, json_val, 'examples');
-  if JS_IsObject(examples_obj) <> 0 then
-  begin
-    // Use JS code to get keys - create a helper function
-    value := JS_Eval(ctx, PChar('(function(obj){var keys=[];for(var k in obj)if(obj.hasOwnProperty(k))keys.push(k);return keys;})'), 80, '<eval>', JS_EVAL_TYPE_GLOBAL);
-    if JS_IsFunction(ctx, value) <> 0 then
+
+  // Parse JSON using FreePascal's fpjson
+  try
+    jsonData := GetJSON(json_content);
+  except
+    on E: Exception do
     begin
-      prop_names := JS_Call(ctx, value, examples_obj, 0, nil);
-      JS_FreeValue(ctx, value);
-      
-      if JS_IsArray(ctx, prop_names) <> 0 then
-      begin
-        value := JS_GetPropertyStr(ctx, prop_names, 'length');
-        if JS_ToInt32(ctx, @len32, value) <> 0 then
-        begin
-          JS_FreeValue(ctx, value);
-          JS_FreeValue(ctx, prop_names);
-          JS_FreeValue(ctx, examples_obj);
-          JS_FreeValue(ctx, json_val);
-          Exit;
-        end;
-        prop_count := len32;
-        JS_FreeValue(ctx, value);
-        SetLength(ExampleConfigs, prop_count);
-        
-        for i := 0 to prop_count - 1 do
-        begin
-          value := JS_GetPropertyUint32(ctx, prop_names, i);
-          prop_name := JS_ToCString(ctx, value);
-          if prop_name <> nil then
-          begin
-            prop_name_str := string(prop_name);
-            ExampleConfigs[i].name := prop_name_str;
-            JS_FreeCString(ctx, prop_name);
-            JS_FreeValue(ctx, value);
-            
-            // Get enabled status
-            value := JS_GetPropertyStr(ctx, examples_obj, PChar(prop_name_str));
-            enabled := JS_ToBool(ctx, value) <> 0;
-            ExampleConfigs[i].enabled := enabled;
-            JS_FreeValue(ctx, value);
-          end
-          else
-          begin
-            JS_FreeValue(ctx, value);
-          end;
-        end;
-      end;
-      JS_FreeValue(ctx, prop_names);
-    end
-    else
-    begin
-      JS_FreeValue(ctx, value);
+      if qar_helpers.DebugLevel > 0 then
+        WriteLn('[DEBUG] Failed to parse examples config JSON (fpjson): ', E.Message);
+      Exit;
     end;
   end;
-  JS_FreeValue(ctx, examples_obj);
-  JS_FreeValue(ctx, json_val);
+
+  try
+    if not (jsonData is TJSONObject) then
+      Exit;
+
+    rootObj := TJSONObject(jsonData);
+    examplesData := rootObj.Find('examples');
+    if (examplesData = nil) or not (examplesData is TJSONObject) then
+      Exit;
+
+    examplesObj := TJSONObject(examplesData);
+    count := examplesObj.Count;
+    SetLength(ExampleConfigs, count);
+
+    for i := 0 to count - 1 do
+    begin
+      key := examplesObj.Names[i];
+      item := examplesObj.Items[i];
+
+      if (item <> nil) and (item.JSONType = jtBoolean) then
+        enabled := item.AsBoolean
+      else
+        enabled := False;
+
+      ExampleConfigs[i].name := key;
+      ExampleConfigs[i].enabled := enabled;
+    end;
+  finally
+    jsonData.Free;
+  end;
 end;
 
 // Helper function to save examples config to JSON file
 procedure SaveExamplesConfig(ctx: PJSContext);
 var
-  json_obj, examples_obj, enabled_val, json_str_val: JSValue;
-  json_str: PChar;
+  rootObj, examplesObj: TJSONObject;
   f: TextFile;
   i: integer;
+  jsonStr: string;
 begin
-  // Create JSON object
-  json_obj := JS_NewObject(ctx);
-  examples_obj := JS_NewObject(ctx);
-  
-  // Add each example to examples object
-  for i := 0 to Length(ExampleConfigs) - 1 do
-  begin
-    enabled_val := JS_NewBool(ctx, cint(ExampleConfigs[i].enabled));
-    JS_SetPropertyStr(ctx, examples_obj, PChar(ExampleConfigs[i].name), enabled_val);
-  end;
-  
-  // Set examples property
-  JS_SetPropertyStr(ctx, json_obj, 'examples', examples_obj);
-  
-  // Stringify JSON
-  json_str_val := JS_JSONStringify(ctx, json_obj, JS_UNDEFINED, JS_UNDEFINED);
-  if JS_IsException(json_str_val) <> 0 then
-  begin
-    WriteLn('Error: Failed to stringify examples config');
-    js_std_dump_error(ctx);
-    JS_FreeValue(ctx, json_obj);
-    Exit;
-  end;
-  
-  // Convert to C string
-  json_str := JS_ToCString(ctx, json_str_val);
-  if json_str <> nil then
-  begin
+  // Build JSON structure: { "examples": { "name": boolean, ... } }
+  rootObj := TJSONObject.Create;
+  try
+    examplesObj := TJSONObject.Create;
+    rootObj.Add('examples', examplesObj);
+
+    // Add each example to examples object
+    for i := 0 to Length(ExampleConfigs) - 1 do
+      examplesObj.Add(ExampleConfigs[i].name, ExampleConfigs[i].enabled);
+
+    // Serialize to string
+    jsonStr := rootObj.FormatJSON([]);
+
     // Write to file
     AssignFile(f, ExamplesConfigFile);
     Rewrite(f);
-    Write(f, string(json_str));
-    CloseFile(f);
-    JS_FreeCString(ctx, json_str);
+    try
+      Write(f, jsonStr);
+    finally
+      CloseFile(f);
+    end;
+  finally
+    rootObj.Free;
   end;
-  
-  JS_FreeValue(ctx, json_str_val);
-  JS_FreeValue(ctx, json_obj);
 end;
 
 // Helper function to find example config index by name
