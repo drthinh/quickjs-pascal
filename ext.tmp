@@ -1,0 +1,1 @@
+function strlwr_l(_String:Pchar; _Locale:_locale_t)

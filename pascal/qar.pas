@@ -41,7 +41,7 @@ unit qar;
 interface
 
 uses
-  ctypes, SysUtils, Classes, quickjs, quickjslibc, fpjson;
+  ctypes, SysUtils, Classes, quickjs_types, quickjs_core, quickjs_std, fpjson;
 
 const
   {$IFDEF WINDOWS}

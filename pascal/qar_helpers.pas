@@ -5,7 +5,7 @@ unit qar_helpers;
 interface
 
 uses
-  SysUtils, ctypes, quickjs, quickjslibc, qar;
+  SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_std, qar;
 
 // Type alias for QAR reading functions (from qar unit)
 type

@@ -5,7 +5,7 @@ unit compression_helpers;
 interface
 
 uses
-  ctypes, quickjs, quickjslibc;
+  ctypes, quickjs_types, quickjs_core, quickjs_miniz;
 
 // JavaScript bindings for compression functions
 function js_compress(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;

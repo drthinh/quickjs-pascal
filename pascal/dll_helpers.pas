@@ -5,7 +5,7 @@ unit dll_helpers;
 interface
 
 uses
-  SysUtils, ctypes, quickjs, Classes
+  SysUtils, ctypes, quickjs_types, quickjs_core, Classes
   {$IFDEF WINDOWS}
   , Windows
   {$ELSE}

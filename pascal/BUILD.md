@@ -67,9 +67,9 @@ Error: Can't load library "libqjs.dll"
 
 ## Troubleshooting
 
-### Lỗi: "Can't find unit quickjs"
+### Lỗi: "Can't find unit quickjs_core" hoặc "quickjs_types"
 
-**Giải pháp**: Đảm bảo tất cả các file `.pas` nằm trong cùng thư mục hoặc thêm thư mục vào unit search path.
+**Giải pháp**: Đảm bảo tất cả các file `.pas` (đặc biệt là `quickjs_types.pas`, `quickjs_core.pas`, `quickjs_std.pas`) nằm trong cùng thư mục hoặc thêm thư mục `pascal` vào unit search path (`-Fu.`).
 
 ### Lỗi: "Can't load library libqjs.dll"
 

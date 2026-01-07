@@ -21,12 +21,15 @@ Dự án Free Pascal sử dụng libqjs.dll với đầy đủ tính năng Quick
 
 ```
 pascal/
-├── quickjs.pas          # Pascal bindings cho QuickJS API
-├── quickjslibc.pas     # Pascal bindings cho QuickJS libc functions
-├── qar.pas             # Pascal bindings cho QAR API
-├── main.pas            # Chương trình chính với tất cả tính năng
-├── QuickJSPascal.lpr   # File project Lazarus
-└── README.md           # File này
+├── quickjs_types.pas    # Kiểu/const QuickJS chung (JSValue, flags, callback types)
+├── quickjs_core.pas     # API QuickJS cốt lõi (libqjs.dll)
+├── quickjs_std.pas      # Bindings quickjs-libc (console, std/os/bjson, worker hooks)
+├── quickjs_miniz.pas    # Bindings miniz (mz_compress/mz_uncompress…)
+├── quickjs_qar.pas      # Bindings C-level QAR API
+├── qar.pas              # Helper cao cấp cho QAR (build/inspect/run)
+├── main.pas             # Chương trình chính với tất cả tính năng
+├── QuickJSPascal.lpr    # File project Lazarus
+└── README.md            # File này
 ```
 
 ## Build
@@ -175,7 +178,7 @@ end;
 
 ### QuickJS API
 
-Xem file `quickjs.pas` để biết đầy đủ các hàm QuickJS API.
+Xem `quickjs_core.pas` (các hàm) và `quickjs_types.pas` (kiểu/const) để biết đầy đủ QuickJS API khi link với `libqjs.dll`.
 
 ### QAR API
 

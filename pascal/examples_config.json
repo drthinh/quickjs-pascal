@@ -1,1 +1,1 @@
-{"examples":{"example1_basic.js":true,"example2_qar_info.js":true,"example3_qar_usage.js":true,"example4_dll_test.js":true}}
+{"examples":{"tests/example1_basic.js":true,"tests/example2_qar_info.js":true,"tests/example3_qar_usage.js":true,"tests/example4_dll_test.js":true,"tests/simple_test.js":true,"tests/async_test.js":true}}

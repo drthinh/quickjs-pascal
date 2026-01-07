@@ -16,7 +16,7 @@ program StabilityTestRunner;
 {$mode objfpc}{$H+}
 
 uses
-  SysUtils, Math, ctypes, quickjs, quickjslibc, qar, Classes
+  SysUtils, Math, ctypes, quickjs_types, quickjs_core, quickjs_std, qar, Classes
   {$IFDEF WINDOWS}
   , Windows
   {$ELSE}

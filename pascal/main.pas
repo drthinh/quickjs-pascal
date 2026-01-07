@@ -3,7 +3,7 @@ program QuickJSPascal;
 {$mode objfpc}{$H+}
 
 uses
-  SysUtils, ctypes, quickjs, quickjslibc, qar, Classes,
+  SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_std, quickjs_qar, quickjs_miniz, quickjs_debug, quickjslibc, qar, Classes,
   qar_helpers, dll_helpers, compression_helpers;
 
 // Example test configuration type

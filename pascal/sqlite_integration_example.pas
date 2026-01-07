@@ -15,7 +15,7 @@ unit SqliteIntegration;
 interface
 
 uses
-  SysUtils, ctypes, quickjs;
+  SysUtils, ctypes, quickjs_types, quickjs_core;
 
 // SQLite types (giả định - cần thay bằng bindings thực tế)
 type

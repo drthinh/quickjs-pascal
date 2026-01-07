@@ -6,7 +6,7 @@ unit quickjslibc;
 interface
 
 uses
-  ctypes, quickjs;
+  ctypes, quickjs_types;
 
 const
   {$IFDEF WINDOWS}
