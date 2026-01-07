@@ -1,0 +1,890 @@
+unit qar_helpers;
+
+{$mode objfpc}{$H+}
+
+interface
+
+uses
+  SysUtils, ctypes, quickjs, quickjslibc, qar;
+
+// Type alias for QAR reading functions (from qar unit)
+type
+  PQarEntryRead = qar.PQarEntry;
+
+// Global variable to store current script directory for LoadLibrary resolution
+var
+  CurrentScriptDir: string = '';
+  DebugLevel: integer = 0;  // Debug level: 0 = off, 1 = basic, 2 = verbose
+
+// Helper function to find QAR file in multiple locations
+function FindQarFile(const qar_filename: string): string;
+
+// JavaScript bindings for QAR functions
+function js_load_qar_library(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+function js_get_qar_info(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+function js_execute_qar_entry(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+function js_build_qar(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+function js_module_loader_wrapper(ctx: PJSContext; module_name: PChar; opaque: pointer): PJSModuleDef; cdecl;
+
+// Register QAR helper functions to JavaScript global object
+procedure RegisterQarHelpers(ctx: PJSContext);
+
+// Example functions
+procedure ExampleLoadQar(ctx: PJSContext; qar_filename: string);
+procedure ExampleReadQarInfo(qar_filename: string);
+procedure ExampleExecuteQarEntry(ctx: PJSContext; qar_filename, entry_path: string);
+
+implementation
+
+// Helper function to find QAR file in multiple locations
+function FindQarFile(const qar_filename: string): string;
+var
+  search_paths: array of string;
+  i, path_count: integer;
+  test_path: string;
+  exe_dir: string;
+begin
+  Result := '';
+  
+  // 1. Exact path (if absolute or relative to current dir)
+  if FileExists(qar_filename) then
+  begin
+    Result := ExpandFileName(qar_filename);
+    Exit;
+  end;
+  
+  // Build search paths
+  path_count := 0;
+  SetLength(search_paths, 10); // Pre-allocate space
+  
+  // 2. Current working directory
+  search_paths[path_count] := GetCurrentDir;
+  Inc(path_count);
+  
+  // 3. Current script directory (if set)
+  if CurrentScriptDir <> '' then
+  begin
+    search_paths[path_count] := CurrentScriptDir;
+    Inc(path_count);
+  end;
+  
+  // 4. Executable directory
+  exe_dir := ExtractFileDir(ParamStr(0));
+  if exe_dir <> '' then
+  begin
+    search_paths[path_count] := exe_dir;
+    Inc(path_count);
+  end;
+  
+  // 5. Parent of executable directory (for master/ subdirectory)
+  if exe_dir <> '' then
+  begin
+    test_path := ExtractFileDir(exe_dir);
+    if test_path <> '' then
+    begin
+      search_paths[path_count] := test_path;
+      Inc(path_count);
+    end;
+  end;
+  
+  // Try each search path
+  for i := 0 to path_count - 1 do
+  begin
+    test_path := IncludeTrailingPathDelimiter(search_paths[i]) + qar_filename;
+    if FileExists(test_path) then
+    begin
+      Result := ExpandFileName(test_path);
+      Exit;
+    end;
+  end;
+end;
+
+// Helper function to register QAR from JavaScript
+function js_load_qar_library(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+var
+  filename, prefix: PChar;
+  filename_str, found_path: string;
+  ret: cint;
+  search_paths: string;
+begin
+  // Debug: function được gọi
+  WriteLn('[LoadLibrary] Function called with argc=', argc);
+  Flush(Output);
+  Flush(StdErr);
+  
+  if argc < 1 then
+  begin
+    WriteLn('[LoadLibrary] Error: argc < 1');
+    Flush(Output);
+    Result := JS_ThrowTypeError(ctx, PChar('LoadLibrary expects at least 1 argument'));
+    Exit;
+  end;
+
+  filename := JS_ToCString(ctx, argv[0]);
+  if filename = nil then
+  begin
+    WriteLn('[LoadLibrary] Error: JS_ToCString returned nil');
+    Flush(Output);
+    Result := JS_EXCEPTION;
+    Exit;
+  end;
+
+  filename_str := string(filename);
+  JS_FreeCString(ctx, filename);
+
+  prefix := nil;
+  if argc >= 2 then
+  begin
+    prefix := JS_ToCString(ctx, argv[1]);
+    if prefix = nil then
+    begin
+      WriteLn('[LoadLibrary] Error: JS_ToCString for prefix returned nil');
+      Flush(Output);
+      Result := JS_EXCEPTION;
+      Exit;
+    end;
+  end;
+
+  // Try to find QAR file in multiple locations
+  WriteLn('[LoadLibrary] Looking for QAR file: ', filename_str);
+  WriteLn('[LoadLibrary] Current working directory: ', GetCurrentDir);
+  WriteLn('[LoadLibrary] CurrentScriptDir: ', CurrentScriptDir);
+  Flush(Output);
+  Flush(StdErr);
+  
+  found_path := FindQarFile(filename_str);
+  
+  if found_path = '' then
+  begin
+    // Build search paths message
+    search_paths := 'Searched in: ' + GetCurrentDir;
+    if CurrentScriptDir <> '' then
+      search_paths := search_paths + ', ' + CurrentScriptDir;
+    search_paths := search_paths + ', ' + ExtractFileDir(ParamStr(0));
+    
+    WriteLn('Error: QAR file not found: ', filename_str);
+    WriteLn('  ', search_paths);
+    WriteLn('  Current working directory: ', GetCurrentDir);
+    if CurrentScriptDir <> '' then
+      WriteLn('  Script directory: ', CurrentScriptDir);
+    WriteLn('  Executable directory: ', ExtractFileDir(ParamStr(0)));
+    Flush(Output);
+    Flush(StdErr);
+    
+    if prefix <> nil then
+      JS_FreeCString(ctx, prefix);
+    
+    Result := JS_ThrowTypeError(ctx, PChar('QAR file not found: ' + filename_str));
+    Exit;
+  end;
+  
+  WriteLn('[LoadLibrary] Found QAR file at: ', found_path);
+  Flush(Output);
+
+  // Register with found path
+  ret := js_register_qar_file(ctx, PChar(found_path), prefix);
+
+  // Log kết quả trước khi free prefix
+  if ret < 0 then
+  begin
+    WriteLn('Error: Failed to register QAR file: ', found_path);
+    WriteLn('  (Original path: ', filename_str, ')');
+    Flush(Output);
+  end
+  else
+  begin
+    WriteLn('Successfully registered QAR file: ', found_path);
+    if found_path <> filename_str then
+      WriteLn('  (Resolved from: ', filename_str, ')');
+    if prefix <> nil then
+      WriteLn('  (Using prefix: "', prefix, '" - import with "', prefix, 'module.js")')
+    else
+      WriteLn('  (No prefix - modules will be searched in all registered QAR files)');
+    Flush(Output);
+  end;
+
+  if prefix <> nil then
+    JS_FreeCString(ctx, prefix);
+
+  if ret < 0 then
+    Result := JS_ThrowTypeError(ctx, PChar('Failed to register QAR file'))
+  else
+    Result := JS_UNDEFINED;
+end;
+
+// Helper function to get QAR info from JavaScript
+function js_get_qar_info(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+var
+  filename: PChar;
+  filename_str, found_path: string;
+  qar: PQarFile;
+  entry_count: cint;
+  i: cint;
+  entry: PQarEntryRead;
+  entry_path: PChar;
+  entry_type: cint;
+  obj, arr, item, stringified: JSValue;
+  manifest_len: csize_t;
+  manifest: PChar;
+  version: PChar;
+begin
+  if argc < 1 then
+  begin
+    Result := JS_ThrowTypeError(ctx, PChar('GetQarInfo expects 1 argument'));
+    Exit;
+  end;
+
+  filename := JS_ToCString(ctx, argv[0]);
+  if filename = nil then
+  begin
+    Result := JS_EXCEPTION;
+    Exit;
+  end;
+
+  filename_str := string(filename);
+  JS_FreeCString(ctx, filename);
+
+  // Try to find QAR file in multiple locations
+  found_path := FindQarFile(filename_str);
+  
+  if found_path = '' then
+  begin
+    WriteLn('Error: QAR file not found: ', filename_str);
+    WriteLn('  Searched in: ', GetCurrentDir);
+    if CurrentScriptDir <> '' then
+      WriteLn('  Script dir: ', CurrentScriptDir);
+    WriteLn('  Exe dir: ', ExtractFileDir(ParamStr(0)));
+    Flush(Output);
+    Result := JS_ThrowTypeError(ctx, PChar('QAR file not found: ' + filename_str));
+    Exit;
+  end;
+
+  qar := qar_open(PChar(found_path));
+  if qar = nil then
+  begin
+    WriteLn('Error: Failed to open QAR file: ', found_path);
+    Flush(Output);
+    Result := JS_ThrowTypeError(ctx, PChar('Failed to open QAR file'));
+    Exit;
+  end;
+
+  // Create result object
+  obj := JS_NewObject(ctx);
+  entry_count := qar_get_entry_count(qar);
+  JS_DefinePropertyValueStr(ctx, obj, PChar('entryCount'), JS_NewInt32(ctx, LongInt(entry_count)), JS_PROP_C_W_E);
+
+  // Create entries array
+  arr := JS_NewArray(ctx);
+  for i := 0 to entry_count - 1 do
+  begin
+    entry := qar_get_entry(qar, LongInt(i));
+    if entry <> nil then
+    begin
+      item := JS_NewObject(ctx);
+      entry_path := qar_entry_get_path(entry);
+      entry_type := qar_entry_get_type(entry);
+
+      JS_DefinePropertyValueStr(ctx, item, PChar('path'), JS_NewString(ctx, entry_path), JS_PROP_C_W_E);
+      if entry_type <> 0 then
+        JS_DefinePropertyValueStr(ctx, item, PChar('type'), JS_NewString(ctx, PChar('module')), JS_PROP_C_W_E)
+      else
+        JS_DefinePropertyValueStr(ctx, item, PChar('type'), JS_NewString(ctx, PChar('script')), JS_PROP_C_W_E);
+      JS_SetPropertyUint32(ctx, arr, LongWord(i), item);
+    end;
+  end;
+  JS_DefinePropertyValueStr(ctx, obj, PChar('entries'), arr, JS_PROP_C_W_E);
+
+  // Get manifest
+  manifest_len := 0;
+  manifest := qar_get_manifest(qar, @manifest_len);
+  if manifest <> nil then
+  begin
+    JS_DefinePropertyValueStr(ctx, obj, PChar('manifest'), JS_NewStringLen(ctx, manifest, QWord(manifest_len)), JS_PROP_C_W_E);
+  end;
+
+  // Get QuickJS version
+  version := qar_get_quickjs_version(qar);
+  if version <> nil then
+  begin
+    JS_DefinePropertyValueStr(ctx, obj, PChar('quickjsVersion'), JS_NewString(ctx, version), JS_PROP_C_W_E);
+  end;
+
+  qar_close(qar);
+  
+  // Stringify object để dễ đọc
+  stringified := JS_JSONStringify(ctx, obj, JS_UNDEFINED, JS_UNDEFINED);
+  if JS_IsException(stringified) = 0 then
+  begin
+    JS_FreeValue(ctx, obj);
+    Result := stringified;
+  end
+  else
+  begin
+    // Nếu stringify thất bại, fallback về toString
+    JS_FreeValue(ctx, stringified);
+    stringified := JS_ToString(ctx, obj);
+    JS_FreeValue(ctx, obj);
+    if JS_IsException(stringified) = 0 then
+      Result := stringified
+    else
+    begin
+      JS_FreeValue(ctx, stringified);
+      Result := JS_NewString(ctx, PChar('[object Object]'));
+    end;
+  end;
+end;
+
+// Helper function to execute QAR entry from JavaScript
+function js_execute_qar_entry(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+var
+  filename, entry_path: PChar;
+  qar: PQarFile;
+  entry: PQarEntryRead;
+  bytecode_len: csize_t;
+  bytecode: Pcuint8;
+  obj: JSValue;
+  eval_flags: cint;
+begin
+  if argc < 2 then
+  begin
+    Result := JS_ThrowTypeError(ctx, PChar('ExecuteQarEntry expects 2 arguments: filename and entryPath'));
+    Exit;
+  end;
+
+  filename := JS_ToCString(ctx, argv[0]);
+  if filename = nil then
+  begin
+    Result := JS_EXCEPTION;
+    Exit;
+  end;
+
+  entry_path := JS_ToCString(ctx, argv[1]);
+  if entry_path = nil then
+  begin
+    JS_FreeCString(ctx, filename);
+    Result := JS_EXCEPTION;
+    Exit;
+  end;
+
+  qar := qar_open(filename);
+  JS_FreeCString(ctx, filename);
+
+  if qar = nil then
+  begin
+    JS_FreeCString(ctx, entry_path);
+    Result := JS_ThrowTypeError(ctx, PChar('Failed to open QAR file'));
+    Exit;
+  end;
+
+  entry := qar_find_entry(qar, entry_path);
+  JS_FreeCString(ctx, entry_path);
+
+  if entry = nil then
+  begin
+    qar_close(qar);
+    Result := JS_ThrowTypeError(ctx, PChar('Entry not found in QAR file'));
+    Exit;
+  end;
+
+  // Load entry data
+  if qar_entry_load_data(qar, entry) < 0 then
+  begin
+    qar_close(qar);
+    Result := JS_ThrowTypeError(ctx, PChar('Failed to load entry data'));
+    Exit;
+  end;
+
+  // Get bytecode
+  bytecode := qar_entry_get_bytecode(entry, @bytecode_len);
+  if bytecode = nil then
+  begin
+    qar_close(qar);
+    Result := JS_ThrowTypeError(ctx, PChar('Failed to get bytecode'));
+    Exit;
+  end;
+
+  // Read and execute bytecode
+  eval_flags := JS_READ_OBJ_BYTECODE or JS_READ_OBJ_REFERENCE;
+  obj := JS_ReadObject(ctx, bytecode, QWord(bytecode_len), LongInt(eval_flags));
+
+  if JS_IsException(obj) <> 0 then
+  begin
+    qar_close(qar);
+    Result := obj;
+    Exit;
+  end;
+
+  // Check if it's a module
+  if qar_entry_get_type(entry) <> 0 then
+  begin
+    // It's a module
+    if js_module_set_import_meta(ctx, obj, cbool(1), cbool(0)) < 0 then
+    begin
+      JS_FreeValue(ctx, obj);
+      qar_close(qar);
+      Result := JS_EXCEPTION;
+      Exit;
+    end;
+    JS_FreeValue(ctx, obj);
+    Result := JS_UNDEFINED;
+  end
+  else
+  begin
+    // It's a script, evaluate it
+    Result := JS_EvalFunction(ctx, obj);
+    JS_FreeValue(ctx, obj);
+  end;
+
+  qar_close(qar);
+end;
+
+// Helper function to build QAR from JavaScript
+function js_build_qar(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+var
+  output_file: PChar;
+  output_file_str: string;
+  input_files: array of string;
+  input_count: integer;
+  i: integer;
+  array_len: cint;
+  item: JSValue;
+  item_str: PChar;
+  ret: cint;
+begin
+  if argc < 2 then
+  begin
+    Result := JS_ThrowTypeError(ctx, PChar('BuildQar expects 2 arguments: outputFile and inputFiles (string or array)'));
+    Exit;
+  end;
+
+  // Get output filename
+  output_file := JS_ToCString(ctx, argv[0]);
+  if output_file = nil then
+  begin
+    Result := JS_EXCEPTION;
+    Exit;
+  end;
+  output_file_str := string(output_file);
+  JS_FreeCString(ctx, output_file);
+
+  // Get input files
+  input_count := 0;
+  SetLength(input_files, 0);
+
+  // Check if second argument is array or string
+  // Try to check if it's an array by checking for 'length' property
+  // (JS_IsArray might not work correctly with JSValueConst)
+  item := JS_GetPropertyStr(ctx, argv[1], 'length');
+  if JS_IsNumber(item) <> 0 then
+  begin
+    // It's likely an array (has numeric length property)
+    if JS_ToInt32(ctx, @array_len, item) >= 0 then
+    begin
+      JS_FreeValue(ctx, item);
+      // It's an array
+      SetLength(input_files, array_len);
+      
+      for i := 0 to array_len - 1 do
+      begin
+        item := JS_GetPropertyStr(ctx, argv[1], PChar(IntToStr(i)));
+        if JS_IsString(item) <> 0 then
+        begin
+          item_str := JS_ToCString(ctx, item);
+          if item_str <> nil then
+          begin
+            input_files[input_count] := string(item_str);
+            JS_FreeCString(ctx, item_str);
+            Inc(input_count);
+          end;
+        end
+        else
+        begin
+          // Try to convert to string
+          item_str := JS_ToCString(ctx, item);
+          if item_str <> nil then
+          begin
+            input_files[input_count] := string(item_str);
+            JS_FreeCString(ctx, item_str);
+            Inc(input_count);
+          end;
+        end;
+        JS_FreeValue(ctx, item);
+      end;
+      
+      SetLength(input_files, input_count);
+      
+      if input_count = 0 then
+      begin
+        Result := JS_ThrowTypeError(ctx, PChar('BuildQar: Array contains no valid file paths'));
+        Exit;
+      end;
+    end
+    else
+    begin
+      JS_FreeValue(ctx, item);
+      // Fall through to check if it's a string
+    end;
+  end
+  else
+  begin
+    JS_FreeValue(ctx, item);
+  end;
+  
+  // If not processed as array, check if it's a string
+  if input_count = 0 then
+  begin
+    if JS_IsString(argv[1]) <> 0 then
+    begin
+      // It's a single string
+      item_str := JS_ToCString(ctx, argv[1]);
+      if item_str <> nil then
+      begin
+        SetLength(input_files, 1);
+        input_files[0] := string(item_str);
+        JS_FreeCString(ctx, item_str);
+        input_count := 1;
+      end;
+    end
+    else
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('BuildQar: inputFiles must be a string or array of strings'));
+      Exit;
+    end;
+  end;
+
+  if input_count = 0 then
+  begin
+    Result := JS_ThrowTypeError(ctx, PChar('BuildQar: No input files specified'));
+    Exit;
+  end;
+
+  // Build QAR file
+  WriteLn('Building QAR file: ', output_file_str);
+  WriteLn('Input files:');
+  for i := 0 to input_count - 1 do
+    WriteLn('  ', input_files[i]);
+  
+  ret := qar.BuildQar(output_file_str, input_files);
+  
+  if ret < 0 then
+  begin
+    Result := JS_ThrowTypeError(ctx, PChar('BuildQar: Failed to build QAR file'));
+  end
+  else
+  begin
+    Result := JS_NewBool(ctx, 1);
+  end;
+end;
+
+// Custom module loader with fallback path resolution
+// Tries multiple path variations to handle QAR files that store only basenames
+// NOTE: When multiple QAR files have files with the same basename, use prefixes
+//       when registering QAR files to avoid conflicts:
+//       LoadLibrary('lib1.qar', 'lib1:')  -> import from 'lib1:math.js'
+//       LoadLibrary('lib2.qar', 'lib2:')  -> import from 'lib2:math.js'
+function js_module_loader_wrapper(ctx: PJSContext; module_name: PChar; opaque: pointer): PJSModuleDef; cdecl;
+var
+  m: PJSModuleDef;
+  module_name_str: string;
+  basename: string;
+  last_slash: integer;
+begin
+  // First try the exact path (standard behavior - this handles prefixed imports correctly)
+  // If module_name starts with a prefix like "lib1:", the standard loader will find it
+  m := js_module_loader(ctx, module_name, opaque);
+  if m <> nil then
+  begin
+    Result := m;
+    Exit;
+  end;
+  
+  // If not found and module_name doesn't contain ':' (not a prefixed import),
+  // try extracting basename (for QAR files that only store filenames)
+  // This is a fallback for backward compatibility
+  module_name_str := string(module_name);
+  
+  // Skip fallback if using prefix notation (e.g., "lib1:math.js")
+  if Pos(':', module_name_str) > 0 then
+  begin
+    Result := nil;
+    Exit;
+  end;
+  
+  // NOTE: Code below is a workaround for path mismatch issues.
+  // It handles specific test paths that may not match QAR entry paths.
+  // 
+  // WHY THIS EXISTS:
+  // - When JS code imports 'qar_test_lib/math.js' but QAR stores 'math.js',
+  //   the import fails. This code tries removing the prefix as a fallback.
+  // 
+  // WHEN TO REMOVE:
+  // - If all QAR files are built with correct paths matching import statements,
+  //   this code is NOT necessary and can be removed.
+  // - This is a temporary workaround, not a permanent solution.
+  // - Better solution: Build QAR files with paths that match import statements.
+  //
+  // Try removing common path prefixes first (more specific)
+  // TODO: Consider removing this if QAR files are built with correct paths
+
+//   if Pos('qar_test_lib/', module_name_str) > 0 then
+//   begin
+//     basename := StringReplace(module_name_str, 'qar_test_lib/', '', []);
+//     WriteLn('[DEBUG] Module not found with path "', module_name_str, '", trying without "qar_test_lib/" prefix: "', basename, '"');
+//     Flush(Output);
+//     m := js_module_loader(ctx, PChar(basename), opaque);
+//     if m <> nil then
+//     begin
+//       Result := m;
+//       Exit;
+//     end;
+//   end;
+  
+//   if Pos('tests/qar_test_lib/', module_name_str) > 0 then
+//   begin
+//     basename := StringReplace(module_name_str, 'tests/qar_test_lib/', '', []);
+//     WriteLn('[DEBUG] Trying without "tests/qar_test_lib/" prefix: "', basename, '"');
+//     Flush(Output);
+//     m := js_module_loader(ctx, PChar(basename), opaque);
+//     if m <> nil then
+//     begin
+//       Result := m;
+//       Exit;
+//     end;
+//   end;
+  
+  // Last resort: try extracting basename (filename only)
+  last_slash := LastDelimiter('/\', module_name_str);
+  if last_slash > 0 then
+  begin
+    basename := Copy(module_name_str, last_slash + 1, Length(module_name_str));
+    if DebugLevel > 0 then
+      WriteLn('[DEBUG] Trying basename only: "', basename, '"');
+    WriteLn('[WARNING] Using basename fallback - if multiple QAR files contain "', basename, '",');
+    WriteLn('          the first one found will be used. Consider using prefixes to avoid conflicts.');
+    Flush(Output);
+    m := js_module_loader(ctx, PChar(basename), opaque);
+    if m <> nil then
+    begin
+      Result := m;
+      Exit;
+    end;
+  end;
+  
+  // Not found with any variation
+  Result := nil;
+end;
+
+// Register QAR helper functions to JavaScript global object
+procedure RegisterQarHelpers(ctx: PJSContext);
+var
+  global_obj: JSValue;
+begin
+  global_obj := JS_GetGlobalObject(ctx);
+
+  // Register LoadLibrary (same as js_std_add_helpers but we add it explicitly)
+  JS_DefinePropertyValueStr(ctx, global_obj, PChar('LoadLibrary'),
+    JS_NewCFunction(ctx, @js_load_qar_library, PChar('LoadLibrary'), 2), JS_PROP_C_W_E);
+
+  // Register GetQarInfo
+  JS_DefinePropertyValueStr(ctx, global_obj, PChar('GetQarInfo'),
+    JS_NewCFunction(ctx, @js_get_qar_info, PChar('GetQarInfo'), 1), JS_PROP_C_W_E);
+
+  // Register ExecuteQarEntry
+  JS_DefinePropertyValueStr(ctx, global_obj, PChar('ExecuteQarEntry'),
+    JS_NewCFunction(ctx, @js_execute_qar_entry, PChar('ExecuteQarEntry'), 2), JS_PROP_C_W_E);
+
+  // Register BuildQar
+  JS_DefinePropertyValueStr(ctx, global_obj, PChar('BuildQar'),
+    JS_NewCFunction(ctx, @js_build_qar, PChar('BuildQar'), 2), JS_PROP_C_W_E);
+
+  JS_FreeValue(ctx, global_obj);
+end;
+
+// Example: Load and execute a QAR file
+procedure ExampleLoadQar(ctx: PJSContext; qar_filename: string);
+var
+  ret: cint;
+  script: string;
+  result_val: JSValue;
+begin
+  WriteLn('=== Example: Loading QAR file ===');
+  WriteLn('Loading QAR file: ', qar_filename);
+
+  // Register QAR file
+  ret := js_register_qar_file(ctx, PChar(qar_filename), nil);
+  if ret < 0 then
+  begin
+    WriteLn('Failed to register QAR file');
+    Exit;
+  end;
+
+  WriteLn('QAR file registered successfully');
+
+  // Example: Execute JavaScript that imports from QAR
+  script := 'import * as math from ''./qar_test_lib/math.js''; ' +
+            'console.log("Math.add(2, 3) =", math.add(2, 3));';
+
+  result_val := JS_Eval(ctx, PChar(script), QWord(Length(script)), PChar('test.js'), JS_EVAL_TYPE_MODULE);
+  if JS_IsException(result_val) <> 0 then
+  begin
+    WriteLn('Error executing script:');
+    js_std_dump_error(ctx);
+  end
+  else
+  begin
+    JS_FreeValue(ctx, result_val);
+  end;
+end;
+
+// Example: Read QAR file info
+procedure ExampleReadQarInfo(qar_filename: string);
+var
+  qar: PQarFile;
+  entry_count, i: cint;
+  entry: PQarEntryRead;
+  entry_path: PChar;
+  entry_type: cint;
+  manifest: PChar;
+  manifest_len: csize_t;
+  version: PChar;
+begin
+  WriteLn('=== Example: Reading QAR file info ===');
+  WriteLn('Opening QAR file: ', qar_filename);
+
+  qar := qar_open(PChar(qar_filename));
+  if qar = nil then
+  begin
+    WriteLn('Failed to open QAR file');
+    Exit;
+  end;
+
+  entry_count := qar_get_entry_count(qar);
+  WriteLn('Entry count: ', entry_count);
+
+  for i := 0 to entry_count - 1 do
+  begin
+    entry := qar_get_entry(qar, LongInt(i));
+    if entry <> nil then
+    begin
+      entry_path := qar_entry_get_path(entry);
+      entry_type := qar_entry_get_type(entry);
+      if entry_type <> 0 then
+        WriteLn('  Entry ', i, ': ', entry_path, ' (module)')
+      else
+        WriteLn('  Entry ', i, ': ', entry_path, ' (script)');
+    end;
+  end;
+
+  manifest := qar_get_manifest(qar, @manifest_len);
+  if manifest <> nil then
+  begin
+    WriteLn('Manifest (', manifest_len, ' bytes):');
+    WriteLn(Copy(manifest, 1, manifest_len));
+  end;
+
+  version := qar_get_quickjs_version(qar);
+  if version <> nil then
+  begin
+    WriteLn('QuickJS version: ', version);
+  end;
+
+  qar_close(qar);
+end;
+
+// Example: Execute QAR entry directly
+procedure ExampleExecuteQarEntry(ctx: PJSContext; qar_filename, entry_path: string);
+var
+  qar: PQarFile;
+  entry: PQarEntryRead;
+  bytecode_len: csize_t;
+  bytecode: Pcuint8;
+  obj: JSValue;
+  eval_flags: cint;
+begin
+  WriteLn('=== Example: Executing QAR entry ===');
+  WriteLn('Opening QAR file: ', qar_filename);
+  WriteLn('Entry path: ', entry_path);
+
+  qar := qar_open(PChar(qar_filename));
+  if qar = nil then
+  begin
+    WriteLn('Failed to open QAR file');
+    Exit;
+  end;
+
+  entry := qar_find_entry(qar, PChar(entry_path));
+  if entry = nil then
+  begin
+    WriteLn('Entry not found');
+    qar_close(qar);
+    Exit;
+  end;
+
+  // Load entry data
+  if qar_entry_load_data(qar, entry) < 0 then
+  begin
+    WriteLn('Failed to load entry data');
+    qar_close(qar);
+    Exit;
+  end;
+
+  // Get bytecode
+  bytecode := qar_entry_get_bytecode(entry, @bytecode_len);
+  if bytecode = nil then
+  begin
+    WriteLn('Failed to get bytecode');
+    qar_close(qar);
+    Exit;
+  end;
+
+  WriteLn('Bytecode size: ', bytecode_len, ' bytes');
+
+  // Read and execute bytecode
+  eval_flags := JS_READ_OBJ_BYTECODE or JS_READ_OBJ_REFERENCE;
+  obj := JS_ReadObject(ctx, bytecode, QWord(bytecode_len), LongInt(eval_flags));
+
+  if JS_IsException(obj) <> 0 then
+  begin
+    WriteLn('Error reading bytecode:');
+    js_std_dump_error(ctx);
+    qar_close(qar);
+    Exit;
+  end;
+
+  // Check if it's a module
+  if qar_entry_get_type(entry) <> 0 then
+  begin
+    // It's a module
+    WriteLn('Loading as module...');
+    if js_module_set_import_meta(ctx, obj, cbool(1), cbool(0)) < 0 then
+    begin
+      WriteLn('Failed to set import meta');
+      JS_FreeValue(ctx, obj);
+      qar_close(qar);
+      Exit;
+    end;
+    WriteLn('Module loaded successfully');
+    JS_FreeValue(ctx, obj);
+  end
+  else
+  begin
+    // It's a script, evaluate it
+    WriteLn('Executing as script...');
+    obj := JS_EvalFunction(ctx, obj);
+    if JS_IsException(obj) <> 0 then
+    begin
+      WriteLn('Error executing script:');
+      js_std_dump_error(ctx);
+    end
+    else
+    begin
+      WriteLn('Script executed successfully');
+      JS_FreeValue(ctx, obj);
+    end;
+  end;
+
+  qar_close(qar);
+end;
+
+end.
+
