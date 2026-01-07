@@ -41,7 +41,7 @@ unit qar;
 interface
 
 uses
-  ctypes, SysUtils, Classes, quickjs, quickjslibc;
+  ctypes, SysUtils, Classes, quickjs, quickjslibc, fpjson;
 
 const
   {$IFDEF WINDOWS}
@@ -125,7 +125,10 @@ function mz_uncompress(pDest: Pcuint8; pDest_len: Pmz_ulong; pSource: Pcuint8;
                        source_len: mz_ulong): cint; cdecl; external libqjs;
 
 // QAR building API functions
-function BuildQar(const output_file: string; const input_files: array of string): cint;
+// entry_main / entry_init cho phép chỉ định entry points giống "main"/"init" trong manifest.
+// Có giá trị rỗng nếu không dùng.
+function BuildQar(const output_file: string; const input_files: array of string;
+  const entry_main: string = ''; const entry_init: string = ''): cint;
 
 // Version and information functions
 function GetQarVersion: string;
@@ -133,7 +136,7 @@ function GetQuickJsVersion: string;
 procedure PrintQarInfo(init_default_lib: boolean = False);
 function GetQarInfoString(init_default_lib: boolean = False): string;
 
-// QAR inspection functions
+// QAR inspection / rebuild functions
 type
   TQarInspectionResult = record
     qar_file: string;
@@ -159,7 +162,9 @@ type
 
 function InspectQarFile(const qar_filename: string): TQarInspectionResult;
 procedure PrintQarInspection(const result: TQarInspectionResult);
-function RebuildQarFile(const input_qar: string; const output_qar: string): cint;
+// entry_main / entry_init cho phép override entry_points khi rebuild (có thể rỗng để giữ nguyên).
+function RebuildQarFile(const input_qar: string; const output_qar: string;
+  const entry_main: string = ''; const entry_init: string = ''): cint;
 
 implementation
 
@@ -592,43 +597,64 @@ begin
 end;
 
 // Write manifest as JSON
-procedure WriteManifest(var f: File; list: TQarEntryList; const qjs_version: string);
+// entry_main / entry_init dùng để tạo trường "entry_points" trong manifest nếu được thiết lập.
+procedure WriteManifest(var f: File; list: TQarEntryList; const qjs_version: string;
+  const entry_main: string; const entry_init: string);
 var
-  manifest: string;
+  root, entryPoints, entryObj: TJSONObject;
+  entries: TJSONArray;
   i: integer;
   entry: PQarBuildEntry;
+  manifestStr: string;
 begin
-  manifest := '{' + LineEnding;
-  manifest := manifest + '  "format": "qar",' + LineEnding;
-  manifest := manifest + '  "version": 1,' + LineEnding;
-  manifest := manifest + '  "quickjs_version": "' + qjs_version + '",' + LineEnding;
-  manifest := manifest + '  "entries": [' + LineEnding;
-  
-  for i := 0 to list.Count - 1 do
-  begin
-    entry := list.GetEntry(i);
-    manifest := manifest + '    {' + LineEnding;
-    manifest := manifest + '      "path": "' + entry^.path + '",' + LineEnding;
-    if entry^.is_module <> 0 then
-      manifest := manifest + '      "type": "module",' + LineEnding
-    else
-      manifest := manifest + '      "type": "script",' + LineEnding;
-    manifest := manifest + '      "bytecode_size": ' + IntToStr(entry^.bytecode_len) + ',' + LineEnding;
-    manifest := manifest + '      "source_size": ' + IntToStr(entry^.source_len) + LineEnding;
-    manifest := manifest + '    }';
-    if i < list.Count - 1 then
-      manifest := manifest + ',';
-    manifest := manifest + LineEnding;
+  root := TJSONObject.Create;
+  try
+    // Thông tin cơ bản của manifest
+    root.Add('format', 'qar');
+    // Tăng version manifest lên 2 khi có hỗ trợ entry_points
+    root.Add('version', 2);
+    root.Add('quickjs_version', qjs_version);
+
+    // Ghi thêm entry_points nếu có cấu hình
+    if (entry_main <> '') or (entry_init <> '') then
+    begin
+      entryPoints := TJSONObject.Create;
+      if entry_main <> '' then
+        entryPoints.Add('main', entry_main);
+      if entry_init <> '' then
+        entryPoints.Add('init', entry_init);
+      root.Add('entry_points', entryPoints);
+    end;
+
+    // Danh sách entries
+    entries := TJSONArray.Create;
+    for i := 0 to list.Count - 1 do
+    begin
+      entry := list.GetEntry(i);
+      entryObj := TJSONObject.Create;
+      entryObj.Add('path', entry^.path);
+      if entry^.is_module <> 0 then
+        entryObj.Add('type', 'module')
+      else
+        entryObj.Add('type', 'script');
+      entryObj.Add('bytecode_size', Int64(entry^.bytecode_len));
+      entryObj.Add('source_size', Int64(entry^.source_len));
+      entries.Add(entryObj);
+    end;
+    root.Add('entries', entries);
+
+    // Serialize JSON (pretty format để dễ debug, nhưng parser bên C vẫn đọc bình thường)
+    manifestStr := root.FormatJSON([]);
+    if manifestStr <> '' then
+      BlockWrite(f, manifestStr[1], Length(manifestStr));
+  finally
+    root.Free;
   end;
-  
-  manifest := manifest + '  ]' + LineEnding;
-  manifest := manifest + '}' + LineEnding;
-  
-  BlockWrite(f, manifest[1], Length(manifest));
 end;
 
 // Create QAR file
-function CreateQar(const output_file: string; list: TQarEntryList; const qjs_version: string): cint;
+function CreateQar(const output_file: string; list: TQarEntryList; const qjs_version: string;
+  const entry_main: string; const entry_init: string): cint;
 var
   f: File;
   magic: array[0..3] of char = ('Q', 'A', 'R', #$01);
@@ -713,9 +739,9 @@ begin
         BlockWrite(f, entry^.source^, entry^.source_len);
     end;
     
-    // Write manifest
+    // Write manifest (kèm thông tin entry_points nếu có)
     manifest_offset := FilePos(f);
-    WriteManifest(f, list, qjs_version);
+    WriteManifest(f, list, qjs_version, entry_main, entry_init);
     manifest_size := FilePos(f) - manifest_offset;
     
     // Update manifest offset and size
@@ -882,7 +908,9 @@ begin
 end;
 
 // Build QAR from files/directories
-function BuildQar(const output_file: string; const input_files: array of string): cint;
+// entry_main / entry_init cho phép ghi thêm entry_points vào manifest (có thể rỗng).
+function BuildQar(const output_file: string; const input_files: array of string;
+  const entry_main: string = ''; const entry_init: string = ''): cint;
 var
   list: TQarEntryList;
   rt: PJSRuntime;
@@ -1047,7 +1075,8 @@ begin
       // Create QAR file
       WriteLn('Creating QAR file: ', output_file);
       qjs_version := string(JS_GetVersion);
-      if CreateQar(output_file, list, qjs_version) < 0 then
+      // Truyền thêm entry_main / entry_init vào manifest
+      if CreateQar(output_file, list, qjs_version, entry_main, entry_init) < 0 then
       begin
         WriteLn('Failed to create QAR file');
         Exit;
@@ -1640,8 +1669,11 @@ begin
   WriteLn;
 end;
 
-// Rebuild QAR file to match current QuickJS version
-function RebuildQarFile(const input_qar: string; const output_qar: string): cint;
+// Rebuild QAR file to match current QuickJS version.
+// entry_main / entry_init: nếu khác rỗng thì sẽ được ghi vào manifest mới.
+// Nếu rỗng, caller có thể sau này mở rộng để giữ nguyên từ manifest cũ (hiện tại: không đọc lại manifest).
+function RebuildQarFile(const input_qar: string; const output_qar: string;
+  const entry_main: string; const entry_init: string): cint;
 var
   inspection: TQarInspectionResult;
   input_files: array of string;
@@ -1724,7 +1756,8 @@ begin
     
     // Build new QAR with current QuickJS version
     WriteLn('Rebuilding QAR file with current QuickJS version...');
-    Result := BuildQar(output_qar, input_files);
+    // Ghi thêm entry_points nếu caller cung cấp
+    Result := BuildQar(output_qar, input_files, entry_main, entry_init);
     
     if Result = 0 then
       WriteLn('Successfully rebuilt QAR file: ', output_qar)

@@ -45,6 +45,9 @@ var
   input_file: string = '';
   input_files: array of string;
   j: integer;
+  // Entry points cho manifest
+  entry_main: string = '';
+  entry_init: string = '';
 
 procedure PrintUsage;
 begin
@@ -105,7 +108,14 @@ begin
     WriteLn('  - ', input_files[j]);
   WriteLn;
   
-  ret := BuildQar(output_file, input_files);
+  if (entry_main <> '') then
+    WriteLn('Entry main: ', entry_main);
+  if (entry_init <> '') then
+    WriteLn('Entry init: ', entry_init);
+  if (entry_main <> '') or (entry_init <> '') then
+    WriteLn;
+  
+  ret := BuildQar(output_file, input_files, entry_main, entry_init);
   if ret < 0 then
   begin
     WriteLn('Error: Failed to build QAR file');
@@ -164,7 +174,14 @@ begin
     Halt(1);
   end;
   
-  ret := qar.RebuildQarFile(input_file, output_file);
+  if (entry_main <> '') then
+    WriteLn('Override entry main: ', entry_main);
+  if (entry_init <> '') then
+    WriteLn('Override entry init: ', entry_init);
+  if (entry_main <> '') or (entry_init <> '') then
+    WriteLn;
+  
+  ret := qar.RebuildQarFile(input_file, output_file, entry_main, entry_init);
   if ret < 0 then
   begin
     WriteLn('Error: Failed to rebuild QAR file');
@@ -192,6 +209,20 @@ begin
     if (ParamStr(i) = '--init-lib') or (ParamStr(i) = '-i') then
     begin
       init_default_lib := True;
+      Inc(i);
+    end
+    // Thiết lập entry main cho manifest khi build/rebuild
+    else if (ParamStr(i) = '--main') and (i < ParamCount) then
+    begin
+      Inc(i);
+      entry_main := ParamStr(i);
+      Inc(i);
+    end
+    // Thiết lập entry init cho manifest khi build/rebuild
+    else if (ParamStr(i) = '--init') and (i < ParamCount) then
+    begin
+      Inc(i);
+      entry_init := ParamStr(i);
       Inc(i);
     end
     else if (ParamStr(i) = '--help') or (ParamStr(i) = '-h') or (ParamStr(i) = 'help') then

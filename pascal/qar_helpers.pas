@@ -564,6 +564,7 @@ begin
   for i := 0 to input_count - 1 do
     WriteLn('  ', input_files[i]);
   
+  // JS binding hiện tại không truyền entry_points, giữ behavior cũ
   ret := qar.BuildQar(output_file_str, input_files);
   
   if ret < 0 then

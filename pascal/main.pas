@@ -420,6 +420,7 @@ begin
     end;
     
     SetLength(input_files, input_count);
+    // Khi gọi từ main.pas không chỉ định entry_points (dùng giá trị mặc định rỗng)
     if qar.BuildQar(output_file, input_files) < 0 then
       Halt(1)
     else
