@@ -256,6 +256,17 @@ function JS_GetOwnProperty(ctx: PJSContext; desc: pointer; obj: JSValueConst; pr
 function JS_GetLength(ctx: PJSContext; obj: JSValueConst): cint; cdecl; external libqjs;
 function JS_SetLength(ctx: PJSContext; obj: JSValueConst; len: cuint32): cint; cdecl; external libqjs;
 
+// ArrayBuffer operations
+function JS_NewArrayBuffer(ctx: PJSContext; buf: Pcuint8; len: csize_t; free_func: JSFreeArrayBufferDataFunc; opaque: pointer; is_shared: cint): JSValue; cdecl; external libqjs;
+function JS_NewArrayBufferCopy(ctx: PJSContext; buf: Pcuint8; len: csize_t): JSValue; cdecl; external libqjs;
+function JS_GetArrayBuffer(ctx: PJSContext; psize: Pcsize_t; obj: JSValueConst): Pcuint8; cdecl; external libqjs;
+function JS_IsArrayBuffer(obj: JSValueConst): cint; cdecl; external libqjs;
+procedure JS_DetachArrayBuffer(ctx: PJSContext; obj: JSValueConst); cdecl; external libqjs;
+
+// TypedArray operations
+function JS_GetUint8Array(ctx: PJSContext; psize: Pcsize_t; obj: JSValueConst): Pcuint8; cdecl; external libqjs;
+function JS_GetTypedArrayBuffer(ctx: PJSContext; obj: JSValueConst; pbyte_offset: Pcsize_t; pbyte_length: Pcsize_t; pbytes_per_element: Pcsize_t): JSValue; cdecl; external libqjs;
+
 // Function operations
 function JS_Call(ctx: PJSContext; func_obj: JSValueConst; this_obj: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl; external libqjs;
 function JS_Invoke(ctx: PJSContext; this_val: JSValueConst; atom: JSAtom; argc: cint; argv: PJSValueConst): JSValue; cdecl; external libqjs;
@@ -353,6 +364,33 @@ function JS_GetVersion: PChar; cdecl; external libqjs;
 // Memory management
 procedure js_free(ctx: PJSContext; ptr: pointer); cdecl; external libqjs;
 procedure js_free_rt(rt: PJSRuntime; ptr: pointer); cdecl; external libqjs;
+
+// Compression functions (miniz)
+type
+  mz_ulong = cuint32;
+  Pmz_ulong = ^mz_ulong;
+  mz_streamp = pointer;  // Opaque pointer for stream API
+
+const
+  MZ_OK = 0;
+  MZ_STREAM_END = 1;
+  MZ_NEED_DICT = 2;
+  MZ_ERRNO = -1;
+  MZ_STREAM_ERROR = -2;
+  MZ_DATA_ERROR = -3;
+  MZ_MEM_ERROR = -4;
+  MZ_BUF_ERROR = -5;
+  MZ_VERSION_ERROR = -6;
+  MZ_DEFAULT_LEVEL = 6;
+  MZ_DEFAULT_WINDOW_BITS = 15;
+  MZ_DEFLATED = 8;
+
+// Simple compression API
+function mz_compress(pDest: Pcuint8; pDest_len: Pmz_ulong; pSource: Pcuint8; source_len: mz_ulong): cint; cdecl; external libqjs;
+function mz_compress2(pDest: Pcuint8; pDest_len: Pmz_ulong; pSource: Pcuint8; source_len: mz_ulong; level: cint): cint; cdecl; external libqjs;
+function mz_compressBound(source_len: mz_ulong): mz_ulong; cdecl; external libqjs;
+function mz_uncompress(pDest: Pcuint8; pDest_len: Pmz_ulong; pSource: Pcuint8; source_len: mz_ulong): cint; cdecl; external libqjs;
+function mz_uncompress2(pDest: Pcuint8; pDest_len: Pmz_ulong; pSource: Pcuint8; pSource_len: Pmz_ulong): cint; cdecl; external libqjs;
 
 // Error throwing functions
 function JS_ThrowTypeError(ctx: PJSContext; fmt: PChar): JSValue; cdecl; external libqjs;

@@ -150,7 +150,7 @@ type
       compressed_bytecode_size: csize_t;  // Compressed size if compressed
       compressed_source_size: csize_t;    // Compressed size if compressed
     end;
-    dependencies: TStringList;  // QAR files referenced via LoadLibrary
+    dependencies: TStringList;  // QAR files and DLL files referenced via LoadLibrary/LoadDynamicLibrary
     is_compatible: boolean;
     compatibility_message: string;
     has_compressed_entries: boolean;  // Whether any entry is compressed
@@ -307,17 +307,24 @@ begin
     entry^.is_compressed := 1;
 end;
 
-// Parse JavaScript file to find LoadLibrary calls
-// Returns list of QAR filenames that need to be loaded
+// Helper function to check if a file is a dynamic library
+function IsDynamicLibraryFile(const filename: string): boolean;
+var
+  ext: string;
+begin
+  ext := LowerCase(ExtractFileExt(filename));
+  Result := (ext = '.dll') or (ext = '.so') or (ext = '.dylib');
+end;
+
+// Parse JavaScript file to find LoadLibrary and LoadDynamicLibrary calls
+// Returns list of QAR filenames and DLL filenames that need to be loaded
 procedure ParseLoadLibraryCalls(const filepath: string; var qar_files: TStringList);
 var
   f: TextFile;
   line: string;
   pos_load, pos_start, pos_end: integer;
-  qar_file: string;
-  in_string: boolean;
+  lib_file: string;
   quote_char: char;
-  i: integer;
 begin
   if not FileExists(filepath) then
     Exit;
@@ -363,14 +370,62 @@ begin
             
             if pos_end <= Length(line) then
             begin
-              qar_file := Copy(line, pos_start, pos_end - pos_start);
+              lib_file := Copy(line, pos_start, pos_end - pos_start);
               // Remove escape sequences (simple version)
-              qar_file := StringReplace(qar_file, '\''', '''', [rfReplaceAll]);
-              qar_file := StringReplace(qar_file, '\"', '"', [rfReplaceAll]);
-              qar_file := StringReplace(qar_file, '\\', '\', [rfReplaceAll]);
+              lib_file := StringReplace(lib_file, '\''', '''', [rfReplaceAll]);
+              lib_file := StringReplace(lib_file, '\"', '"', [rfReplaceAll]);
+              lib_file := StringReplace(lib_file, '\\', '\', [rfReplaceAll]);
               
-              if (qar_file <> '') and (qar_files.IndexOf(qar_file) < 0) then
-                qar_files.Add(qar_file);
+              if (lib_file <> '') and (qar_files.IndexOf(lib_file) < 0) then
+                qar_files.Add(lib_file);
+            end;
+          end;
+        end;
+      end;
+      
+      // Look for LoadDynamicLibrary('...') or LoadDynamicLibrary("...")
+      pos_load := Pos('LoadDynamicLibrary', line);
+      if pos_load > 0 then
+      begin
+        // Find opening parenthesis
+        pos_start := pos_load;
+        while (pos_start <= Length(line)) and (line[pos_start] <> '(') do
+          Inc(pos_start);
+        
+        if pos_start <= Length(line) then
+        begin
+          Inc(pos_start); // Skip '('
+          // Skip whitespace
+          while (pos_start <= Length(line)) and (line[pos_start] in [' ', #9]) do
+            Inc(pos_start);
+          
+          // Check for string literal
+          if (pos_start <= Length(line)) and (line[pos_start] in ['''', '"']) then
+          begin
+            quote_char := line[pos_start];
+            Inc(pos_start); // Skip opening quote
+            pos_end := pos_start;
+            
+            // Find closing quote
+            while (pos_end <= Length(line)) and (line[pos_end] <> quote_char) do
+            begin
+              // Handle escaped quotes
+              if (line[pos_end] = '\') and (pos_end < Length(line)) then
+                Inc(pos_end);
+              Inc(pos_end);
+            end;
+            
+            if pos_end <= Length(line) then
+            begin
+              lib_file := Copy(line, pos_start, pos_end - pos_start);
+              // Remove escape sequences
+              lib_file := StringReplace(lib_file, '\''', '''', [rfReplaceAll]);
+              lib_file := StringReplace(lib_file, '\"', '"', [rfReplaceAll]);
+              lib_file := StringReplace(lib_file, '\\', '\', [rfReplaceAll]);
+              
+              // Add to dependencies if it's a dynamic library file
+              if (lib_file <> '') and IsDynamicLibraryFile(lib_file) and (qar_files.IndexOf(lib_file) < 0) then
+                qar_files.Add(lib_file);
             end;
           end;
         end;
@@ -1128,7 +1183,7 @@ begin
   Write(GetQarInfoString(init_default_lib));
 end;
 
-// Parse source code to find LoadLibrary calls
+// Parse source code to find LoadLibrary and LoadDynamicLibrary calls
 procedure ParseLoadLibraryFromSource(const source: Pcuint8; source_len: csize_t; var dependencies: TStringList);
 var
   source_str: string;
@@ -1136,7 +1191,7 @@ var
   i: integer;
   line: string;
   pos_load, pos_start, pos_end: integer;
-  qar_file: string;
+  lib_file: string;
   quote_char: char;
 begin
   if (source = nil) or (source_len = 0) then
@@ -1185,14 +1240,62 @@ begin
             
             if pos_end <= Length(line) then
             begin
-              qar_file := Copy(line, pos_start, pos_end - pos_start);
+              lib_file := Copy(line, pos_start, pos_end - pos_start);
               // Remove escape sequences
-              qar_file := StringReplace(qar_file, '\''', '''', [rfReplaceAll]);
-              qar_file := StringReplace(qar_file, '\"', '"', [rfReplaceAll]);
-              qar_file := StringReplace(qar_file, '\\', '\', [rfReplaceAll]);
+              lib_file := StringReplace(lib_file, '\''', '''', [rfReplaceAll]);
+              lib_file := StringReplace(lib_file, '\"', '"', [rfReplaceAll]);
+              lib_file := StringReplace(lib_file, '\\', '\', [rfReplaceAll]);
               
-              if (qar_file <> '') and (dependencies.IndexOf(qar_file) < 0) then
-                dependencies.Add(qar_file);
+              if (lib_file <> '') and (dependencies.IndexOf(lib_file) < 0) then
+                dependencies.Add(lib_file);
+            end;
+          end;
+        end;
+      end;
+      
+      // Look for LoadDynamicLibrary('...') or LoadDynamicLibrary("...")
+      pos_load := Pos('LoadDynamicLibrary', line);
+      if pos_load > 0 then
+      begin
+        // Find opening parenthesis
+        pos_start := pos_load;
+        while (pos_start <= Length(line)) and (line[pos_start] <> '(') do
+          Inc(pos_start);
+        
+        if pos_start <= Length(line) then
+        begin
+          Inc(pos_start); // Skip '('
+          // Skip whitespace
+          while (pos_start <= Length(line)) and (line[pos_start] in [' ', #9]) do
+            Inc(pos_start);
+          
+          // Check for string literal
+          if (pos_start <= Length(line)) and (line[pos_start] in ['''', '"']) then
+          begin
+            quote_char := line[pos_start];
+            Inc(pos_start); // Skip opening quote
+            pos_end := pos_start;
+            
+            // Find closing quote
+            while (pos_end <= Length(line)) and (line[pos_end] <> quote_char) do
+            begin
+              // Handle escaped quotes
+              if (line[pos_end] = '\') and (pos_end < Length(line)) then
+                Inc(pos_end);
+              Inc(pos_end);
+            end;
+            
+            if pos_end <= Length(line) then
+            begin
+              lib_file := Copy(line, pos_start, pos_end - pos_start);
+              // Remove escape sequences
+              lib_file := StringReplace(lib_file, '\''', '''', [rfReplaceAll]);
+              lib_file := StringReplace(lib_file, '\"', '"', [rfReplaceAll]);
+              lib_file := StringReplace(lib_file, '\\', '\', [rfReplaceAll]);
+              
+              // Add to dependencies if it's a dynamic library file
+              if (lib_file <> '') and IsDynamicLibraryFile(lib_file) and (dependencies.IndexOf(lib_file) < 0) then
+                dependencies.Add(lib_file);
             end;
           end;
         end;
@@ -1521,9 +1624,14 @@ begin
   
   if result.dependencies.Count > 0 then
   begin
-    WriteLn('Dependencies (', result.dependencies.Count, ' QAR files):');
+    WriteLn('Dependencies (', result.dependencies.Count, ' files):');
     for i := 0 to result.dependencies.Count - 1 do
-      WriteLn('  - ', result.dependencies[i]);
+    begin
+      if IsDynamicLibraryFile(result.dependencies[i]) then
+        WriteLn('  - ', result.dependencies[i], ' (dynamic library)')
+      else
+        WriteLn('  - ', result.dependencies[i], ' (QAR file)');
+    end;
   end
   else
   begin
