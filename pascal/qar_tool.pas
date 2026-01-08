@@ -48,6 +48,7 @@ var
   // Entry points cho manifest
   entry_main: string = '';
   entry_init: string = '';
+  entry_name_code: string = '';
 
 procedure PrintUsage;
 begin
@@ -61,6 +62,7 @@ begin
   WriteLn('  build <output> <files>  - Tạo file QAR từ các file JavaScript');
   WriteLn('  inspect <file.qar>      - Kiểm tra và hiển thị thông tin chi tiết file QAR');
   WriteLn('  rebuild <input> <output> - Biên dịch lại QAR để phù hợp phiên bản QuickJS mới');
+  WriteLn('  code <file.qar> <entry> - Hiển thị mã nguồn của một entry trong file QAR');
   WriteLn('  version                 - Hiển thị phiên bản');
   WriteLn('  help                    - Hiển thị trợ giúp này');
   WriteLn;
@@ -74,6 +76,7 @@ begin
   WriteLn('  qar_tool build output.qar src/');
   WriteLn('  qar_tool inspect file.qar');
   WriteLn('  qar_tool rebuild old.qar new.qar');
+  WriteLn('  qar_tool code mylib.qar my_module.js');
   WriteLn('  qar_tool version');
   WriteLn;
 end;
@@ -147,6 +150,70 @@ begin
     PrintQarInspection(inspection);
   finally
     inspection.dependencies.Free;
+  end;
+end;
+
+procedure ViewQarEntryCodeCommand;
+var
+  qar_file: PQarFile;
+  entry: PQarEntry;
+  source_ptr: Pcuint8;
+  source_len: csize_t;
+  source_str: AnsiString;
+begin
+  if input_file = '' then
+  begin
+    WriteLn('Error: QAR file not specified');
+    WriteLn('Usage: qar_tool code <file.qar> <entry>');
+    Halt(1);
+  end;
+
+  if entry_name_code = '' then
+  begin
+    WriteLn('Error: Entry name not specified');
+    WriteLn('Usage: qar_tool code <file.qar> <entry>');
+    Halt(1);
+  end;
+
+  if not FileExists(input_file) then
+  begin
+    WriteLn('Error: QAR file not found: ', input_file);
+    Halt(1);
+  end;
+
+  qar_file := qar_open(PChar(input_file));
+  if qar_file = nil then
+  begin
+    WriteLn('Error: Failed to open QAR file: ', input_file);
+    Halt(1);
+  end;
+
+  try
+    entry := qar_find_entry(qar_file, PAnsiChar(entry_name_code));
+    if entry = nil then
+    begin
+      WriteLn('Error: Entry not found: ', entry_name_code);
+      Halt(1);
+    end;
+
+    if qar_entry_load_data(qar_file, entry) < 0 then
+    begin
+      WriteLn('Error: Failed to load data for entry: ', entry_name_code);
+      Halt(1);
+    end;
+
+    source_ptr := qar_entry_get_source(entry, @source_len);
+    if source_ptr = nil then
+    begin
+      WriteLn('Error: Failed to get source for entry: ', entry_name_code);
+      Halt(1);
+    end;
+
+    SetString(source_str, PAnsiChar(source_ptr), source_len);
+    WriteLn(source_str);
+
+  finally
+    qar_close(qar_file);
   end;
 end;
 
@@ -264,6 +331,13 @@ begin
           input_file := ParamStr(i)
         else if output_file = '' then
           output_file := ParamStr(i);
+      end
+      else if cmd = 'code' then
+      begin
+        if input_file = '' then
+          input_file := ParamStr(i)
+        else if entry_name_code = '' then
+          entry_name_code := ParamStr(i);
       end;
       Inc(i);
     end;
@@ -295,6 +369,10 @@ begin
   else if cmd = 'rebuild' then
   begin
     RebuildQarFileCommand;
+  end
+  else if cmd = 'code' then
+  begin
+    ViewQarEntryCodeCommand;
   end
   else if cmd = '' then
   begin

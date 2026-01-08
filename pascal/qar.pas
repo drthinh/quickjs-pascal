@@ -1004,6 +1004,14 @@ begin
       JS_FreeRuntime(rt);
       Exit;
     end;
+
+    // Register builtin std/os modules so imports like 'qjs:os' resolve during compile
+    js_init_module_std(ctx, 'std');
+    js_init_module_std(ctx, 'qjs:std');
+    js_init_module_os(ctx, 'os');
+    js_init_module_os(ctx, 'qjs:os');
+    js_init_module_bjson(ctx, 'bjson');
+    js_init_module_bjson(ctx, 'qjs:bjson');
     
     // Set up module loader with fallback (required for QAR module resolution)
     // Use wrapper to handle path mismatches (e.g., import 'qar_test_lib/math.js' but QAR has 'math.js')

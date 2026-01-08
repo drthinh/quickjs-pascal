@@ -26,12 +26,18 @@ function isAlphanum(c) {
 
 const RESERVED_KEYWORDS = new Set([
   'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'export', 'extends', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'return', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'let', 'enum', 'await', 'implements', 'package', 'protected', 'static', 'interface', 'private', 'public', 'null', 'true', 'false',
+  // context keywords we must preserve
+  'of',
 ]);
 
 const RESERVED_GLOBALS = new Set([
   'arguments', 'Array', 'ArrayBuffer', 'Atomics', 'BigInt', 'BigInt64Array', 'BigUint64Array', 'Boolean', 'DataView', 'Date', 'decodeURI', 'decodeURIComponent', 'encodeURI', 'encodeURIComponent', 'Error', 'escape', 'eval', 'Float32Array', 'Float64Array', 'Function', 'Infinity', 'Int16Array', 'Int32Array', 'Int8Array', 'Intl', 'isFinite', 'isNaN', 'JSON', 'Map', 'Math', 'NaN', 'Number', 'Object', 'parseFloat', 'parseInt', 'Promise', 'Proxy', 'RangeError', 'ReferenceError', 'Reflect', 'RegExp', 'Set', 'SharedArrayBuffer', 'String', 'Symbol', 'SyntaxError', 'TypeError', 'Uint16Array', 'Uint32Array', 'Uint8Array', 'Uint8ClampedArray', 'undefined', 'unescape', 'URIError', 'WeakMap', 'WeakSet', 'globalThis', 'window', 'self', 'global', 'console', 'require', 'module', 'exports', '__dirname', '__filename', 'std', 'os',
   // QuickJS Pascal DLL helpers
   'LoadDLL', 'LoadLib', 'CallDllFunction', 'FreeDLL',
+  // QuickJS CLI globals
+  'scriptArgs',
+  // CLI locals we must keep stable (self-minify safety)
+  'args', 'files', 'input', 'output', 'opts',
 ]);
 
 const NAME_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ$_';
@@ -117,6 +123,14 @@ function isRegexStart(prevTokenType, prevValue) {
     ].includes(prevValue);
   }
   return false;
+}
+
+function endsWithSpread(result) {
+  let i = result.length - 1;
+  // skip trailing whitespace
+  while (i >= 0 && isWhitespace(result[i])) i--;
+  if (i < 2) return false;
+  return result[i] === '.' && result[i - 1] === '.' && result[i - 2] === '.';
 }
 
 function skipString(source, i, quote) {
@@ -280,7 +294,6 @@ function renameIdentifiers(source, opts = {}) {
       const skip =
         reserved.has(id) ||
         ctx.prev === '.' ||
-        ctx.prev === '?' || // ?. optional chaining member
         ctx.next === ':' || // label or ternary
         ctx.inImport ||
         ctx.inExport;
@@ -578,12 +591,24 @@ function wrapHexEval(code) {
   return `(function(){${decoder}eval(_d('${hex}'));})();`;
 }
 
+function isLikelyModule(src) {
+  // Rough check: top-level import/export presence
+  return /^\s*import[\s{*]/m.test(src) || /^\s*export\b/m.test(src);
+}
+
 function obfuscate(source, opts = {}) {
   const renameEnabled = opts.rename !== false;
   const encodeEnabled = opts.encode !== false;
+  const wantsEncodeLevel = encodeEnabled ? opts.encodeLevel ?? 1 : 0;
+  const moduleMode = isLikelyModule(source);
+  const encodeLevel = moduleMode ? 0 : Math.max(wantsEncodeLevel, 0);
   const mini = minify(source);
   const renamed = renameEnabled ? renameIdentifiers(mini) : mini;
-  return encodeEnabled ? wrapHexEval(renamed) : renamed;
+  let out = renamed;
+  for (let i = 0; i < encodeLevel; i++) {
+    out = wrapHexEval(out);
+  }
+  return out;
 }
 
 function usage() {
@@ -593,7 +618,8 @@ function usage() {
       'Flags:\n' +
       '  --no-obf | --plain | --minify-only   Minify only (no rename, no encode)\n' +
       '  --no-rename                          Keep original identifiers (still encode)\n' +
-      '  --no-encode                          Skip hex wrapping (still rename)\n'
+      '  --no-encode                          Skip hex wrapping (still rename)\n' +
+      '  --encode-level=N                     Wrap hex/eval N times (default 1 when obf on)\n'
   );
   os.exit(1);
 }
@@ -602,6 +628,7 @@ function main(args) {
   let obf = true; // default obfuscation on
   let rename = true;
   let encode = true;
+  let encodeLevel = null;
   const files = [];
   for (const a of args) {
     if (a === '--no-obf' || a === '--plain' || a === '--minify-only') {
@@ -612,6 +639,9 @@ function main(args) {
       rename = false;
     } else if (a === '--no-encode') {
       encode = false;
+    } else if (a.startsWith('--encode-level=')) {
+      const v = Number(a.slice('--encode-level='.length));
+      if (!Number.isNaN(v) && v >= 0) encodeLevel = v;
     } else {
       files.push(a);
     }
@@ -628,7 +658,11 @@ function main(args) {
   let result;
   try {
     if (obf) {
-      result = obfuscate(source, { rename, encode });
+      result = obfuscate(source, {
+        rename,
+        encode,
+        encodeLevel: encodeLevel !== null ? encodeLevel : undefined,
+      });
     } else {
       result = minify(source);
     }
