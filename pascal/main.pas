@@ -424,6 +424,10 @@ begin
     Halt(1);
   end;
 
+  js_init_module_std(ctx, 'qjs:std');
+  js_init_module_os(ctx, 'qjs:os');
+  js_init_module_bjson(ctx, 'qjs:bjson');
+
   // Initialize standard handlers
   js_std_init_handlers(rt);
 
@@ -434,6 +438,37 @@ begin
 
   // Add standard helpers (console, print, etc.)
   js_std_add_helpers(ctx, 0, nil);
+
+  file_content :=
+    'import * as bjson from ''qjs:bjson'';\n' +
+    'import * as std from ''qjs:std'';\n' +
+    'import * as os from ''qjs:os'';\n' +
+    'globalThis.bjson = bjson;\n' +
+    'globalThis.std = std;\n' +
+    'globalThis.os = os;\n' +
+    'if (globalThis.setTimeout === void 0) globalThis.setTimeout = os.setTimeout;\n' +
+    'if (globalThis.clearTimeout === void 0) globalThis.clearTimeout = os.clearTimeout;\n' +
+    'if (globalThis.setInterval === void 0) globalThis.setInterval = os.setInterval;\n' +
+    'if (globalThis.clearInterval === void 0) globalThis.clearInterval = os.clearInterval;\n';
+
+  result_val := JS_Eval(ctx,
+    PChar(file_content),
+    QWord(Length(file_content)),
+    PChar('<init>'),
+    JS_EVAL_TYPE_MODULE);
+
+  if JS_IsException(result_val) <> 0 then
+  begin
+    js_std_dump_error(ctx);
+    JS_FreeValue(ctx, result_val);
+  end
+  else
+  begin
+    JS_FreeValue(ctx, result_val);
+    while JS_ExecutePendingJob(JS_GetRuntime(ctx), @ctx) > 0 do
+    begin
+    end;
+  end;
 
   // Register helper functions
   qar_helpers.RegisterQarHelpers(ctx);
@@ -724,6 +759,7 @@ begin
                     // Continue executing jobs until done
                   end;
                 end;
+                js_std_loop(ctx);
                 // Flush output to ensure all console.log output is displayed
                 Flush(Output);
                 WriteLn('File loaded successfully');

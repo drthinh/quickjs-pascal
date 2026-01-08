@@ -1,6 +1,6 @@
 {
   "examples" : {
-    "tests/example1_basic.js" : true,
-    "tests/example3_qar_info.js" : true
+    "example1_basic.js" : true,
+    "example3_qar_usage.js" : true
   }
 }

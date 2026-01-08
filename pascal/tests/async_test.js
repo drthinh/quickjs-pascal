@@ -1,7 +1,9 @@
+import * as os from "qjs:os";
+
 // 1. A function that returns a Promise (simulates an async operation)
 function resolveAfter2Seconds() {
   return new Promise(resolve => {
-    setTimeout(() => {
+    os.setTimeout(() => {
       resolve('Operation completed');
     }, 2000); // Resolves with a value after 2 seconds
   });
