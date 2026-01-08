@@ -1,4 +1,4 @@
-program QuickJSPascal;
+program qjsp;
 
 {$mode objfpc}{$H+}
 
@@ -330,6 +330,11 @@ var
   ctx: PJSContext;
   script: string;
   result_val: JSValue;
+  run_script_mode: boolean;
+  script_filename: string;
+  script_argc: integer;
+  script_args: array of PChar;
+  script_args_str: array of string;
   // Used for pretty-printing objects/arrays in the interactive loop
   original_val, stringified: JSValue;
   result_str: PChar;
@@ -376,6 +381,142 @@ var
   qar_inspection: TQarInspectionResult;
   k_qar: integer;
   newDebugLevel: integer;
+  exit_code: integer;
+
+// Run a JS file (non-interactive mode)
+function RunScriptFile(ctx: PJSContext; const filename: string): boolean;
+var
+  file_content, line: string;
+  f: TextFile;
+  eval_flags: cint;
+  script_path, exe_dir, test_path: string;
+  old_dir, script_dir: string;
+  is_module: boolean;
+  result_val: JSValue;
+  job_result, loop_result: cint;
+  pending_ctx: PJSContext;
+begin
+  Result := False;
+
+  script_path := ExpandFileName(filename);
+  if not FileExists(script_path) then
+  begin
+    exe_dir := ExtractFileDir(ParamStr(0));
+    if exe_dir <> '' then
+    begin
+      test_path := IncludeTrailingPathDelimiter(exe_dir) + filename;
+      if FileExists(test_path) then
+        script_path := test_path
+      else
+      begin
+        test_path := IncludeTrailingPathDelimiter(exe_dir) + 'tests' + PathDelim + ExtractFileName(filename);
+        if FileExists(test_path) then
+          script_path := test_path;
+      end;
+    end;
+  end;
+
+  if not FileExists(script_path) then
+  begin
+    WriteLn('Error: File not found: ', filename);
+    Exit;
+  end;
+
+  old_dir := GetCurrentDir;
+  script_dir := ExtractFileDir(script_path);
+  qar_helpers.CurrentScriptDir := script_dir;
+  if script_dir <> '' then
+  begin
+    try
+      SetCurrentDir(script_dir);
+    except
+      // ignore
+    end;
+  end;
+
+  file_content := '';
+  AssignFile(f, script_path);
+  Reset(f);
+  while not EOF(f) do
+  begin
+    ReadLn(f, line);
+    if file_content <> '' then
+      file_content := file_content + LineEnding;
+    file_content := file_content + line;
+  end;
+  CloseFile(f);
+
+  is_module := False;
+  if (Pos('import ', file_content) > 0) or (Pos('export ', file_content) > 0) then
+    is_module := True
+  else if JS_DetectModule(PChar(file_content), QWord(Length(file_content))) <> 0 then
+    is_module := True;
+
+  if is_module then
+    eval_flags := JS_EVAL_TYPE_MODULE
+  else
+  begin
+    eval_flags := JS_EVAL_TYPE_GLOBAL;
+    if script_dir <> '' then
+    begin
+      test_path := IncludeTrailingPathDelimiter(script_dir) + 'qar_test.qar';
+      if FileExists(test_path) then
+        if js_register_qar_file(ctx, PChar(test_path), nil) < 0 then
+          WriteLn('[DEBUG] Warning: Failed to pre-register QAR file: ', test_path);
+    end;
+  end;
+
+  result_val := JS_Eval(ctx, PChar(file_content), QWord(Length(file_content)),
+    PChar(script_path), eval_flags);
+
+  try
+    SetCurrentDir(old_dir);
+  except
+    // ignore restore errors
+  end;
+
+  if JS_IsException(result_val) <> 0 then
+  begin
+    js_std_dump_error(ctx);
+    JS_FreeValue(ctx, result_val);
+    qar_helpers.CurrentScriptDir := '';
+    Exit;
+  end;
+
+  job_result := 0;
+  pending_ctx := nil;
+  if eval_flags = JS_EVAL_TYPE_MODULE then
+  begin
+    repeat
+      job_result := JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx);
+      if job_result < 0 then
+      begin
+        if pending_ctx <> nil then
+          js_std_dump_error(pending_ctx)
+        else
+          js_std_dump_error(ctx);
+        Break;
+      end;
+    until job_result = 0;
+  end;
+
+  if job_result >= 0 then
+  begin
+    loop_result := js_std_loop(ctx);
+    if loop_result <> 0 then
+    begin
+      js_std_dump_error(ctx);
+      JS_FreeValue(ctx, result_val);
+      qar_helpers.CurrentScriptDir := '';
+      Exit;
+    end;
+  end;
+
+  JS_FreeValue(ctx, result_val);
+  qar_helpers.CurrentScriptDir := '';
+  Result := True;
+end;
+
 begin
   {$IFDEF WINDOWS}
   // Ensure console I/O and RTL conversions use UTF-8 so JS strings print correctly
@@ -392,6 +533,10 @@ begin
   output_file := '';
   input_count := 0;
   SetLength(input_files, 0);
+  run_script_mode := False;
+  script_filename := '';
+  script_argc := 0;
+  exit_code := 0;
   
   // Parse command line arguments
   i := 1;
@@ -440,7 +585,8 @@ begin
       WriteLn('==================');
       WriteLn;
       WriteLn('Usage:');
-      WriteLn('  ', ExtractFileName(ParamStr(0)), ' [options] [files...]');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' [options] [script.js [args...]]');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' [options] -o output.qar inputs...');
       WriteLn;
       WriteLn('Options:');
       WriteLn('  -o, --output FILE    Build QAR file from JavaScript files/directories');
@@ -449,10 +595,11 @@ begin
       WriteLn('  -h, --help           Show this help');
       WriteLn;
       WriteLn('Examples:');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' script.js arg1 arg2   (run JS file, no REPL)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -o mylib.qar math.js utils.js');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -o mylib.qar src/');
-      WriteLn('  ', ExtractFileName(ParamStr(0)), ' -d 2              (interactive mode with verbose debug)');
-      WriteLn('  ', ExtractFileName(ParamStr(0)), '                    (interactive mode)');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' -d 2                  (interactive mode with verbose debug)');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), '                        (interactive mode)');
       Halt(0);
     end
     else
@@ -466,6 +613,21 @@ begin
     Inc(i);
   end;
   
+  // If not building, treat first non-option argument as script to run (non-interactive)
+  if (not build_mode) and (input_count > 0) then
+  begin
+    run_script_mode := True;
+    script_filename := input_files[0];
+    script_argc := input_count;
+    SetLength(script_args, script_argc);
+    SetLength(script_args_str, script_argc);
+    for i := 0 to script_argc - 1 do
+    begin
+      script_args_str[i] := input_files[i];
+      script_args[i] := PChar(script_args_str[i]);
+    end;
+  end;
+
   // If build mode, build QAR and exit
   if build_mode then
   begin
@@ -489,9 +651,12 @@ begin
       Halt(0);
   end;
   
-  WriteLn('QuickJS Pascal Demo');
-  WriteLn('==================');
-  WriteLn;
+  if not run_script_mode then
+  begin
+    WriteLn('QuickJS Pascal Demo');
+    WriteLn('==================');
+    WriteLn;
+  end;
 
   // Initialize dynamic library handle storage
   dll_helpers.LoadedDynamicLibraries := TStringList.Create;
@@ -520,8 +685,12 @@ begin
     Halt(1);
   end;
 
+  // Register built-in modules with both default and prefixed names for compatibility
+  js_init_module_std(ctx, 'std');
   js_init_module_std(ctx, 'qjs:std');
+  js_init_module_os(ctx, 'os');
   js_init_module_os(ctx, 'qjs:os');
+  js_init_module_bjson(ctx, 'bjson');
   js_init_module_bjson(ctx, 'qjs:bjson');
 
   // Initialize standard handlers
@@ -529,40 +698,52 @@ begin
 
   ApplyDebugSettings(rt);
 
-  // Set up module loader (required for QAR module resolution)
-  JS_SetModuleLoaderFunc(rt, nil, @qar_helpers.js_module_loader_wrapper, nil);
-
-  // Add standard helpers (console, print, etc.)
-  js_std_add_helpers(ctx, 0, nil);
-
-  file_content :=
-    'import * as bjson from ''qjs:bjson'';\n' +
-    'import * as std from ''qjs:std'';\n' +
-    'import * as os from ''qjs:os'';\n' +
-    'globalThis.bjson = bjson;\n' +
-    'globalThis.std = std;\n' +
-    'globalThis.os = os;\n' +
-    'if (globalThis.setTimeout === void 0) globalThis.setTimeout = os.setTimeout;\n' +
-    'if (globalThis.clearTimeout === void 0) globalThis.clearTimeout = os.clearTimeout;\n' +
-    'if (globalThis.setInterval === void 0) globalThis.setInterval = os.setInterval;\n' +
-    'if (globalThis.clearInterval === void 0) globalThis.clearInterval = os.clearInterval;\n';
-
-  result_val := JS_Eval(ctx,
-    PChar(file_content),
-    QWord(Length(file_content)),
-    PChar('<init>'),
-    JS_EVAL_TYPE_MODULE);
-
-  if JS_IsException(result_val) <> 0 then
-  begin
-    js_std_dump_error(ctx);
-    JS_FreeValue(ctx, result_val);
-  end
+  // Set up module loader
+  // - Script mode: default loader (filesystem + built-ins)
+  // - Interactive/QAR mode: wrapper to support QAR lookups
+  if run_script_mode then
+    JS_SetModuleLoaderFunc(rt, nil, @js_module_loader, nil)
   else
+    JS_SetModuleLoaderFunc(rt, nil, @qar_helpers.js_module_loader_wrapper, nil);
+
+  // Add standard helpers (console, print, etc.) and scriptArgs
+  if (run_script_mode) and (script_argc > 0) then
+    js_std_add_helpers(ctx, script_argc, @script_args[0])
+  else
+    js_std_add_helpers(ctx, 0, nil);
+
+  // Preload std/os/bjson and set globals (interactive mode only)
+  if not run_script_mode then
   begin
-    JS_FreeValue(ctx, result_val);
-    while JS_ExecutePendingJob(JS_GetRuntime(ctx), @ctx) > 0 do
+    file_content :=
+      'import * as bjson from ''qjs:bjson'';' + LineEnding +
+      'import * as std from ''qjs:std'';' + LineEnding +
+      'import * as os from ''qjs:os'';' + LineEnding +
+      'globalThis.bjson = bjson;' + LineEnding +
+      'globalThis.std = std;' + LineEnding +
+      'globalThis.os = os;' + LineEnding +
+      'if (globalThis.setTimeout === void 0) globalThis.setTimeout = os.setTimeout;' + LineEnding +
+      'if (globalThis.clearTimeout === void 0) globalThis.clearTimeout = os.clearTimeout;' + LineEnding +
+      'if (globalThis.setInterval === void 0) globalThis.setInterval = os.setInterval;' + LineEnding +
+      'if (globalThis.clearInterval === void 0) globalThis.clearInterval = os.clearInterval;' + LineEnding;
+
+    result_val := JS_Eval(ctx,
+      PChar(file_content),
+      QWord(Length(file_content)),
+      PChar('<init>'),
+      JS_EVAL_TYPE_MODULE);
+
+    if JS_IsException(result_val) <> 0 then
     begin
+      js_std_dump_error(ctx);
+      JS_FreeValue(ctx, result_val);
+    end
+    else
+    begin
+      JS_FreeValue(ctx, result_val);
+      while JS_ExecutePendingJob(JS_GetRuntime(ctx), @ctx) > 0 do
+      begin
+      end;
     end;
   end;
 
@@ -571,64 +752,71 @@ begin
   dll_helpers.RegisterDllHelpers(ctx);
   compression_helpers.RegisterCompressionHelpers(ctx);
 
-  // Load examples configuration
-  LoadExamplesConfig(ctx);
-
-  WriteLn('QuickJS version: ', JS_GetVersion);
-  if qar_helpers.DebugLevel > 0 then
-    WriteLn('Debug level: ', qar_helpers.DebugLevel);
-  WriteLn;
-
-  // Interactive mode help
-  WriteLn('Interactive JavaScript REPL');
-  WriteLn('Type JavaScript code (or "exit" to quit):');
-  WriteLn('Note: To use QAR modules, first run: LoadLibrary("qar_test.qar")');
-  WriteLn('      Then check entries with: GetQarInfo("qar_test.qar")');
-  WriteLn('      To build QAR files, use: BuildQar("output.qar", ["file1.js", "file2.js"])');
-  WriteLn('      Or with single file: BuildQar("output.qar", "file.js")');
-  WriteLn('      Or with directory: BuildQar("output.qar", "src/")');
-  WriteLn('      To load a JS file, use: .load filename.js');
-  WriteLn('      To build QAR from REPL, use: .build output.qar file1.js file2.js');
-  WriteLn('      Or: .build output.qar src/');
-  WriteLn('      To call dynamic library functions:');
-  WriteLn('        lib_id = LoadLib("mylib")        // tries .qar then platform lib');
-  {$IFDEF WINDOWS}
-  WriteLn('        // Or load specific: lib_id = LoadDLL("mylib.dll")');
-  {$ELSE}
-  {$IFDEF UNIX}
-  WriteLn('        // Or load specific: lib_id = LoadDLL("mylib.so")');
-  {$ENDIF}
-  {$IFDEF DARWIN}
-  WriteLn('        // Or load specific: lib_id = LoadDLL("mylib.dylib")');
-  {$ENDIF}
-  {$ENDIF}
-  WriteLn('        result = CallDllFunction(lib_id, "MyFunction", "i", 42)');
-  WriteLn('        FreeDLL(lib_id)');
-  WriteLn('      QAR helper commands:');
-  WriteLn('        .qar info [--init-lib]           - QAR/QuickJS information');
-  WriteLn('        .qar build <out.qar> <files...>  - Build QAR (same as qar_tool build)');
-  WriteLn('        .qar code <file.qar> <entry>     - Display source code of entry');
-  WriteLn('        .qar inspect <file.qar>          - Inspect QAR file details');
-  WriteLn('        .qar rebuild <in.qar> <out.qar>  - Rebuild QAR file');
-  WriteLn('        .qar version                     - QAR/QuickJS version');
-  WriteLn('        .verify <file.qar>               - Check compatibility only');
-  WriteLn('        .tool ...                        - Same as .qar ...');
-  WriteLn('        .example [command]              - Manage and run example tests');
-  WriteLn('          .example                      - Run all enabled tests');
-  WriteLn('          .example list                 - List all tests and status');
-  WriteLn('          .example add <name>           - Add a test');
-  WriteLn('          .example remove <name>        - Remove a test');
-  WriteLn('          .example enable <name>         - Enable a test');
-  WriteLn('          .example disable <name>       - Disable a test');
-  WriteLn;
-
-  // Simple interactive loop
-  while True do
+  if run_script_mode then
   begin
-    Write('js> ');
-    script := ReadLnUtf8;
-    if (script = 'exit') or (script = 'quit') then
-      Break;
+    if not RunScriptFile(ctx, script_filename) then
+      exit_code := 1;
+  end
+  else
+  begin
+    // Load examples configuration
+    LoadExamplesConfig(ctx);
+
+    WriteLn('QuickJS version: ', JS_GetVersion);
+    if qar_helpers.DebugLevel > 0 then
+      WriteLn('Debug level: ', qar_helpers.DebugLevel);
+    WriteLn;
+
+    // Interactive mode help
+    WriteLn('Interactive JavaScript REPL');
+    WriteLn('Type JavaScript code (or "exit" to quit):');
+    WriteLn('Note: To use QAR modules, first run: LoadLibrary("qar_test.qar")');
+    WriteLn('      Then check entries with: GetQarInfo("qar_test.qar")');
+    WriteLn('      To build QAR files, use: BuildQar("output.qar", ["file1.js", "file2.js"])');
+    WriteLn('      Or with single file: BuildQar("output.qar", "file.js")');
+    WriteLn('      Or with directory: BuildQar("output.qar", "src/")');
+    WriteLn('      To load a JS file, use: .load filename.js');
+    WriteLn('      To build QAR from REPL, use: .build output.qar file1.js file2.js');
+    WriteLn('      Or: .build output.qar src/');
+    WriteLn('      To call dynamic library functions:');
+    WriteLn('        lib_id = LoadLib("mylib")        // tries .qar then platform lib');
+    {$IFDEF WINDOWS}
+    WriteLn('        // Or load specific: lib_id = LoadDLL("mylib.dll")');
+    {$ELSE}
+    {$IFDEF UNIX}
+    WriteLn('        // Or load specific: lib_id = LoadDLL("mylib.so")');
+    {$ENDIF}
+    {$IFDEF DARWIN}
+    WriteLn('        // Or load specific: lib_id = LoadDLL("mylib.dylib")');
+    {$ENDIF}
+    {$ENDIF}
+    WriteLn('        result = CallDllFunction(lib_id, "MyFunction", "i", 42)');
+    WriteLn('        FreeDLL(lib_id)');
+    WriteLn('      QAR helper commands:');
+    WriteLn('        .qar info [--init-lib]           - QAR/QuickJS information');
+    WriteLn('        .qar build <out.qar> <files...>  - Build QAR (same as qar_tool build)');
+    WriteLn('        .qar code <file.qar> <entry>     - Display source code of entry');
+    WriteLn('        .qar inspect <file.qar>          - Inspect QAR file details');
+    WriteLn('        .qar rebuild <in.qar> <out.qar>  - Rebuild QAR file');
+    WriteLn('        .qar version                     - QAR/QuickJS version');
+    WriteLn('        .verify <file.qar>               - Check compatibility only');
+    WriteLn('        .tool ...                        - Same as .qar ...');
+    WriteLn('        .example [command]              - Manage and run example tests');
+    WriteLn('          .example                      - Run all enabled tests');
+    WriteLn('          .example list                 - List all tests and status');
+    WriteLn('          .example add <name>           - Add a test');
+    WriteLn('          .example remove <name>        - Remove a test');
+    WriteLn('          .example enable <name>         - Enable a test');
+    WriteLn('          .example disable <name>       - Disable a test');
+    WriteLn;
+
+    // Simple interactive loop
+    while True do
+    begin
+      Write('js> ');
+      script := ReadLnUtf8;
+      if (script = 'exit') or (script = 'quit') then
+        Break;
 
     if script <> '' then
     begin
@@ -1586,6 +1774,9 @@ begin
     end;
   end;
 
+  // End interactive mode block
+  end;
+
   // Cleanup
   if qar_helpers.DebugLevel > 1 then
     DumpRuntimeMemoryUsageToConsole(rt);
@@ -1599,6 +1790,13 @@ begin
   if dll_helpers.LoadedDynamicLibraries <> nil then
     dll_helpers.LoadedDynamicLibraries.Free;
 
-  WriteLn;
-  WriteLn('Goodbye!');
+  if run_script_mode then
+  begin
+    Halt(exit_code);
+  end
+  else
+  begin
+    WriteLn;
+    WriteLn('Goodbye!');
+  end;
 end.
