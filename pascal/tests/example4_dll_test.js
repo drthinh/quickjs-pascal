@@ -5,7 +5,7 @@
 console.log("=== Example 4: Dynamic Library Function Calls ===");
 
 // Check if dynamic library functions are available
-if (typeof LoadDynamicLibrary === "undefined") {
+if (typeof LoadDLL === "undefined" && typeof LoadLib === "undefined") {
   console.log("Dynamic library functions are not available");
   console.log("This example requires a compiled dynamic library:");
   console.log("  - Windows: test_dll.dll");
@@ -21,16 +21,9 @@ if (typeof LoadDynamicLibrary === "undefined") {
     // Try platform-specific extensions
     // QuickJS doesn't have process object, so we need to detect platform differently
     // Try Windows first (.dll), then Unix (.so), then macOS (.dylib)
-    // For now, we'll try to detect by attempting to load each extension
-    // Or use a simple heuristic: if we're on Windows, use .dll
-    // Since this is running in QuickJS Pascal on Windows, use .dll
-    lib_filename = "test_dll.dll";  // Default to Windows .dll
-    // Note: In a real cross-platform scenario, you might want to:
-    // 1. Try loading test_dll.dll first (Windows)
-    // 2. If that fails, try test_dll.so (Linux/Unix)
-    // 3. If that fails, try test_dll.dylib (macOS)
-    
-    var lib_id = LoadDynamicLibrary(lib_filename);
+    // Preferred: auto-detect extension and QAR via LoadLib
+    lib_filename = "test_dll";
+    var lib_id = LoadLib(lib_filename);
     console.log("   Library loaded successfully, ID:", lib_id);
     
     // Test function: GetVersion() - returns int, no arguments
@@ -59,7 +52,7 @@ if (typeof LoadDynamicLibrary === "undefined") {
     
     // Free the dynamic library
     console.log("\n6. Freeing dynamic library...");
-    FreeDynamicLibrary(lib_id);
+    FreeDLL(lib_id);
     console.log("   Library freed successfully");
     
     console.log("\n=== Dynamic Library Test Completed ===");

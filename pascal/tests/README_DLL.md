@@ -69,26 +69,23 @@ The test dynamic library exports the following functions:
 From JavaScript, you can use (cross-platform):
 
 ```javascript
-// Load dynamic library (cross-platform)
-// On Windows: LoadDynamicLibrary("test_dll.dll")
-// On Linux/Unix: LoadDynamicLibrary("test_dll.so")
-// On macOS: LoadDynamicLibrary("test_dll.dylib")
-var lib_id = LoadDynamicLibrary("test_dll.dll");  // or .so or .dylib
+// Load dynamic library (cross-platform, auto tries .qar then platform lib)
+var lib_id = LoadLib("test_dll"); // or LoadDLL("test_dll.dll"/".so"/".dylib")
 
 // Call function with no arguments, returns int
 var version = CallDllFunction(lib_id, "GetVersion", "i");
 
-// Call function with 1 int argument, returns int
-var result = CallDllFunction(lib_id, "Double", "i", 42);
+// Call function with ints (2 args here)
+var sum = CallDllFunction(lib_id, "Add", "i", "ii", 1, 2);
 
-// Call function with 1 float argument, returns float
-var calc = CallDllFunction(lib_id, "Calculate", "f", 10.0);
+// Call function with floats (2 args)
+var calc = CallDllFunction(lib_id, "Scale", "f", "ff", 10.0, 2.5);
 
 // Call void function
 CallDllFunction(lib_id, "PrintHello", "v");
 
 // Free dynamic library
-FreeDynamicLibrary(lib_id);
+FreeDLL(lib_id);
 ```
 
 **Note:** The library will be automatically freed when the program exits or encounters an error.
@@ -99,12 +96,9 @@ FreeDynamicLibrary(lib_id);
 - `"f"` - Float (double)
 - `"v"` - Void (no return value)
 
-## Limitations
+## Argument and return type support
 
-The current implementation of `CallDllFunction` supports:
-- Functions with 0 or 1 argument only
-- Basic types: int, float, void
-- stdcall calling convention
-
-For more complex cases, you may need to extend the implementation.
+- Return types: `"i"`/`"I"`/`"p"` (int/pointer), `"f"` (float64), `"v"` (void), `"s"` (PChar -> JS string).
+- Argument types: optional `argTypes` string, uniform kinds per call: `i/I/p`, `f`, `s`. If omitted, defaults to int.
+- Up to 6 arguments supported.
 

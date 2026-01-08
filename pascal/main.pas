@@ -501,18 +501,19 @@ begin
   WriteLn('      To build QAR from REPL, use: .build output.qar file1.js file2.js');
   WriteLn('      Or: .build output.qar src/');
   WriteLn('      To call dynamic library functions:');
+  WriteLn('        lib_id = LoadLib("mylib")        // tries .qar then platform lib');
   {$IFDEF WINDOWS}
-  WriteLn('        lib_id = LoadDynamicLibrary("mylib.dll")');
+  WriteLn('        // Or load specific: lib_id = LoadDLL("mylib.dll")');
   {$ELSE}
   {$IFDEF UNIX}
-  WriteLn('        lib_id = LoadDynamicLibrary("mylib.so")');
+  WriteLn('        // Or load specific: lib_id = LoadDLL("mylib.so")');
   {$ENDIF}
   {$IFDEF DARWIN}
-  WriteLn('        lib_id = LoadDynamicLibrary("mylib.dylib")');
+  WriteLn('        // Or load specific: lib_id = LoadDLL("mylib.dylib")');
   {$ENDIF}
   {$ENDIF}
   WriteLn('        result = CallDllFunction(lib_id, "MyFunction", "i", 42)');
-  WriteLn('        FreeDynamicLibrary(lib_id)');
+  WriteLn('        FreeDLL(lib_id)');
   WriteLn('      QAR helper commands:');
   WriteLn('        .qar info [--init-lib]           - QAR/QuickJS information');
   WriteLn('        .qar build <out.qar> <files...>  - Build QAR (same as qar_tool build)');

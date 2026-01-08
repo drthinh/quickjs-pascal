@@ -108,14 +108,20 @@ var
   search_paths: string;
 begin
   // Debug: function được gọi
-  WriteLn('[LoadLibrary] Function called with argc=', argc);
-  Flush(Output);
-  Flush(StdErr);
+  if DebugLevel > 0 then
+  begin
+    WriteLn('[LoadLibrary] Function called with argc=', argc);
+    Flush(Output);
+    Flush(StdErr);
+  end;
   
   if argc < 1 then
   begin
-    WriteLn('[LoadLibrary] Error: argc < 1');
-    Flush(Output);
+    if DebugLevel > 0 then
+    begin
+      WriteLn('[LoadLibrary] Error: argc < 1');
+      Flush(Output);
+    end;
     Result := JS_ThrowTypeError(ctx, PChar('LoadLibrary expects at least 1 argument'));
     Exit;
   end;
@@ -123,8 +129,11 @@ begin
   filename := JS_ToCString(ctx, argv[0]);
   if filename = nil then
   begin
-    WriteLn('[LoadLibrary] Error: JS_ToCString returned nil');
-    Flush(Output);
+    if DebugLevel > 0 then
+    begin
+      WriteLn('[LoadLibrary] Error: JS_ToCString returned nil');
+      Flush(Output);
+    end;
     Result := JS_EXCEPTION;
     Exit;
   end;
@@ -138,38 +147,47 @@ begin
     prefix := JS_ToCString(ctx, argv[1]);
     if prefix = nil then
     begin
-      WriteLn('[LoadLibrary] Error: JS_ToCString for prefix returned nil');
-      Flush(Output);
+      if DebugLevel > 0 then
+      begin
+        WriteLn('[LoadLibrary] Error: JS_ToCString for prefix returned nil');
+        Flush(Output);
+      end;
       Result := JS_EXCEPTION;
       Exit;
     end;
   end;
 
   // Try to find QAR file in multiple locations
-  WriteLn('[LoadLibrary] Looking for QAR file: ', filename_str);
-  WriteLn('[LoadLibrary] Current working directory: ', GetCurrentDir);
-  WriteLn('[LoadLibrary] CurrentScriptDir: ', CurrentScriptDir);
-  Flush(Output);
-  Flush(StdErr);
+  if DebugLevel > 0 then
+  begin
+    WriteLn('[LoadLibrary] Looking for QAR file: ', filename_str);
+    WriteLn('[LoadLibrary] Current working directory: ', GetCurrentDir);
+    WriteLn('[LoadLibrary] CurrentScriptDir: ', CurrentScriptDir);
+    Flush(Output);
+    Flush(StdErr);
+  end;
   
   found_path := FindQarFile(filename_str);
   
   if found_path = '' then
   begin
-    // Build search paths message
-    search_paths := 'Searched in: ' + GetCurrentDir;
-    if CurrentScriptDir <> '' then
-      search_paths := search_paths + ', ' + CurrentScriptDir;
-    search_paths := search_paths + ', ' + ExtractFileDir(ParamStr(0));
-    
-    WriteLn('Error: QAR file not found: ', filename_str);
-    WriteLn('  ', search_paths);
-    WriteLn('  Current working directory: ', GetCurrentDir);
-    if CurrentScriptDir <> '' then
-      WriteLn('  Script directory: ', CurrentScriptDir);
-    WriteLn('  Executable directory: ', ExtractFileDir(ParamStr(0)));
-    Flush(Output);
-    Flush(StdErr);
+    if DebugLevel > 0 then
+    begin
+      // Build search paths message
+      search_paths := 'Searched in: ' + GetCurrentDir;
+      if CurrentScriptDir <> '' then
+        search_paths := search_paths + ', ' + CurrentScriptDir;
+      search_paths := search_paths + ', ' + ExtractFileDir(ParamStr(0));
+      
+      WriteLn('Error: QAR file not found: ', filename_str);
+      WriteLn('  ', search_paths);
+      WriteLn('  Current working directory: ', GetCurrentDir);
+      if CurrentScriptDir <> '' then
+        WriteLn('  Script directory: ', CurrentScriptDir);
+      WriteLn('  Executable directory: ', ExtractFileDir(ParamStr(0)));
+      Flush(Output);
+      Flush(StdErr);
+    end;
     
     if prefix <> nil then
       JS_FreeCString(ctx, prefix);
@@ -178,29 +196,35 @@ begin
     Exit;
   end;
   
-  WriteLn('[LoadLibrary] Found QAR file at: ', found_path);
-  Flush(Output);
+  if DebugLevel > 0 then
+  begin
+    WriteLn('[LoadLibrary] Found QAR file at: ', found_path);
+    Flush(Output);
+  end;
 
   // Register with found path
   ret := js_register_qar_file(ctx, PChar(found_path), prefix);
 
   // Log kết quả trước khi free prefix
-  if ret < 0 then
+  if DebugLevel > 0 then
   begin
-    WriteLn('Error: Failed to register QAR file: ', found_path);
-    WriteLn('  (Original path: ', filename_str, ')');
-    Flush(Output);
-  end
-  else
-  begin
-    WriteLn('Successfully registered QAR file: ', found_path);
-    if found_path <> filename_str then
-      WriteLn('  (Resolved from: ', filename_str, ')');
-    if prefix <> nil then
-      WriteLn('  (Using prefix: "', prefix, '" - import with "', prefix, 'module.js")')
+    if ret < 0 then
+    begin
+      WriteLn('Error: Failed to register QAR file: ', found_path);
+      WriteLn('  (Original path: ', filename_str, ')');
+      Flush(Output);
+    end
     else
-      WriteLn('  (No prefix - modules will be searched in all registered QAR files)');
-    Flush(Output);
+    begin
+      WriteLn('Successfully registered QAR file: ', found_path);
+      if found_path <> filename_str then
+        WriteLn('  (Resolved from: ', filename_str, ')');
+      if prefix <> nil then
+        WriteLn('  (Using prefix: "', prefix, '" - import with "', prefix, 'module.js")')
+      else
+        WriteLn('  (No prefix - modules will be searched in all registered QAR files)');
+      Flush(Output);
+    end;
   end;
 
   if prefix <> nil then
