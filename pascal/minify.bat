@@ -1,0 +1,1 @@
+minify-js -m module -o compression_test.min.js compression_test.js

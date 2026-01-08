@@ -262,6 +262,9 @@ var
   old_dir, script_dir, script_path, test_path: string;
   // For QAR pre-registration
   ret: cint;
+  is_module: boolean;
+  job_result, loop_result: cint;
+  pending_ctx: PJSContext;
   // For QAR debugging
   qar_debug: PQarFile;
   entry_count_debug, i_debug: cint;
@@ -415,6 +418,9 @@ begin
   // Set memory limit (64 MB)
   JS_SetMemoryLimit(rt, 64 * 1024 * 1024);
 
+  // Allow the runtime to block while polling OS events (required for timers/async)
+  JS_SetCanBlock(rt, True);
+
   // Create context
   ctx := JS_NewContext(rt);
   if ctx = nil then
@@ -509,11 +515,12 @@ begin
   WriteLn('        FreeDynamicLibrary(lib_id)');
   WriteLn('      QAR helper commands:');
   WriteLn('        .qar info [--init-lib]           - QAR/QuickJS information');
-  WriteLn('        .qar build out.qar files...      - Build QAR (same as qar_tool build)');
-  WriteLn('        .qar inspect file.qar             - Inspect QAR file details');
-  WriteLn('        .qar rebuild in.qar out.qar      - Rebuild QAR file');
+  WriteLn('        .qar build <out.qar> <files...>  - Build QAR (same as qar_tool build)');
+  WriteLn('        .qar code <file.qar> <entry>     - Display source code of entry');
+  WriteLn('        .qar inspect <file.qar>          - Inspect QAR file details');
+  WriteLn('        .qar rebuild <in.qar> <out.qar>  - Rebuild QAR file');
   WriteLn('        .qar version                     - QAR/QuickJS version');
-  WriteLn('        .verify file.qar                 - Check compatibility only');
+  WriteLn('        .verify <file.qar>               - Check compatibility only');
   WriteLn('        .tool ...                        - Same as .qar ...');
   WriteLn('        .example [command]              - Manage and run example tests');
   WriteLn('          .example                      - Run all enabled tests');
@@ -650,27 +657,25 @@ begin
                 Flush(Output);
               end;
               
-              // Force GLOBAL script for .load command to ensure immediate execution
-              // (unless file explicitly uses import/export)
-              eval_flags := JS_EVAL_TYPE_GLOBAL;
+              is_module := False;
               if (Pos('import ', file_content) > 0) or (Pos('export ', file_content) > 0) then
+                is_module := True
+              else if JS_DetectModule(PChar(file_content), QWord(Length(file_content))) <> 0 then
+                is_module := True;
+
+              if is_module then
               begin
                 eval_flags := JS_EVAL_TYPE_MODULE;
                 if qar_helpers.DebugLevel > 0 then
-                  WriteLn('[DEBUG] Detected as MODULE (has import/export) - imports will be resolved before top-level code');
-              end
-              else if JS_DetectModule(PChar(file_content), QWord(Length(file_content))) <> 0 then
-              begin
-                // Only use module mode if explicitly detected AND has import/export
-                eval_flags := JS_EVAL_TYPE_GLOBAL;  // Force global for immediate execution
-                if qar_helpers.DebugLevel > 1 then
-                  WriteLn('[DEBUG] File detected as module but no import/export found, using GLOBAL mode for immediate execution');
+                  WriteLn('[DEBUG] Detected as MODULE - imports will be resolved before top-level code');
               end
               else
               begin
+                eval_flags := JS_EVAL_TYPE_GLOBAL;
+
                 if qar_helpers.DebugLevel > 1 then
                   WriteLn('[DEBUG] Detected as GLOBAL script');
-                
+
                 // Pre-register QAR files in script directory to avoid import resolution issues
                 // QuickJS resolves imports before executing top-level code, so LoadLibrary
                 // calls may happen too late. Pre-register common QAR files.
@@ -714,7 +719,7 @@ begin
                     end;
                     Flush(Output);
                   end;
-                  
+
                   // Also try to find QAR files mentioned in LoadLibrary calls
                   if Pos('LoadLibrary', file_content) > 0 then
                   begin
@@ -750,22 +755,42 @@ begin
               end
               else
               begin
-                // For modules, we need to execute pending jobs to run top-level code
+                job_result := 0;
+                pending_ctx := nil;
                 if eval_flags = JS_EVAL_TYPE_MODULE then
                 begin
                   // Execute pending jobs (module initialization)
-                  while JS_ExecutePendingJob(JS_GetRuntime(ctx), @ctx) > 0 do
-                  begin
-                    // Continue executing jobs until done
-                  end;
+                  repeat
+                    job_result := JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx);
+                    if job_result < 0 then
+                    begin
+                      if pending_ctx <> nil then
+                        js_std_dump_error(pending_ctx)
+                      else
+                        js_std_dump_error(ctx);
+                      Break;
+                    end;
+                  until job_result = 0;
                 end;
-                js_std_loop(ctx);
-                // Flush output to ensure all console.log output is displayed
-                Flush(Output);
-                WriteLn('File loaded successfully');
+
+                if job_result >= 0 then
+                begin
+                  loop_result := js_std_loop(ctx);
+                  if loop_result <> 0 then
+                  begin
+                    js_std_dump_error(ctx);
+                  end
+                  else
+                  begin
+                    // Flush output to ensure all console.log output is displayed
+                    Flush(Output);
+                    WriteLn('File loaded successfully');
+                  end;
+                  // Flush again after execution
+                  Flush(Output);
+                end;
+
                 JS_FreeValue(ctx, result_val);
-                // Flush again after execution
-                Flush(Output);
               end;
               
               // Clear script directory after loading
