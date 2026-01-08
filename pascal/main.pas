@@ -1162,12 +1162,12 @@ begin
           if cmdArgs.Count = 0 then
           begin
             WriteLn('QAR Tool commands (.qar / .tool):');
-            WriteLn('  info [--init-lib]           - Thông tin QAR/QuickJS');
-            WriteLn('  build <out.qar> <files...>  - Tạo QAR từ file JS/thư mục');
-            WriteLn('  inspect <file.qar>          - Kiểm tra chi tiết file QAR');
-            WriteLn('  rebuild <in.qar> <out.qar>  - Biên dịch lại QAR');
-            WriteLn('  code <file.qar> <entry>     - Hiển thị source code của entry');
-            WriteLn('  version                     - Phiên bản QAR/QuickJS');
+            WriteLn('  info [--init-lib]           - QAR/QuickJS information');
+            WriteLn('  build <out.qar> <files...>  - Create QAR from file JS/folder');
+            WriteLn('  inspect <file.qar>          - Check detail file QAR');
+            WriteLn('  rebuild <in.qar> <out.qar>  - Rebuild QAR');
+            WriteLn('  code <file.qar> <entry>     - Display source code of entry');
+            WriteLn('  version                     - QAR/QuickJS version');
             WriteLn('  help                        - Hiển thị trợ giúp');
             WriteLn;
             WriteLn('Ví dụ:');
@@ -1185,13 +1185,13 @@ begin
           if (subcmd = 'help') then
           begin
             WriteLn('QAR Tool commands (.qar / .tool):');
-            WriteLn('  info [--init-lib]           - Thông tin QAR/QuickJS');
-            WriteLn('  build <out.qar> <files...>  - Tạo QAR từ file JS/thư mục');
-            WriteLn('  inspect <file.qar>          - Kiểm tra chi tiết file QAR');
-            WriteLn('  rebuild <in.qar> <out.qar>  - Biên dịch lại QAR');
-            WriteLn('  code <file.qar> <entry>     - Hiển thị source code của entry');
-            WriteLn('  version                     - Phiên bản QAR/QuickJS');
-            WriteLn('  help                        - Hiển thị trợ giúp');
+            WriteLn('  info [--init-lib]           - QAR/QuickJS infomation');
+            WriteLn('  build <out.qar> <files...>  - Create QAR from file JS/folder');
+            WriteLn('  inspect <file.qar>          - Check detail file QAR');
+            WriteLn('  rebuild <in.qar> <out.qar>  - Rebuild QAR');
+            WriteLn('  code <file.qar> <entry>     - Display source code of entry');
+            WriteLn('  version                     - QAR/QuickJS version');
+            WriteLn('  help                        - Display help');
           end
           else if (subcmd = 'info') then
           begin
@@ -1352,10 +1352,10 @@ begin
         Continue; // Đã xử lý lệnh .qar/.tool/.verify
       end;
       
-      // Tự động chọn GLOBAL hay MODULE dựa trên nội dung script
+      // REPL nên luôn chạy ở GLOBAL để trả về giá trị biểu thức (giống qjs REPL)
+      // Tránh JS_DetectModule: code đơn giản như "1+2" có thể bị xem là module,
+      // JS_Eval sẽ trả về Promise/undefined khiến REPL không in kết quả.
       eval_flags := JS_EVAL_TYPE_GLOBAL;
-      if JS_DetectModule(PChar(script), QWord(Length(script))) <> 0 then
-        eval_flags := JS_EVAL_TYPE_MODULE;
 
       // Nếu code có "await" ở đầu dòng (top-level await), thêm cờ ASYNC
       // (chỉ áp dụng cho GLOBAL mode, MODULE mode đã hỗ trợ top-level await mặc định)
