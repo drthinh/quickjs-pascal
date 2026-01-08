@@ -25,7 +25,16 @@
 
 - Nếu bytecode không tương thích, hệ thống tự động compile lại từ source code
 
-## 3. WinZip có thể đọc file QAR không?
+## 3. QAR có chứa asset (ảnh/âm thanh/json...) không?
+
+**Có**, mọi file không phải JS/dll/so/dylib được đóng gói như asset.
+
+- Asset entry dùng `type: "asset"` trong manifest.
+- `bytecode_size = 0`, dữ liệu gốc nằm ở trường `source` (payload raw bytes).
+- Cờ flags: bit2 = 1 cho asset.
+- JS có thể lấy payload bằng helper `GetQarAsset(filename, path)` → `ArrayBuffer`.
+
+## 4. WinZip có thể đọc file QAR không?
 
 **Không**, WinZip không thể đọc file QAR.
 
@@ -33,7 +42,7 @@
 - Magic header: `"QAR\x01"` (không phải ZIP signature `PK\x03\x04`)
 - Cấu trúc file được thiết kế riêng cho QuickJS
 
-### Các công cụ không thể đọc QAR:
+### Công cụ không thể đọc QAR:
 - ❌ WinZip
 - ❌ 7-Zip
 - ❌ WinRAR
@@ -44,7 +53,7 @@
 - ✅ `qar` API trong QuickJS - Đọc QAR programmatically
 - ✅ Custom tools sử dụng QAR API
 
-## 4. Làm sao để xem nội dung QAR file?
+## 5. Làm sao để xem nội dung QAR file?
 
 Sử dụng QAR API trong C:
 
@@ -58,7 +67,8 @@ int count = qar_get_entry_count(qar);
 for (int i = 0; i < count; i++) {
     const QarEntry *entry = qar_get_entry(qar, i);
     printf("Entry: %s\n", qar_entry_get_path(entry));
-    printf("Type: %s\n", qar_entry_get_type(entry) ? "module" : "script");
+    int t = qar_entry_get_type(entry); // 0=script, 1=module, 2=asset
+    printf("Type: %s\n", (t==2) ? "asset" : (t ? "module" : "script"));
 }
 
 // Đọc manifest
@@ -66,17 +76,18 @@ size_t manifest_len;
 const char *manifest = qar_get_manifest(qar, &manifest_len);
 printf("Manifest:\n%s\n", manifest);
 
-// Đọc source code của một entry
-const QarEntry *entry = qar_find_entry(qar, "math.js");
+// Đọc payload của một entry
+const QarEntry *entry = qar_find_entry(qar, "assets/logo.png");
 qar_entry_load_data(qar, entry);
-size_t source_len;
-const uint8_t *source = qar_entry_get_source(entry, &source_len);
-printf("Source code:\n%.*s\n", (int)source_len, source);
+size_t data_len;
+const uint8_t *data = qar_entry_get_source(entry, &data_len); // asset ở source slot
+// Với JS bytecode, dùng qar_entry_get_bytecode; với asset, bytecode có thể null
+printf("Data size: %zu\n", data_len);
 
 qar_close(qar);
 ```
 
-## 5. So sánh QAR với các format khác
+## 6. So sánh QAR với các format khác
 
 | Đặc điểm | QAR | JAR | ZIP |
 |----------|-----|-----|-----|
@@ -87,14 +98,14 @@ qar_close(qar);
 | QuickJS specific | ✅ | ❌ | ❌ |
 | Module support | ✅ | ✅ | ❌ |
 
-## 6. Tại sao QAR không dùng ZIP format?
+## 7. Tại sao QAR không dùng ZIP format?
 
 - **Performance**: Không cần decompress, load trực tiếp
 - **Simplicity**: Cấu trúc đơn giản, dễ implement
 - **QuickJS specific**: Tối ưu cho QuickJS bytecode format
 - **Size**: Thường nhỏ hơn ZIP vì không có overhead của compression
 
-## 7. Có thể convert QAR sang ZIP không?
+## 8. Có thể convert QAR sang ZIP không?
 
 Có thể extract source code từ QAR và tạo ZIP:
 
@@ -117,7 +128,7 @@ qar_close(qar);
 
 Sau đó có thể zip các file đã extract.
 
-## 8. QAR file có thể được edit không?
+## 9. QAR file có thể được edit không?
 
 Có thể edit bằng cách:
 1. Extract source code từ QAR
@@ -126,7 +137,7 @@ Có thể edit bằng cách:
 
 **Không thể** edit trực tiếp QAR file như text editor vì là binary format.
 
-## 9. Kích thước QAR file so với source files?
+## 10. Kích thước QAR file so với source files?
 
 - QAR file thường lớn hơn tổng size của source files vì:
   - Chứa cả bytecode và source code
@@ -138,7 +149,7 @@ Có thể edit bằng cách:
   - Bytecode: 585 bytes
   - QAR entry: ~800 bytes (bao gồm header, metadata)
 
-## 10. QAR có hỗ trợ compression trong tương lai không?
+## 11. QAR có hỗ trợ compression trong tương lai không?
 
 Có thể, nhưng hiện tại không có compression để:
 - Tăng tốc độ load (không cần decompress)

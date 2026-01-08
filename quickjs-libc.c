@@ -878,12 +878,13 @@ static JSModuleDef *js_module_loader_qar(JSContext *ctx,
             continue;
         }
         
+        int entry_type = qar_entry_get_type(entry);
         int tag = JS_VALUE_GET_TAG(obj);
         fprintf(stderr, "[QAR DEBUG] Successfully read bytecode object for entry: %s, tag=%d\n", 
                 qar_entry_get_path(entry), tag);
         
-        // Check if it's a module
-        if (qar_entry_get_type(entry)) {
+        // Check if it's a module (entry_type == 1). Skip assets (entry_type == 2).
+        if (entry_type == 1) {
             // It's a module
             if (tag != JS_TAG_MODULE) {
                 fprintf(stderr, "[QAR DEBUG] Expected JS_TAG_MODULE (%d), got tag %d\n", 
@@ -899,7 +900,7 @@ static JSModuleDef *js_module_loader_qar(JSContext *ctx,
             m = JS_VALUE_GET_PTR(obj);
             JS_FreeValue(ctx, obj);
             return m;
-        } else {
+        } else if (entry_type == 0) {
             // It's a script, evaluate it
             JSValue result = JS_EvalFunction(ctx, obj);
             JS_FreeValue(ctx, obj);
@@ -910,6 +911,10 @@ static JSModuleDef *js_module_loader_qar(JSContext *ctx,
             // For scripts, we return a dummy module
             m = JS_NewCModule(ctx, module_name, NULL);
             return m;
+        } else {
+            // Asset or unknown type: skip
+            JS_FreeValue(ctx, obj);
+            continue;
         }
     }
     

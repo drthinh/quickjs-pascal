@@ -75,9 +75,10 @@ type
     source: Pcuint8;
     source_len: csize_t;
     is_module: cint;     // 1 if ES module, 0 if script
+    is_asset: cint;      // 1 if non-JS asset (stored in source)
     bytecode_compressed: Pcuint8;  // Compressed bytecode
     bytecode_compressed_len: csize_t;
-    source_compressed: Pcuint8;     // Compressed source
+    source_compressed: Pcuint8;     // Compressed source / asset payload
     source_compressed_len: csize_t;
     is_compressed: cint;  // 1 if compressed, 0 if not
   end;
@@ -91,7 +92,7 @@ type
     constructor Create;
     destructor Destroy; override;
     procedure Add(const path, filepath: string; bytecode: Pcuint8; bytecode_len: csize_t;
-                  source: Pcuint8; source_len: csize_t; is_module: cint);
+                  source: Pcuint8; source_len: csize_t; is_module: cint; is_asset: cint);
     function GetEntry(index: integer): PQarBuildEntry;
     property Count: integer read FCount;
   end;
@@ -198,7 +199,7 @@ begin
 end;
 
 procedure TQarEntryList.Add(const path, filepath: string; bytecode: Pcuint8; bytecode_len: csize_t;
-                            source: Pcuint8; source_len: csize_t; is_module: cint);
+                            source: Pcuint8; source_len: csize_t; is_module: cint; is_asset: cint);
 begin
   if FCount >= Length(FEntries) then
     SetLength(FEntries, Length(FEntries) + 10);
@@ -210,6 +211,7 @@ begin
   FEntries[FCount].source := source;
   FEntries[FCount].source_len := source_len;
   FEntries[FCount].is_module := is_module;
+  FEntries[FCount].is_asset := is_asset;
   FEntries[FCount].bytecode_compressed := nil;
   FEntries[FCount].bytecode_compressed_len := 0;
   FEntries[FCount].source_compressed := nil;
@@ -231,6 +233,40 @@ function IsJSFile(const filename: string): boolean;
 begin
   Result := (LowerCase(ExtractFileExt(filename)) = '.js') or
             (LowerCase(ExtractFileExt(filename)) = '.mjs');
+end;
+
+// Forward declaration for dynamic library check
+function IsDynamicLibraryFile(const filename: string): boolean; forward;
+
+// Helper function to check if file is asset (non-JS) supported
+function IsAssetFile(const filename: string): boolean;
+var
+  ext: string;
+begin
+  ext := LowerCase(ExtractFileExt(filename));
+  // Treat anything that is not JS and not a dynamic library as asset.
+  if IsJSFile(filename) or IsDynamicLibraryFile(filename) then
+    Exit(False);
+  // Known common asset extensions (non-exhaustive)
+  if (ext = '.json') or (ext = '.png') or (ext = '.jpg') or (ext = '.jpeg') or
+     (ext = '.gif') or (ext = '.mp3') or (ext = '.ogg') or (ext = '.wav') or
+     (ext = '.mp4') or (ext = '.webp') or (ext = '.svg') or (ext = '.txt') or
+     (ext = '.bin') or (ext = '.dat') or (ext = '.bmp') or (ext = '.ico') or
+     (ext = '.csv') or (ext = '.yml') or (ext = '.yaml') or (ext = '.xml') or
+     (ext = '.wasm') or (ext = '.ttf') or (ext = '.otf') or (ext = '.woff') or (ext = '.woff2') or
+     (ext = '.mpg') or (ext = '.mpeg') or (ext = '.mov') or (ext = '.avi') or
+     (ext = '.m4a') or (ext = '.flac') or (ext = '.ape') or (ext = '.alac') or
+     (ext = '.jsonl') or (ext = '.md') or (ext = '.pdf') or (ext = '.zip') or (ext = '.rar') or
+     (ext = '.7z') or (ext = '.tar') or (ext = '.gz') or (ext = '.bz2') or (ext = '.xz') or
+     (ext = '.patch') or (ext = '.diff') or (ext = '.psd') or (ext = '.glb') or (ext = '.gltf') or
+     (ext = '.obj') or (ext = '.fbx') or (ext = '.shader') or (ext = '.vert') or (ext = '.frag') or
+     (ext = '.ini') or (ext = '.conf') or (ext = '.log') or (ext = '.cue') or
+     (ext = '.wavpack') or (ext = '.rpf') or (ext = '.mp1') or (ext = '.mp2') or (ext = '.jsonc') or
+     (ext = '.ts') or (ext = '.mts') or (ext = '.cts') then
+    Exit(True);
+
+  // Fallback: any non-JS, non-dynamic-library file is treated as asset
+  Result := True;
 end;
 
 // Helper function to normalize path (convert \ to /)
@@ -467,7 +503,7 @@ begin
           // It's a directory, recurse
           AddFileToList(list, base_dir, fullpath);
         end
-        else if IsJSFile(search_rec.Name) then
+        else if IsJSFile(search_rec.Name) or IsAssetFile(search_rec.Name) then
         begin
           // It's a JS file, add it
           AddFileToList(list, base_dir, fullpath);
@@ -476,7 +512,7 @@ begin
       FindClose(search_rec);
     end;
   end
-  else if FileExists(filepath) and IsJSFile(filepath) then
+  else if FileExists(filepath) and (IsJSFile(filepath) or IsAssetFile(filepath)) then
   begin
     // Add single file
     // Normalize both paths for comparison
@@ -508,7 +544,10 @@ begin
     NormalizePath(rel_path);
     
     // Add entry with empty data (will be compiled later)
-    list.Add(rel_path, filepath, nil, 0, nil, 0, 0);
+    if IsJSFile(filepath) then
+      list.Add(rel_path, filepath, nil, 0, nil, 0, 1, 0)
+    else
+      list.Add(rel_path, filepath, nil, 0, nil, 0, 0, 1);
   end;
 end;
 
@@ -524,7 +563,7 @@ var
 begin
   Result := -1;
   
-  // Load source file
+  // Load source or asset file
   buf := js_load_file(ctx, @buf_len, PChar(entry^.filepath));
   if buf = nil then
   begin
@@ -532,7 +571,7 @@ begin
     Exit;
   end;
   
-  // Save source code - allocate regular memory and copy
+  // Save source/asset data - allocate regular memory and copy
   source_buf := GetMem(buf_len);
   if source_buf = nil then
   begin
@@ -542,6 +581,17 @@ begin
   Move(buf^, source_buf^, buf_len);
   entry^.source := source_buf;
   entry^.source_len := buf_len;
+  
+  // Asset: skip compilation, no bytecode
+  if entry^.is_asset <> 0 then
+  begin
+    entry^.bytecode := nil;
+    entry^.bytecode_len := 0;
+    entry^.is_module := 0;
+    js_free(ctx, buf);
+    Result := 0;
+    Exit;
+  end;
   
   // Detect module type
   is_module := 0;
@@ -633,7 +683,9 @@ begin
       entry := list.GetEntry(i);
       entryObj := TJSONObject.Create;
       entryObj.Add('path', entry^.path);
-      if entry^.is_module <> 0 then
+      if entry^.is_asset <> 0 then
+        entryObj.Add('type', 'asset')
+      else if entry^.is_module <> 0 then
         entryObj.Add('type', 'module')
       else
         entryObj.Add('type', 'script');
@@ -707,6 +759,8 @@ begin
         flags := flags or 1;  // Bit 0 = module
       if entry^.is_compressed <> 0 then
         flags := flags or 2;  // Bit 1 = compressed
+      if entry^.is_asset <> 0 then
+        flags := flags or 4;  // Bit 2 = asset
       BlockWrite(f, flags, 4);
       
       // Write sizes - use compressed sizes if available, otherwise original
@@ -1346,7 +1400,9 @@ end;
 // Read entry flags from QAR file binary (to check compression status)
 // This reads directly from the file since there's no API to get flags
 function ReadEntryFlagsFromQarFile(const qar_filename: string; entry_index: integer; var is_compressed: boolean; 
-                                   var compressed_bytecode_size, compressed_source_size: uint64): boolean;
+                                   var compressed_bytecode_size, compressed_source_size: uint64;
+                                   var is_asset: boolean;
+                                   var bytecode_orig_size, source_orig_size: uint64): boolean;
 var
   f: File;
   magic: array[0..3] of char;
@@ -1358,7 +1414,7 @@ var
   path_str: string;
   flags: uint32;
   bytecode_size, source_size: uint64;
-  bytecode_orig_size, source_orig_size: uint64;
+  bytecode_orig_size_local, source_orig_size_local: uint64;
 begin
   Result := False;
   is_compressed := False;
@@ -1432,6 +1488,7 @@ begin
     // Read flags
     BlockRead(f, flags, 4);
     is_compressed := (flags and 2) <> 0;
+    is_asset := (flags and 4) <> 0;
     
     // Read sizes
     BlockRead(f, bytecode_size, 8);
@@ -1442,14 +1499,20 @@ begin
       compressed_bytecode_size := bytecode_size;
       compressed_source_size := source_size;
       // Read original sizes
-      BlockRead(f, bytecode_orig_size, 8);
-      BlockRead(f, source_orig_size, 8);
+      BlockRead(f, bytecode_orig_size_local, 8);
+      BlockRead(f, source_orig_size_local, 8);
     end
     else
     begin
       compressed_bytecode_size := bytecode_size;
       compressed_source_size := source_size;
+      bytecode_orig_size_local := bytecode_size;
+      source_orig_size_local := source_size;
     end;
+    
+    // Output original sizes
+    bytecode_orig_size := bytecode_orig_size_local;
+    source_orig_size := source_orig_size_local;
     
     Result := True;
   finally
@@ -1473,6 +1536,8 @@ var
   current_qjs_version: string;
   is_compressed: boolean;
   compressed_bytecode_size, compressed_source_size: uint64;
+  is_asset_flag: boolean;
+  bytecode_orig_size, source_orig_size: uint64;
 begin
   // Initialize result
   Result.qar_file := qar_filename;
@@ -1557,7 +1622,9 @@ begin
         entry_type := qar_entry_get_type(entry);
         
         Result.entries[i].path := string(entry_path);
-        if entry_type <> 0 then
+        if entry_type = 2 then
+          Result.entries[i].entry_type := 'asset'
+        else if entry_type <> 0 then
           Result.entries[i].entry_type := 'module'
         else
           Result.entries[i].entry_type := 'script';
@@ -1566,7 +1633,11 @@ begin
         is_compressed := False;
         compressed_bytecode_size := 0;
         compressed_source_size := 0;
-        if ReadEntryFlagsFromQarFile(qar_filename, i, is_compressed, compressed_bytecode_size, compressed_source_size) then
+        is_asset_flag := False;
+        bytecode_orig_size := 0;
+        source_orig_size := 0;
+        if ReadEntryFlagsFromQarFile(qar_filename, i, is_compressed, compressed_bytecode_size, compressed_source_size,
+                                     is_asset_flag, bytecode_orig_size, source_orig_size) then
         begin
           Result.entries[i].is_compressed := is_compressed;
           Result.entries[i].compressed_bytecode_size := compressed_bytecode_size;
@@ -1591,12 +1662,17 @@ begin
             Result.entries[i].bytecode_size := bytecode_len;
           
           source := qar_entry_get_source(entry, @source_len);
-          if source <> nil then
+          if (entry_type <> 2) and (source <> nil) then
           begin
             Result.entries[i].source_size := source_len;
             
             // Parse source for LoadLibrary calls
             ParseLoadLibraryFromSource(source, source_len, Result.dependencies);
+          end
+          else if source <> nil then
+          begin
+            // Asset: record source_size but skip parsing
+            Result.entries[i].source_size := source_len;
           end;
         end;
       end;

@@ -274,7 +274,11 @@ const char *qar_entry_get_path(const QarEntry *entry)
 int qar_entry_get_type(const QarEntry *entry)
 {
     const QarEntryInternal *e = (const QarEntryInternal *)entry;
-    return e ? (e->flags & 1) : 0;
+    if (!e)
+        return 0;
+    if (e->flags & 4)  // asset flag
+        return 2;      // 2 = asset
+    return (e->flags & 1);  // 1 = module, 0 = script
 }
 
 int qar_entry_load_data(QarFile *qar, const QarEntry *entry)

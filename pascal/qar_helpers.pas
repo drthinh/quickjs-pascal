@@ -23,6 +23,7 @@ function FindQarFile(const qar_filename: string): string;
 function js_load_qar_library(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
 function js_get_qar_info(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
 function js_execute_qar_entry(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+function js_get_qar_asset(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
 function js_build_qar(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
 function js_module_loader_wrapper(ctx: PJSContext; module_name: PChar; opaque: pointer): PJSModuleDef; cdecl;
 
@@ -309,7 +310,9 @@ begin
       entry_type := qar_entry_get_type(entry);
 
       JS_DefinePropertyValueStr(ctx, item, PChar('path'), JS_NewString(ctx, entry_path), JS_PROP_C_W_E);
-      if entry_type <> 0 then
+      if entry_type = 2 then
+        JS_DefinePropertyValueStr(ctx, item, PChar('type'), JS_NewString(ctx, PChar('asset')), JS_PROP_C_W_E)
+      else if entry_type <> 0 then
         JS_DefinePropertyValueStr(ctx, item, PChar('type'), JS_NewString(ctx, PChar('module')), JS_PROP_C_W_E)
       else
         JS_DefinePropertyValueStr(ctx, item, PChar('type'), JS_NewString(ctx, PChar('script')), JS_PROP_C_W_E);
@@ -364,8 +367,9 @@ var
   filename, entry_path: PChar;
   qar: PQarFile;
   entry: PQarEntryRead;
-  bytecode_len: csize_t;
-  bytecode: Pcuint8;
+  entry_type: cint;
+  bytecode_len, source_len: csize_t;
+  bytecode, source: Pcuint8;
   obj: JSValue;
   eval_flags: cint;
 begin
@@ -418,7 +422,24 @@ begin
     Exit;
   end;
 
-  // Get bytecode
+  entry_type := qar_entry_get_type(entry);
+
+  // Assets: return ArrayBuffer with raw payload (stored in source slot)
+  if entry_type = 2 then
+  begin
+    source := qar_entry_get_source(entry, @source_len);
+    if source = nil then
+    begin
+      qar_close(qar);
+      Result := JS_ThrowTypeError(ctx, PChar('Failed to get asset payload'));
+      Exit;
+    end;
+    Result := JS_NewArrayBufferCopy(ctx, source, csize_t(source_len));
+    qar_close(qar);
+    Exit;
+  end;
+
+  // Scripts/modules: load bytecode
   bytecode := qar_entry_get_bytecode(entry, @bytecode_len);
   if bytecode = nil then
   begin
@@ -459,6 +480,82 @@ begin
     JS_FreeValue(ctx, obj);
   end;
 
+  qar_close(qar);
+end;
+
+// Helper function to get asset payload as ArrayBuffer
+function js_get_qar_asset(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+var
+  filename, entry_path: PChar;
+  qar: PQarFile;
+  entry: PQarEntryRead;
+  entry_type: cint;
+  source_len: csize_t;
+  source: Pcuint8;
+begin
+  if argc < 2 then
+  begin
+    Result := JS_ThrowTypeError(ctx, PChar('GetQarAsset expects 2 arguments: filename and entryPath'));
+    Exit;
+  end;
+
+  filename := JS_ToCString(ctx, argv[0]);
+  if filename = nil then
+  begin
+    Result := JS_EXCEPTION;
+    Exit;
+  end;
+
+  entry_path := JS_ToCString(ctx, argv[1]);
+  if entry_path = nil then
+  begin
+    JS_FreeCString(ctx, filename);
+    Result := JS_EXCEPTION;
+    Exit;
+  end;
+
+  qar := qar_open(filename);
+  JS_FreeCString(ctx, filename);
+  if qar = nil then
+  begin
+    JS_FreeCString(ctx, entry_path);
+    Result := JS_ThrowTypeError(ctx, PChar('Failed to open QAR file'));
+    Exit;
+  end;
+
+  entry := qar_find_entry(qar, entry_path);
+  JS_FreeCString(ctx, entry_path);
+  if entry = nil then
+  begin
+    qar_close(qar);
+    Result := JS_ThrowTypeError(ctx, PChar('Entry not found in QAR file'));
+    Exit;
+  end;
+
+  if qar_entry_load_data(qar, entry) < 0 then
+  begin
+    qar_close(qar);
+    Result := JS_ThrowTypeError(ctx, PChar('Failed to load entry data'));
+    Exit;
+  end;
+
+  entry_type := qar_entry_get_type(entry);
+  if entry_type <> 2 then
+  begin
+    qar_close(qar);
+    Result := JS_ThrowTypeError(ctx, PChar('Entry is not an asset'));
+    Exit;
+  end;
+
+  source := qar_entry_get_source(entry, @source_len);
+  if source = nil then
+  begin
+    qar_close(qar);
+    Result := JS_ThrowTypeError(ctx, PChar('Failed to get asset payload'));
+    Exit;
+  end;
+
+  Result := JS_NewArrayBufferCopy(ctx, source, csize_t(source_len));
   qar_close(qar);
 end;
 
@@ -717,6 +814,10 @@ begin
   // Register ExecuteQarEntry
   JS_DefinePropertyValueStr(ctx, global_obj, PChar('ExecuteQarEntry'),
     JS_NewCFunction(ctx, @js_execute_qar_entry, PChar('ExecuteQarEntry'), 2), JS_PROP_C_W_E);
+
+  // Register GetQarAsset
+  JS_DefinePropertyValueStr(ctx, global_obj, PChar('GetQarAsset'),
+    JS_NewCFunction(ctx, @js_get_qar_asset, PChar('GetQarAsset'), 2), JS_PROP_C_W_E);
 
   // Register BuildQar
   JS_DefinePropertyValueStr(ctx, global_obj, PChar('BuildQar'),

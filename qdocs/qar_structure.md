@@ -23,15 +23,20 @@ Offset  Size  Description
 
 ### Entries (mỗi entry)
 ```
-Offset  Size  Description
-------  ----  -----------
-0       4     Path length (uint32_t)
-4       N     Path string (N bytes, không có null terminator)
-N+4     4     Flags (uint32_t): bit 0 = module (1) hoặc script (0)
-N+8     8     Bytecode size (uint64_t)
-N+16    8     Source size (uint64_t)
-N+24    B     Bytecode data (B bytes)
-N+24+B  S     Source code data (S bytes)
+Offset        Size  Description
+------        ----  -----------
+0             4     Path length (uint32_t)
+4             N     Path string (N bytes, không có null terminator)
+N+4           4     Flags (uint32_t)
+                  - bit0: 1 = module, 0 = script
+                  - bit1: 1 = entry compressed (per-entry)
+                  - bit2: 1 = asset (payload lưu ở "source")
+N+8           8     Bytecode size (uint64_t) - nếu nén: kích thước đã nén
+N+16          8     Source size (uint64_t)   - nếu nén: kích thước đã nén
+N+24          8?    (chỉ khi nén) Original bytecode size (uint64_t)
+N+32          8?    (chỉ khi nén) Original source size (uint64_t)
+...           B     Bytecode data (B bytes, có thể 0 nếu asset)
+...+B         S     Source/payload data (S bytes; với asset đây là dữ liệu gốc)
 ```
 
 ### Manifest (JSON)
@@ -46,6 +51,12 @@ N+24+B  S     Source code data (S bytes)
       "type": "module",
       "bytecode_size": 585,
       "source_size": 123
+    },
+    {
+      "path": "assets/logo.png",
+      "type": "asset",
+      "bytecode_size": 0,
+      "source_size": 4096
     }
   ]
 }
@@ -53,17 +64,17 @@ N+24+B  S     Source code data (S bytes)
 
 ## Nội dung QAR File
 
-### ✅ Có chứa Bytecode
-- Mỗi entry chứa bytecode đã được compile từ JavaScript source
-- Bytecode được tạo bằng `JS_WriteObject()` với flags `JS_WRITE_OBJ_BYTECODE | JS_WRITE_OBJ_REFERENCE`
+### ✅ Có chứa Bytecode (cho script/module)
+- Mỗi entry JS chứa bytecode được compile với `JS_WriteObject()` (`JS_WRITE_OBJ_BYTECODE | JS_WRITE_OBJ_REFERENCE`)
 - Bytecode format phụ thuộc vào phiên bản QuickJS
 
-### ✅ Có chứa Source Code
-- Mỗi entry cũng chứa source code JavaScript gốc
-- Source code được lưu để:
-  - Fallback nếu bytecode không tương thích với phiên bản QuickJS hiện tại
-  - Debug và development
-  - Source maps
+### ✅ Có chứa Source Code hoặc Asset Payload
+- JS entries: chứa source code JavaScript gốc (fallback, debug, sourcemap)
+- Asset entries: bytecode_size = 0, payload được lưu ở phần `source` (raw bytes)
+
+### ✅ Hỗ trợ nén theo entry
+- Bit1 trong flags bật khi entry được nén.
+- Khi nén, hai trường kích thước thêm (original bytecode/source) được ghi để biết kích thước thật trước nén.
 
 ### ❌ WinZip/Không thể đọc được
 - QAR là định dạng binary tùy chỉnh, không phải ZIP format

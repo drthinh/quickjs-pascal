@@ -52,9 +52,10 @@ typedef struct {
     uint8_t *source;
     size_t source_len;
     int is_module;   // 1 if ES module, 0 if script
+    int is_asset;    // 1 if non-JS asset
     uint8_t *bytecode_compressed;  // Compressed bytecode
     size_t bytecode_compressed_len;
-    uint8_t *source_compressed;     // Compressed source
+    uint8_t *source_compressed;     // Compressed source (or asset payload)
     size_t source_compressed_len;
     int is_compressed;  // 1 if compressed, 0 if not
 } QarEntry;
@@ -75,7 +76,7 @@ static void qar_entry_list_init(QarEntryList *list)
 static void qar_entry_list_add(QarEntryList *list, const char *path, 
                                 const char *filepath, uint8_t *bytecode, 
                                 size_t bytecode_len, uint8_t *source, 
-                                size_t source_len, int is_module)
+                                size_t source_len, int is_module, int is_asset)
 {
     if (list->count == list->size) {
         int newsize = list->size + (list->size >> 1) + 4;
@@ -96,6 +97,7 @@ static void qar_entry_list_add(QarEntryList *list, const char *path,
     entry->source = source;
     entry->source_len = source_len;
     entry->is_module = is_module;
+    entry->is_asset = is_asset;
     entry->bytecode_compressed = NULL;
     entry->bytecode_compressed_len = 0;
     entry->source_compressed = NULL;
@@ -124,6 +126,22 @@ static void qar_entry_list_free(QarEntryList *list)
 static int is_js_file(const char *filename)
 {
     return js__has_suffix(filename, ".js") || js__has_suffix(filename, ".mjs");
+}
+
+static int is_asset_file(const char *filename)
+{
+    /* Allow common asset extensions; can be extended later */
+    return js__has_suffix(filename, ".json") ||
+           js__has_suffix(filename, ".png")  ||
+           js__has_suffix(filename, ".jpg")  ||
+           js__has_suffix(filename, ".jpeg") ||
+           js__has_suffix(filename, ".gif")  ||
+           js__has_suffix(filename, ".mp3")  ||
+           js__has_suffix(filename, ".ogg")  ||
+           js__has_suffix(filename, ".wav")  ||
+           js__has_suffix(filename, ".mp4")  ||
+           js__has_suffix(filename, ".webp") ||
+           js__has_suffix(filename, ".svg");
 }
 
 static void normalize_path(char *path)
@@ -164,7 +182,7 @@ static void add_file_to_list(QarEntryList *list, const char *base_dir,
                 
                 if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
                     add_file_to_list(list, base_dir, fullpath);
-                } else if (is_js_file(findData.cFileName)) {
+                } else if (is_js_file(findData.cFileName) || is_asset_file(findData.cFileName)) {
                     add_file_to_list(list, base_dir, fullpath);
                 }
             } while (FindNextFile(hFind, &findData));
@@ -186,7 +204,7 @@ static void add_file_to_list(QarEntryList *list, const char *base_dir,
                 if (stat(fullpath, &entry_st) == 0) {
                     if (S_ISDIR(entry_st.st_mode)) {
                         add_file_to_list(list, base_dir, fullpath);
-                    } else if (is_js_file(entry->d_name)) {
+                    } else if (is_js_file(entry->d_name) || is_asset_file(entry->d_name)) {
                         add_file_to_list(list, base_dir, fullpath);
                     }
                 }
@@ -194,7 +212,7 @@ static void add_file_to_list(QarEntryList *list, const char *base_dir,
             closedir(dir);
         }
 #endif
-    } else if (is_js_file(filepath)) {
+    } else if (is_js_file(filepath) || is_asset_file(filepath)) {
         // Add single file - will be compiled later
         char rel_path[1024];
         size_t base_len = strlen(base_dir);
@@ -211,7 +229,8 @@ static void add_file_to_list(QarEntryList *list, const char *base_dir,
         }
         normalize_path(rel_path);
         
-        qar_entry_list_add(list, rel_path, filepath, NULL, 0, NULL, 0, 0);
+        int is_js = is_js_file(filepath);
+        qar_entry_list_add(list, rel_path, filepath, NULL, 0, NULL, 0, is_js, !is_js);
     }
 }
 
@@ -231,7 +250,28 @@ static int compile_and_add_entry(JSContext *ctx, QarEntry *entry)
     int eval_flags;
     int is_module;
     
-    // Load source file
+    if (entry->is_asset) {
+        /* Asset: store raw bytes as "source", no bytecode */
+        buf = js_load_file(ctx, &buf_len, entry->filepath);
+        if (!buf) {
+            fprintf(stderr, "Could not load asset file: %s\n", entry->filepath);
+            return -1;
+        }
+        entry->source = malloc(buf_len);
+        if (!entry->source) {
+            js_free(ctx, buf);
+            return -1;
+        }
+        memcpy(entry->source, buf, buf_len);
+        entry->source_len = buf_len;
+        entry->bytecode = NULL;
+        entry->bytecode_len = 0;
+        entry->is_module = 0;
+        js_free(ctx, buf);
+        return 0;
+    }
+
+    /* JavaScript entry */
     buf = js_load_file(ctx, &buf_len, entry->filepath);
     if (!buf) {
         fprintf(stderr, "Could not load file: %s\n", entry->filepath);
@@ -357,7 +397,8 @@ static void write_manifest(FILE *f, QarEntryList *list, const char *qjs_version)
         QarEntry *e = &list->entries[i];
         fprintf(f, "    {\n");
         fprintf(f, "      \"path\": \"%s\",\n", e->path);
-        fprintf(f, "      \"type\": \"%s\",\n", e->is_module ? "module" : "script");
+        const char *kind = e->is_asset ? "asset" : (e->is_module ? "module" : "script");
+        fprintf(f, "      \"type\": \"%s\",\n", kind);
         fprintf(f, "      \"bytecode_size\": %zu,\n", e->bytecode_len);
         fprintf(f, "      \"source_size\": %zu\n", e->source_len);
         fprintf(f, "    }%s\n", i < list->count - 1 ? "," : "");
@@ -403,6 +444,8 @@ static int create_qar(const char *output_file, QarEntryList *list,
         uint32_t flags = e->is_module ? 1 : 0;
         if (e->is_compressed)
             flags |= 2;  // Bit 1 = compressed
+        if (e->is_asset)
+            flags |= 4;  // Bit 2 = asset
         fwrite(&flags, 4, 1, f);
         
         // Write sizes - use compressed sizes if available, otherwise original

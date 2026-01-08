@@ -56,7 +56,7 @@ QAR_EXPORT const QarEntry *qar_find_entry(QarFile *qar, const char *path);
 /* Get entry path */
 QAR_EXPORT const char *qar_entry_get_path(const QarEntry *entry);
 
-/* Get entry type (1 = module, 0 = script) */
+/* Get entry type (1 = module, 0 = script, 2 = asset) */
 QAR_EXPORT int qar_entry_get_type(const QarEntry *entry);
 
 /* Get bytecode data */
