@@ -3,10 +3,90 @@ program QuickJSPascal;
 {$mode objfpc}{$H+}
 
 uses
+  {$IFDEF WINDOWS}Windows,{$ENDIF}
   SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_intrinsics, quickjs_memdebug,
   quickjs_std, quickjs_qar, quickjs_miniz, quickjs_debug, quickjslibc, qar, Classes,
   fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers;
+
+procedure WriteLnUtf8(const p: PChar);
+{$IFDEF WINDOWS}
+var
+  wide: UnicodeString;
+  len: Integer;
+  handle: THandle;
+  written: DWORD;
+  newlineWide: WideString;
+begin
+  if p = nil then Exit;
+  len := MultiByteToWideChar(CP_UTF8, 0, p, -1, nil, 0);
+  if len <= 0 then Exit;
+  // Allocate space including null terminator, then trim after conversion
+  SetLength(wide, len);
+  if len > 0 then
+  begin
+    MultiByteToWideChar(CP_UTF8, 0, p, -1, PWideChar(wide), len);
+    SetLength(wide, len - 1); // drop null terminator
+  end;
+  handle := GetStdHandle(STD_OUTPUT_HANDLE);
+  if (handle <> INVALID_HANDLE_VALUE) and (GetFileType(handle) = FILE_TYPE_CHAR) then
+  begin
+    WriteConsoleW(handle, PWideChar(wide), Length(wide), @written, nil);
+    newlineWide := WideString(LineEnding);
+    WriteConsoleW(handle, PWideChar(newlineWide), Length(newlineWide), @written, nil);
+  end
+  else
+    WriteLn(wide);
+end;
+{$ELSE}
+begin
+  if p = nil then Exit;
+  WriteLn(p);
+end;
+{$ENDIF}
+
+function ReadLnUtf8: string;
+{$IFDEF WINDOWS}
+var
+  handle: THandle;
+  buf: array[0..255] of WideChar;
+  readCount: DWORD;
+  ws: UnicodeString;
+  i: Integer;
+begin
+  handle := GetStdHandle(STD_INPUT_HANDLE);
+  if (handle <> INVALID_HANDLE_VALUE) and (GetFileType(handle) = FILE_TYPE_CHAR) then
+  begin
+    ws := '';
+    while True do
+    begin
+      if not ReadConsoleW(handle, @buf[0], Length(buf), @readCount, nil) then
+        Break;
+      if readCount = 0 then
+        Break;
+      for i := 0 to readCount - 1 do
+      begin
+        case buf[i] of
+          #10:
+            begin
+              Result := UTF8Encode(ws);
+              Exit;
+            end;
+          #13:
+            Continue;
+        else
+          ws := ws + buf[i];
+        end;
+      end;
+      // If buffer ended without newline, continue reading
+    end;
+    Result := UTF8Encode(ws);
+    Exit;
+  end;
+  // If not a console (redirected), fall through to RTL ReadLn (code page already set to UTF-8)
+{$ENDIF}
+  ReadLn(Result);
+end;
 
 // Example test configuration type
 type
@@ -297,6 +377,16 @@ var
   k_qar: integer;
   newDebugLevel: integer;
 begin
+  {$IFDEF WINDOWS}
+  // Ensure console I/O and RTL conversions use UTF-8 so JS strings print correctly
+  SetMultiByteConversionCodePage(CP_UTF8);
+  SetTextCodePage(Input, CP_UTF8);
+  SetTextCodePage(Output, CP_UTF8);
+  SetTextCodePage(StdErr, CP_UTF8);
+  SetConsoleOutputCP(CP_UTF8);
+  SetConsoleCP(CP_UTF8);
+  {$ENDIF}
+
   // Check for build QAR mode
   build_mode := False;
   output_file := '';
@@ -536,7 +626,7 @@ begin
   while True do
   begin
     Write('js> ');
-    ReadLn(script);
+    script := ReadLnUtf8;
     if (script = 'exit') or (script = 'quit') then
       Break;
 
@@ -1411,7 +1501,7 @@ begin
             result_str := JS_ToCString(ctx, result_val);
             if result_str <> nil then
             begin
-              WriteLn(result_str);
+              WriteLnUtf8(result_str);
               JS_FreeCString(ctx, result_str);
               Flush(Output);
             end;
@@ -1431,7 +1521,7 @@ begin
               result_str := JS_ToCString(ctx, result_val);
               if result_str <> nil then
               begin
-                WriteLn(result_str);
+                WriteLnUtf8(result_str);
                 JS_FreeCString(ctx, result_str);
                 Flush(Output);
               end;
@@ -1447,7 +1537,7 @@ begin
               result_str := JS_ToCString(ctx, result_val);
               if result_str <> nil then
               begin
-                WriteLn(result_str);
+                WriteLnUtf8(result_str);
                 JS_FreeCString(ctx, result_str);
                 Flush(Output);
               end;
@@ -1465,7 +1555,7 @@ begin
               result_str := JS_ToCString(ctx, result_val);
               if result_str <> nil then
               begin
-                WriteLn(result_str);
+                WriteLnUtf8(result_str);
                 JS_FreeCString(ctx, result_str);
                 Flush(Output);
               end
