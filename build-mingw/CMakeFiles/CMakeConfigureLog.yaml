@@ -4191,3 +4191,203 @@ events:
         
       exitCode: 0
 ...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/CheckCCompilerFlag.cmake:105 (cmake_check_compiler_flag)"
+      - "CMakeLists.txt:57 (check_c_compiler_flag)"
+      - "CMakeLists.txt:68 (xcheck_add_c_compiler_flag)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_Wformat=2"
+    directories:
+      source: "D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-6bizlk"
+      binary: "D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-6bizlk"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "COMPILER_SUPPORTS_Wformat=2"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-6bizlk'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 D:/codeblocks-25.03mingw-nosetup/MinGW/bin/mingw32-make.exe -f Makefile cmTC_b28c2/fast
+        D:/codeblocks-25.03mingw-nosetup/MinGW/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_b28c2.dir\\build.make CMakeFiles/cmTC_b28c2.dir/build
+        mingw32-make[1]: Entering directory 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-6bizlk'
+        Building C object CMakeFiles/cmTC_b28c2.dir/src.c.obj
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\gcc.exe -DCOMPILER_SUPPORTS_Wformat=2  -std=gnu11   -Wformat=2 -o CMakeFiles\\cmTC_b28c2.dir\\src.c.obj -c D:\\Projects\\quickjs\\quickjs-master\\build-mingw\\CMakeFiles\\CMakeScratch\\TryCompile-6bizlk\\src.c
+        Linking C executable cmTC_b28c2.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_b28c2.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_b28c2.dir/objects.a
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\ar.exe qc CMakeFiles\\cmTC_b28c2.dir/objects.a @CMakeFiles\\cmTC_b28c2.dir\\objects1.rsp
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\gcc.exe -Wl,--whole-archive CMakeFiles\\cmTC_b28c2.dir/objects.a -Wl,--no-whole-archive -o cmTC_b28c2.exe -Wl,--out-implib,libcmTC_b28c2.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_b28c2.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-6bizlk'
+        
+      exitCode: 0
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/CheckCCompilerFlag.cmake:105 (cmake_check_compiler_flag)"
+      - "CMakeLists.txt:57 (check_c_compiler_flag)"
+      - "CMakeLists.txt:68 (xcheck_add_c_compiler_flag)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_Wformat=2"
+    directories:
+      source: "D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-xfqj71"
+      binary: "D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-xfqj71"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "COMPILER_SUPPORTS_Wformat=2"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-xfqj71'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 D:/codeblocks-25.03mingw-nosetup/MinGW/bin/mingw32-make.exe -f Makefile cmTC_f8bb1/fast
+        D:/codeblocks-25.03mingw-nosetup/MinGW/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_f8bb1.dir\\build.make CMakeFiles/cmTC_f8bb1.dir/build
+        mingw32-make[1]: Entering directory 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-xfqj71'
+        Building C object CMakeFiles/cmTC_f8bb1.dir/src.c.obj
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\gcc.exe -DCOMPILER_SUPPORTS_Wformat=2  -std=gnu11   -Wformat=2 -o CMakeFiles\\cmTC_f8bb1.dir\\src.c.obj -c D:\\Projects\\quickjs\\quickjs-master\\build-mingw\\CMakeFiles\\CMakeScratch\\TryCompile-xfqj71\\src.c
+        Linking C executable cmTC_f8bb1.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_f8bb1.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_f8bb1.dir/objects.a
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\ar.exe qc CMakeFiles\\cmTC_f8bb1.dir/objects.a @CMakeFiles\\cmTC_f8bb1.dir\\objects1.rsp
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\gcc.exe -Wl,--whole-archive CMakeFiles\\cmTC_f8bb1.dir/objects.a -Wl,--no-whole-archive -o cmTC_f8bb1.exe -Wl,--out-implib,libcmTC_f8bb1.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_f8bb1.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-xfqj71'
+        
+      exitCode: 0
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/CheckCCompilerFlag.cmake:105 (cmake_check_compiler_flag)"
+      - "CMakeLists.txt:57 (check_c_compiler_flag)"
+      - "CMakeLists.txt:68 (xcheck_add_c_compiler_flag)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_Wformat=2"
+    directories:
+      source: "D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-g8lzyv"
+      binary: "D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-g8lzyv"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "COMPILER_SUPPORTS_Wformat=2"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-g8lzyv'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 D:/codeblocks-25.03mingw-nosetup/MinGW/bin/mingw32-make.exe -f Makefile cmTC_31825/fast
+        D:/codeblocks-25.03mingw-nosetup/MinGW/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_31825.dir\\build.make CMakeFiles/cmTC_31825.dir/build
+        mingw32-make[1]: Entering directory 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-g8lzyv'
+        Building C object CMakeFiles/cmTC_31825.dir/src.c.obj
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\gcc.exe -DCOMPILER_SUPPORTS_Wformat=2  -std=gnu11   -Wformat=2 -o CMakeFiles\\cmTC_31825.dir\\src.c.obj -c D:\\Projects\\quickjs\\quickjs-master\\build-mingw\\CMakeFiles\\CMakeScratch\\TryCompile-g8lzyv\\src.c
+        Linking C executable cmTC_31825.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_31825.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_31825.dir/objects.a
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\ar.exe qc CMakeFiles\\cmTC_31825.dir/objects.a @CMakeFiles\\cmTC_31825.dir\\objects1.rsp
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\gcc.exe -Wl,--whole-archive CMakeFiles\\cmTC_31825.dir/objects.a -Wl,--no-whole-archive -o cmTC_31825.exe -Wl,--out-implib,libcmTC_31825.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_31825.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-g8lzyv'
+        
+      exitCode: 0
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/CheckCCompilerFlag.cmake:105 (cmake_check_compiler_flag)"
+      - "CMakeLists.txt:57 (check_c_compiler_flag)"
+      - "CMakeLists.txt:68 (xcheck_add_c_compiler_flag)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_Wformat=2"
+    directories:
+      source: "D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-x13nbm"
+      binary: "D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-x13nbm"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "COMPILER_SUPPORTS_Wformat=2"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-x13nbm'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 D:/codeblocks-25.03mingw-nosetup/MinGW/bin/mingw32-make.exe -f Makefile cmTC_f3e26/fast
+        D:/codeblocks-25.03mingw-nosetup/MinGW/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_f3e26.dir\\build.make CMakeFiles/cmTC_f3e26.dir/build
+        mingw32-make[1]: Entering directory 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-x13nbm'
+        Building C object CMakeFiles/cmTC_f3e26.dir/src.c.obj
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\gcc.exe -DCOMPILER_SUPPORTS_Wformat=2  -std=gnu11   -Wformat=2 -o CMakeFiles\\cmTC_f3e26.dir\\src.c.obj -c D:\\Projects\\quickjs\\quickjs-master\\build-mingw\\CMakeFiles\\CMakeScratch\\TryCompile-x13nbm\\src.c
+        Linking C executable cmTC_f3e26.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_f3e26.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_f3e26.dir/objects.a
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\ar.exe qc CMakeFiles\\cmTC_f3e26.dir/objects.a @CMakeFiles\\cmTC_f3e26.dir\\objects1.rsp
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\gcc.exe -Wl,--whole-archive CMakeFiles\\cmTC_f3e26.dir/objects.a -Wl,--no-whole-archive -o cmTC_f3e26.exe -Wl,--out-implib,libcmTC_f3e26.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_f3e26.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-x13nbm'
+        
+      exitCode: 0
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.1/Modules/CheckCCompilerFlag.cmake:105 (cmake_check_compiler_flag)"
+      - "CMakeLists.txt:57 (check_c_compiler_flag)"
+      - "CMakeLists.txt:68 (xcheck_add_c_compiler_flag)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_Wformat=2"
+    directories:
+      source: "D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-4y4n1o"
+      binary: "D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-4y4n1o"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "COMPILER_SUPPORTS_Wformat=2"
+      cached: true
+      stdout: |
+        Change Dir: 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-4y4n1o'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 D:/codeblocks-25.03mingw-nosetup/MinGW/bin/mingw32-make.exe -f Makefile cmTC_c0e82/fast
+        D:/codeblocks-25.03mingw-nosetup/MinGW/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_c0e82.dir\\build.make CMakeFiles/cmTC_c0e82.dir/build
+        mingw32-make[1]: Entering directory 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-4y4n1o'
+        Building C object CMakeFiles/cmTC_c0e82.dir/src.c.obj
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\gcc.exe -DCOMPILER_SUPPORTS_Wformat=2  -std=gnu11   -Wformat=2 -o CMakeFiles\\cmTC_c0e82.dir\\src.c.obj -c D:\\Projects\\quickjs\\quickjs-master\\build-mingw\\CMakeFiles\\CMakeScratch\\TryCompile-4y4n1o\\src.c
+        Linking C executable cmTC_c0e82.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_c0e82.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_c0e82.dir/objects.a
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\ar.exe qc CMakeFiles\\cmTC_c0e82.dir/objects.a @CMakeFiles\\cmTC_c0e82.dir\\objects1.rsp
+        D:\\codeblocks-25.03mingw-nosetup\\MinGW\\bin\\gcc.exe -Wl,--whole-archive CMakeFiles\\cmTC_c0e82.dir/objects.a -Wl,--no-whole-archive -o cmTC_c0e82.exe -Wl,--out-implib,libcmTC_c0e82.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_c0e82.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/CMakeScratch/TryCompile-4y4n1o'
+        
+      exitCode: 0
+...

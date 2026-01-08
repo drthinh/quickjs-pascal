@@ -38,12 +38,6 @@ type
 procedure js_std_set_worker_new_runtime_func(func: TWorkerNewRuntimeFunc); cdecl; external libqjs;
 procedure js_std_set_worker_new_context_func(func: TWorkerNewContextFunc); cdecl; external libqjs;
 
-// QAR support (helpers exported from quickjs-libc)
-function js_register_qar_file(ctx: PJSContext; qar_filename: PChar; prefix: PChar): cint; cdecl; external libqjs;
-procedure js_unregister_all_qar_files(rt: PJSRuntime); cdecl; external libqjs;
-
 implementation
 
 end.
-
-

@@ -461,8 +461,10 @@ begin
     begin
       test_path := IncludeTrailingPathDelimiter(script_dir) + 'qar_test.qar';
       if FileExists(test_path) then
-        if js_register_qar_file(ctx, PChar(test_path), nil) < 0 then
-          WriteLn('[DEBUG] Warning: Failed to pre-register QAR file: ', test_path);
+      begin
+        if qar_helpers.DebugLevel > 0 then
+          WriteLn('[DEBUG] Found qar_test.qar in script directory (no auto-register; use LoadLibrary("', test_path, '") if needed)');
+      end;
     end;
   end;
 
@@ -741,7 +743,8 @@ begin
     else
     begin
       JS_FreeValue(ctx, result_val);
-      while JS_ExecutePendingJob(JS_GetRuntime(ctx), @ctx) > 0 do
+      pending_ctx := nil;
+      while JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx) > 0 do
       begin
       end;
     end;
@@ -964,36 +967,24 @@ begin
                   if FileExists(test_path) then
                   begin
                     if qar_helpers.DebugLevel > 0 then
-                      WriteLn('[DEBUG] Pre-registering QAR file found in script directory: ', test_path);
-                    ret := js_register_qar_file(ctx, PChar(test_path), nil);
-                    if ret < 0 then
                     begin
-                      if qar_helpers.DebugLevel > 0 then
-                        WriteLn('[DEBUG] Warning: Failed to pre-register QAR file');
-                    end
-                    else
-                    begin
-                      if qar_helpers.DebugLevel > 0 then
-                        WriteLn('[DEBUG] Successfully pre-registered QAR file');
-                      // Debug: List all entries in QAR file to see actual paths
-                      if qar_helpers.DebugLevel > 1 then
+                      WriteLn('[DEBUG] Found qar_test.qar (no auto-register; use LoadLibrary("', test_path, '") if needed)');
+
+                      qar_debug := qar_open(PChar(test_path));
+                      if qar_debug <> nil then
                       begin
-                        qar_debug := qar_open(PChar(test_path));
-                        if qar_debug <> nil then
+                        entry_count_debug := qar_get_entry_count(qar_debug);
+                        WriteLn('[DEBUG] QAR file contains ', entry_count_debug, ' entries:');
+                        for i_debug := 0 to entry_count_debug - 1 do
                         begin
-                          entry_count_debug := qar_get_entry_count(qar_debug);
-                          WriteLn('[DEBUG] QAR file contains ', entry_count_debug, ' entries:');
-                          for i_debug := 0 to entry_count_debug - 1 do
+                          entry_debug := qar_get_entry(qar_debug, i_debug);
+                          if entry_debug <> nil then
                           begin
-                            entry_debug := qar_get_entry(qar_debug, i_debug);
-                            if entry_debug <> nil then
-                            begin
-                              entry_path_debug := qar_entry_get_path(entry_debug);
-                              WriteLn('[DEBUG]   Entry ', i_debug, ': "', entry_path_debug, '"');
-                            end;
+                            entry_path_debug := qar_entry_get_path(entry_debug);
+                            WriteLn('[DEBUG]   Entry ', i_debug, ': "', entry_path_debug, '"');
                           end;
-                          qar_close(qar_debug);
                         end;
+                        qar_close(qar_debug);
                       end;
                     end;
                     Flush(Output);

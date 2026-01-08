@@ -243,7 +243,4 @@ CMakeFiles/qjs.dir/quickjs-libc.c.obj: \
  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sys/utime.h \
  D:\Projects\quickjs\quickjs-master\cutils.h \
  D:\Projects\quickjs\quickjs-master\list.h \
- D:\Projects\quickjs\quickjs-master\quickjs-libc.h \
- D:\Projects\quickjs\quickjs-master\qar.h \
- D:\Projects\quickjs\quickjs-master\quickjs-c-atomics.h \
- D:/codeblocks-25.03mingw-nosetup/MinGW/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stdatomic.h
+ D:\Projects\quickjs\quickjs-master\quickjs-libc.h

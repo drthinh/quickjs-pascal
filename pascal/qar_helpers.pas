@@ -16,6 +16,20 @@ var
   CurrentScriptDir: string = '';
   DebugLevel: integer = 0;  // Debug level: 0 = off, 1 = basic, 2 = verbose
 
+type
+  TRegisteredQar = record
+    filename: string;
+    prefix: string;
+    qar: PQarFile;
+  end;
+
+var
+  RegisteredQars: array of TRegisteredQar;
+
+function RegisterQarFile(const qar_filename: string; const prefix: string): cint;
+procedure UnregisterAllQarFiles;
+function TryLoadModuleFromRegisteredQars(ctx: PJSContext; const module_name: string): PJSModuleDef;
+
 // Helper function to find QAR file in multiple locations
 function FindQarFile(const qar_filename: string): string;
 
@@ -36,6 +50,104 @@ procedure ExampleReadQarInfo(qar_filename: string);
 procedure ExampleExecuteQarEntry(ctx: PJSContext; qar_filename, entry_path: string);
 
 implementation
+
+function RegisterQarFile(const qar_filename: string; const prefix: string): cint;
+var
+  q: PQarFile;
+  n: integer;
+begin
+  q := qar_open(PChar(qar_filename));
+  if q = nil then
+    Exit(-1);
+
+  n := Length(RegisteredQars);
+  SetLength(RegisteredQars, n + 1);
+  RegisteredQars[n].filename := qar_filename;
+  RegisteredQars[n].prefix := prefix;
+  RegisteredQars[n].qar := q;
+  Result := 0;
+end;
+
+procedure UnregisterAllQarFiles;
+var
+  i: integer;
+begin
+  for i := 0 to High(RegisteredQars) do
+    if RegisteredQars[i].qar <> nil then
+      qar_close(RegisteredQars[i].qar);
+  SetLength(RegisteredQars, 0);
+end;
+
+function JSValuePtr(const v: JSValue): pointer; inline;
+begin
+  Result := v.u.ptr;
+end;
+
+function TryLoadModuleFromRegisteredQars(ctx: PJSContext; const module_name: string): PJSModuleDef;
+var
+  nameNoPrefix: string;
+  requestedPrefix: string;
+  colonPos: integer;
+  i: integer;
+  entry: PQarEntryRead;
+  bytecode_len: csize_t;
+  bytecode: Pcuint8;
+  obj: JSValue;
+  eval_flags: cint;
+  m: PJSModuleDef;
+begin
+  Result := nil;
+  if module_name = '' then
+    Exit;
+
+  requestedPrefix := '';
+  nameNoPrefix := module_name;
+  colonPos := Pos(':', module_name);
+  if colonPos > 0 then
+  begin
+    requestedPrefix := Copy(module_name, 1, colonPos);
+    nameNoPrefix := Copy(module_name, colonPos + 1, Length(module_name));
+  end;
+
+  for i := 0 to High(RegisteredQars) do
+  begin
+    if (requestedPrefix <> '') and (RegisteredQars[i].prefix <> requestedPrefix) then
+      Continue;
+    if RegisteredQars[i].qar = nil then
+      Continue;
+
+    entry := qar_find_entry(RegisteredQars[i].qar, PChar(nameNoPrefix));
+    if entry = nil then
+      Continue;
+
+    if qar_entry_get_type(entry) = 0 then
+      Continue;
+
+    if qar_entry_load_data(RegisteredQars[i].qar, entry) < 0 then
+      Continue;
+
+    bytecode_len := 0;
+    bytecode := qar_entry_get_bytecode(entry, @bytecode_len);
+    if bytecode = nil then
+      Continue;
+
+    eval_flags := JS_READ_OBJ_BYTECODE or JS_READ_OBJ_REFERENCE;
+    obj := JS_ReadObject(ctx, bytecode, QWord(bytecode_len), LongInt(eval_flags));
+    if JS_IsException(obj) <> 0 then
+      Exit(nil);
+
+    if js_module_set_import_meta(ctx, obj, cbool(1), cbool(0)) < 0 then
+    begin
+      JS_FreeValue(ctx, obj);
+      Exit(nil);
+    end;
+
+    m := PJSModuleDef(JSValuePtr(obj));
+    JS_FreeValue(ctx, obj);
+    Result := m;
+    Exit;
+  end;
+end;
 
 // Helper function to find QAR file in multiple locations
 function FindQarFile(const qar_filename: string): string;
@@ -107,6 +219,7 @@ var
   filename_str, found_path: string;
   ret: cint;
   search_paths: string;
+  prefix_str: string;
 begin
   // Debug: function được gọi
   if DebugLevel > 0 then
@@ -143,6 +256,7 @@ begin
   JS_FreeCString(ctx, filename);
 
   prefix := nil;
+  prefix_str := '';
   if argc >= 2 then
   begin
     prefix := JS_ToCString(ctx, argv[1]);
@@ -204,7 +318,7 @@ begin
   end;
 
   // Register with found path
-  ret := js_register_qar_file(ctx, PChar(found_path), prefix);
+  ret := RegisterQarFile(found_path, prefix_str);
 
   // Log kết quả trước khi free prefix
   if DebugLevel > 0 then
@@ -711,19 +825,21 @@ var
   basename: string;
   last_slash: integer;
 begin
-  // First try the exact path (standard behavior - this handles prefixed imports correctly)
-  // If module_name starts with a prefix like "lib1:", the standard loader will find it
+  module_name_str := string(module_name);
+
+  // First try registered QARs (both prefixed and non-prefixed module names)
+  m := TryLoadModuleFromRegisteredQars(ctx, module_name_str);
+  if m <> nil then
+    Exit(m);
+
+  // Then try the standard loader (filesystem + native modules)
   m := js_module_loader(ctx, module_name, opaque);
   if m <> nil then
-  begin
-    Result := m;
-    Exit;
-  end;
+    Exit(m);
   
   // If not found and module_name doesn't contain ':' (not a prefixed import),
   // try extracting basename (for QAR files that only store filenames)
   // This is a fallback for backward compatibility
-  module_name_str := string(module_name);
   
   // Skip fallback if using prefix notation (e.g., "lib1:math.js")
   if Pos(':', module_name_str) > 0 then
@@ -784,12 +900,13 @@ begin
     WriteLn('[WARNING] Using basename fallback - if multiple QAR files contain "', basename, '",');
     WriteLn('          the first one found will be used. Consider using prefixes to avoid conflicts.');
     Flush(Output);
+    m := TryLoadModuleFromRegisteredQars(ctx, basename);
+    if m <> nil then
+      Exit(m);
+
     m := js_module_loader(ctx, PChar(basename), opaque);
     if m <> nil then
-    begin
-      Result := m;
-      Exit;
-    end;
+      Exit(m);
   end;
   
   // Not found with any variation
@@ -837,7 +954,7 @@ begin
   WriteLn('Loading QAR file: ', qar_filename);
 
   // Register QAR file
-  ret := js_register_qar_file(ctx, PChar(qar_filename), nil);
+  ret := RegisterQarFile(qar_filename, '');
   if ret < 0 then
   begin
     WriteLn('Failed to register QAR file');

@@ -68,7 +68,6 @@ set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/qjs_exe.dir/DependInfo.cmake"
   "CMakeFiles/run-test262.dir/DependInfo.cmake"
   "CMakeFiles/api-test.dir/DependInfo.cmake"
-  "CMakeFiles/test_qar_load.dir/DependInfo.cmake"
   "CMakeFiles/unicode_gen.dir/DependInfo.cmake"
   "CMakeFiles/function_source.dir/DependInfo.cmake"
   )

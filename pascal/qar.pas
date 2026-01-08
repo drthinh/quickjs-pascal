@@ -41,7 +41,7 @@ unit qar;
 interface
 
 uses
-  ctypes, SysUtils, Classes, quickjs_types, quickjs_core, quickjs_std, fpjson;
+  ctypes, SysUtils, Classes, quickjs_types, quickjs_core, quickjs_std, fpjson, quickjs_miniz;
 
 const
   {$IFDEF WINDOWS}
@@ -58,11 +58,35 @@ const
   QAR_VERSION_STRING = '1.0.0';
 
 type
-  // QAR reading types (from DLL)
-  QarFile = record end;
-  PQarFile = ^QarFile;
-  QarEntry = record end;
-  PQarEntry = ^QarEntry;
+  // QAR reading types
+  TQarEntry = record
+    path: AnsiString;
+    path_len: cuint32;
+    offset: cuint64;
+    bytecode_offset: cuint64;
+    flags: cuint32;
+    bytecode_size: cuint64;
+    source_size: cuint64;
+    bytecode_orig_size: cuint64;
+    source_orig_size: cuint64;
+    bytecode_cache: TBytes;
+    source_cache: TBytes;
+  end;
+  PQarEntry = ^TQarEntry;
+
+  TQarFile = record
+    file_stream: TFileStream;
+    version: cuint32;
+    manifest_offset: cuint64;
+    manifest_size: cuint64;
+    manifest_json: UTF8String;
+    quickjs_version: UTF8String;
+    entries: array of TQarEntry;
+    entry_count: cint;
+    entries_offset: cuint64;
+  end;
+  PQarFile = ^TQarFile;
+
   Pcsize_t = ^csize_t;
   Pcuint8 = ^cuint8;
 
@@ -97,33 +121,19 @@ type
     property Count: integer read FCount;
   end;
 
-// QAR reading API functions (from DLL)
-function qar_open(filename: PChar): PQarFile; cdecl; external libqjs;
-procedure qar_close(qar: PQarFile); cdecl; external libqjs;
-function qar_get_entry_count(qar: PQarFile): cint; cdecl; external libqjs;
-function qar_get_entry(qar: PQarFile; index: cint): PQarEntry; cdecl; external libqjs;
-function qar_find_entry(qar: PQarFile; path: PChar): PQarEntry; cdecl; external libqjs;
-function qar_entry_get_path(entry: PQarEntry): PChar; cdecl; external libqjs;
-function qar_entry_get_type(entry: PQarEntry): cint; cdecl; external libqjs;
-function qar_entry_get_bytecode(entry: PQarEntry; len: Pcsize_t): Pcuint8; cdecl; external libqjs;
-function qar_entry_get_source(entry: PQarEntry; len: Pcsize_t): Pcuint8; cdecl; external libqjs;
-function qar_entry_load_data(qar: PQarFile; entry: PQarEntry): cint; cdecl; external libqjs;
-function qar_get_manifest(qar: PQarFile; len: Pcsize_t): PChar; cdecl; external libqjs;
-function qar_get_quickjs_version(qar: PQarFile): PChar; cdecl; external libqjs;
-
-// Miniz compression functions (from DLL)
-type
-  mz_ulong = cuint32;
-  Pmz_ulong = ^mz_ulong;
-const
-  MZ_OK = 0;
-  MZ_DEFAULT_LEVEL = 6;
-
-function mz_compress2(pDest: Pcuint8; pDest_len: Pmz_ulong; pSource: Pcuint8; 
-                      source_len: mz_ulong; level: cint): cint; cdecl; external libqjs;
-function mz_compressBound(source_len: mz_ulong): mz_ulong; cdecl; external libqjs;
-function mz_uncompress(pDest: Pcuint8; pDest_len: Pmz_ulong; pSource: Pcuint8; 
-                       source_len: mz_ulong): cint; cdecl; external libqjs;
+// QAR reading API functions
+function qar_open(filename: PChar): PQarFile; cdecl;
+procedure qar_close(qar: PQarFile); cdecl;
+function qar_get_entry_count(qar: PQarFile): cint; cdecl;
+function qar_get_entry(qar: PQarFile; index: cint): PQarEntry; cdecl;
+function qar_find_entry(qar: PQarFile; path: PChar): PQarEntry; cdecl;
+function qar_entry_get_path(entry: PQarEntry): PChar; cdecl;
+function qar_entry_get_type(entry: PQarEntry): cint; cdecl;
+function qar_entry_get_bytecode(entry: PQarEntry; len: Pcsize_t): Pcuint8; cdecl;
+function qar_entry_get_source(entry: PQarEntry; len: Pcsize_t): Pcuint8; cdecl;
+function qar_entry_load_data(qar: PQarFile; entry: PQarEntry): cint; cdecl;
+function qar_get_manifest(qar: PQarFile; len: Pcsize_t): PChar; cdecl;
+function qar_get_quickjs_version(qar: PQarFile): PChar; cdecl;
 
 // QAR building API functions
 // entry_main / entry_init cho phép chỉ định entry points giống "main"/"init" trong manifest.
@@ -168,6 +178,354 @@ function RebuildQarFile(const input_qar: string; const output_qar: string;
   const entry_main: string = ''; const entry_init: string = ''): cint;
 
 implementation
+
+const
+  QAR_MAGIC: AnsiString = 'QAR' + #1;
+
+function ReadU32(s: TStream; out v: cuint32): boolean;
+begin
+  Result := s.Read(v, SizeOf(v)) = SizeOf(v);
+end;
+
+function ReadU64(s: TStream; out v: cuint64): boolean;
+begin
+  Result := s.Read(v, SizeOf(v)) = SizeOf(v);
+end;
+
+function ReadBytes(s: TStream; var buf; len: NativeInt): boolean;
+begin
+  if len <= 0 then
+    Exit(True);
+  Result := s.Read(buf, len) = len;
+end;
+
+function SizeToNativeInt(sz: cuint64; out n: NativeInt): boolean;
+begin
+  if sz > cuint64(High(NativeInt)) then
+    Exit(False);
+  n := NativeInt(sz);
+  Result := True;
+end;
+
+function ExtractQuickJsVersion(const manifest_json: UTF8String): UTF8String;
+var
+  keyPos: SizeInt;
+  p: SizeInt;
+  startQ: SizeInt;
+  endQ: SizeInt;
+  s: UTF8String;
+begin
+  Result := '';
+  s := manifest_json;
+  keyPos := Pos('"quickjs_version"', s);
+  if keyPos <= 0 then
+    Exit;
+  p := keyPos + Length('"quickjs_version"');
+  while (p <= Length(s)) and (s[p] <> ':') do
+    Inc(p);
+  if p > Length(s) then
+    Exit;
+  Inc(p);
+  while (p <= Length(s)) and (s[p] <= ' ') do
+    Inc(p);
+  if (p > Length(s)) or (s[p] <> '"') then
+    Exit;
+  startQ := p + 1;
+  endQ := startQ;
+  while (endQ <= Length(s)) and (s[endQ] <> '"') do
+    Inc(endQ);
+  if endQ > Length(s) then
+    Exit;
+  Result := Copy(s, startQ, endQ - startQ);
+end;
+
+function qar_open(filename: PChar): PQarFile; cdecl;
+var
+  qar: PQarFile;
+  magicBuf: array[0..3] of AnsiChar;
+  magicStr: AnsiString;
+  entryCountU32: cuint32;
+  i: cint;
+  pathLen: cuint32;
+  flags: cuint32;
+  bsz, ssz: cuint64;
+  borig, sorig: cuint64;
+  pathBytes: TBytes;
+  n: NativeInt;
+begin
+  Result := nil;
+  if filename = nil then
+    Exit;
+
+  New(qar);
+  FillChar(qar^, SizeOf(qar^), 0);
+  try
+    qar^.file_stream := TFileStream.Create(string(filename), fmOpenRead or fmShareDenyNone);
+
+    if not ReadBytes(qar^.file_stream, magicBuf[0], 4) then
+      Exit;
+    SetString(magicStr, PAnsiChar(@magicBuf[0]), 4);
+    if magicStr <> QAR_MAGIC then
+      Exit;
+
+    if not ReadU32(qar^.file_stream, qar^.version) then
+      Exit;
+    if not ReadU64(qar^.file_stream, qar^.manifest_offset) then
+      Exit;
+    if not ReadU64(qar^.file_stream, qar^.manifest_size) then
+      Exit;
+    if not ReadU32(qar^.file_stream, entryCountU32) then
+      Exit;
+
+    if (entryCountU32 > 100000) then
+      Exit;
+
+    qar^.entry_count := cint(entryCountU32);
+    qar^.entries_offset := cuint64(qar^.file_stream.Position);
+    SetLength(qar^.entries, qar^.entry_count);
+
+    for i := 0 to qar^.entry_count - 1 do
+    begin
+      if not ReadU32(qar^.file_stream, pathLen) then
+        Exit;
+      if (pathLen = 0) or (pathLen > 65536) then
+        Exit;
+
+      SetLength(pathBytes, pathLen);
+      if not ReadBytes(qar^.file_stream, pathBytes[0], pathLen) then
+        Exit;
+
+      if not ReadU32(qar^.file_stream, flags) then
+        Exit;
+      if not ReadU64(qar^.file_stream, bsz) then
+        Exit;
+      if not ReadU64(qar^.file_stream, ssz) then
+        Exit;
+      if (flags and 2) <> 0 then
+      begin
+        if not ReadU64(qar^.file_stream, borig) then
+          Exit;
+        if not ReadU64(qar^.file_stream, sorig) then
+          Exit;
+      end
+      else
+      begin
+        borig := bsz;
+        sorig := ssz;
+      end;
+
+      qar^.entries[i].offset := 0;
+      qar^.entries[i].path_len := pathLen;
+      SetString(qar^.entries[i].path, PAnsiChar(@pathBytes[0]), pathLen);
+      qar^.entries[i].flags := flags;
+      qar^.entries[i].bytecode_size := bsz;
+      qar^.entries[i].source_size := ssz;
+      qar^.entries[i].bytecode_orig_size := borig;
+      qar^.entries[i].source_orig_size := sorig;
+      qar^.entries[i].bytecode_offset := cuint64(qar^.file_stream.Position);
+      SetLength(qar^.entries[i].bytecode_cache, 0);
+      SetLength(qar^.entries[i].source_cache, 0);
+
+      qar^.file_stream.Seek(Int64(bsz + ssz), soCurrent);
+    end;
+
+    if qar^.manifest_size > 0 then
+    begin
+      qar^.file_stream.Position := Int64(qar^.manifest_offset);
+      if not SizeToNativeInt(qar^.manifest_size, n) then
+        Exit;
+      SetLength(qar^.manifest_json, n);
+      if qar^.file_stream.Read(qar^.manifest_json[1], n) <> n then
+        Exit;
+      qar^.quickjs_version := ExtractQuickJsVersion(qar^.manifest_json);
+    end;
+
+    Result := qar;
+  finally
+    if Result = nil then
+    begin
+      if Assigned(qar) then
+      begin
+        if Assigned(qar^.file_stream) then
+          FreeAndNil(qar^.file_stream);
+        Dispose(qar);
+      end;
+    end;
+  end;
+end;
+
+procedure qar_close(qar: PQarFile); cdecl;
+begin
+  if qar = nil then
+    Exit;
+  if Assigned(qar^.file_stream) then
+    FreeAndNil(qar^.file_stream);
+  SetLength(qar^.entries, 0);
+  qar^.manifest_json := '';
+  qar^.quickjs_version := '';
+  Dispose(qar);
+end;
+
+function qar_get_entry_count(qar: PQarFile): cint; cdecl;
+begin
+  if qar = nil then
+    Exit(0);
+  Result := qar^.entry_count;
+end;
+
+function qar_get_entry(qar: PQarFile; index: cint): PQarEntry; cdecl;
+begin
+  Result := nil;
+  if (qar = nil) or (index < 0) or (index >= qar^.entry_count) then
+    Exit;
+  Result := @qar^.entries[index];
+end;
+
+function qar_find_entry(qar: PQarFile; path: PChar): PQarEntry; cdecl;
+var
+  i: cint;
+  p: AnsiString;
+begin
+  Result := nil;
+  if (qar = nil) or (path = nil) then
+    Exit;
+  p := AnsiString(path);
+  for i := 0 to qar^.entry_count - 1 do
+    if qar^.entries[i].path = p then
+      Exit(@qar^.entries[i]);
+end;
+
+function qar_entry_get_path(entry: PQarEntry): PChar; cdecl;
+begin
+  if entry = nil then
+    Exit(nil);
+  Result := PChar(entry^.path);
+end;
+
+function qar_entry_get_type(entry: PQarEntry): cint; cdecl;
+begin
+  if entry = nil then
+    Exit(0);
+  if (entry^.flags and 4) <> 0 then
+    Exit(2);
+  if (entry^.flags and 1) <> 0 then
+    Exit(1);
+  Result := 0;
+end;
+
+function qar_entry_load_data(qar: PQarFile; entry: PQarEntry): cint; cdecl;
+var
+  comp: TBytes;
+  destLen: mz_ulong;
+  srcLen: mz_ulong;
+  ret: cint;
+  bcStart: Int64;
+  n: NativeInt;
+begin
+  Result := -1;
+  if (qar = nil) or (entry = nil) or (qar^.file_stream = nil) then
+    Exit;
+
+  bcStart := Int64(entry^.bytecode_offset);
+
+  if (Length(entry^.bytecode_cache) = 0) and (entry^.bytecode_size > 0) then
+  begin
+    if not SizeToNativeInt(entry^.bytecode_size, n) then
+      Exit;
+    SetLength(comp, n);
+    qar^.file_stream.Position := bcStart;
+    if qar^.file_stream.Read(comp[0], n) <> n then
+      Exit;
+    if (entry^.flags and 2) <> 0 then
+    begin
+      destLen := mz_ulong(entry^.bytecode_orig_size);
+      SetLength(entry^.bytecode_cache, destLen);
+      srcLen := mz_ulong(entry^.bytecode_size);
+      ret := mz_uncompress(@entry^.bytecode_cache[0], @destLen, @comp[0], srcLen);
+      if ret <> MZ_OK then
+      begin
+        SetLength(entry^.bytecode_cache, 0);
+        Exit;
+      end;
+      if destLen <> mz_ulong(entry^.bytecode_orig_size) then
+        SetLength(entry^.bytecode_cache, destLen);
+    end
+    else
+    begin
+      entry^.bytecode_cache := comp;
+    end;
+  end;
+
+  if (Length(entry^.source_cache) = 0) and (entry^.source_size > 0) then
+  begin
+    if not SizeToNativeInt(entry^.source_size, n) then
+      Exit;
+    SetLength(comp, n);
+    qar^.file_stream.Position := bcStart + Int64(entry^.bytecode_size);
+    if qar^.file_stream.Read(comp[0], n) <> n then
+      Exit;
+    if (entry^.flags and 2) <> 0 then
+    begin
+      destLen := mz_ulong(entry^.source_orig_size);
+      SetLength(entry^.source_cache, destLen);
+      srcLen := mz_ulong(entry^.source_size);
+      ret := mz_uncompress(@entry^.source_cache[0], @destLen, @comp[0], srcLen);
+      if ret <> MZ_OK then
+      begin
+        SetLength(entry^.source_cache, 0);
+        Exit;
+      end;
+      if destLen <> mz_ulong(entry^.source_orig_size) then
+        SetLength(entry^.source_cache, destLen);
+    end
+    else
+    begin
+      entry^.source_cache := comp;
+    end;
+  end;
+
+  Result := 0;
+end;
+
+function qar_entry_get_bytecode(entry: PQarEntry; len: Pcsize_t): Pcuint8; cdecl;
+begin
+  if len <> nil then
+    len^ := 0;
+  if (entry = nil) or (Length(entry^.bytecode_cache) = 0) then
+    Exit(nil);
+  if len <> nil then
+    len^ := Length(entry^.bytecode_cache);
+  Result := @entry^.bytecode_cache[0];
+end;
+
+function qar_entry_get_source(entry: PQarEntry; len: Pcsize_t): Pcuint8; cdecl;
+begin
+  if len <> nil then
+    len^ := 0;
+  if (entry = nil) or (Length(entry^.source_cache) = 0) then
+    Exit(nil);
+  if len <> nil then
+    len^ := Length(entry^.source_cache);
+  Result := @entry^.source_cache[0];
+end;
+
+function qar_get_manifest(qar: PQarFile; len: Pcsize_t): PChar; cdecl;
+begin
+  if len <> nil then
+    len^ := 0;
+  if (qar = nil) or (qar^.manifest_json = '') then
+    Exit(nil);
+  if len <> nil then
+    len^ := Length(qar^.manifest_json);
+  Result := PChar(qar^.manifest_json);
+end;
+
+function qar_get_quickjs_version(qar: PQarFile): PChar; cdecl;
+begin
+  if (qar = nil) or (qar^.quickjs_version = '') then
+    Exit(nil);
+  Result := PChar(qar^.quickjs_version);
+end;
 
 // TQarEntryList implementation
 constructor TQarEntryList.Create;
@@ -809,6 +1167,8 @@ begin
   end;
 end;
 
+ function TryLoadModuleFromOpaqueQars(ctx: PJSContext; const module_name: string; opaque: pointer): PJSModuleDef; forward;
+
 // Custom module loader wrapper for BuildQar with fallback path resolution
 // Tries multiple path variations to handle QAR files that store only basenames
 function js_module_loader_build_wrapper(ctx: PJSContext; module_name: PChar; opaque: pointer): PJSModuleDef; cdecl;
@@ -818,7 +1178,17 @@ var
   basename: string;
   last_slash: integer;
 begin
-  // First try the exact path (standard behavior)
+  module_name_str := string(module_name);
+
+  // First try QAR dependencies registered in opaque
+  m := TryLoadModuleFromOpaqueQars(ctx, module_name_str, opaque);
+  if m <> nil then
+  begin
+    Result := m;
+    Exit;
+  end;
+
+  // Then try the exact path (standard behavior)
   m := js_module_loader(ctx, module_name, opaque);
   if m <> nil then
   begin
@@ -827,7 +1197,6 @@ begin
   end;
   
   // If not found, try extracting basename (for QAR files that only store filenames)
-  module_name_str := string(module_name);
   
   // Skip fallback if using prefix notation (e.g., "lib1:math.js")
   if Pos(':', module_name_str) > 0 then
@@ -879,6 +1248,12 @@ begin
   if last_slash > 0 then
   begin
     basename := Copy(module_name_str, last_slash + 1, Length(module_name_str));
+    m := TryLoadModuleFromOpaqueQars(ctx, basename, opaque);
+    if m <> nil then
+    begin
+      Result := m;
+      Exit;
+    end;
     m := js_module_loader(ctx, PChar(basename), opaque);
     if m <> nil then
     begin
@@ -889,6 +1264,63 @@ begin
   
   // Not found with any variation
   Result := nil;
+end;
+
+type
+  TBuildQarOpaque = record
+    qars: array of PQarFile;
+  end;
+  PBuildQarOpaque = ^TBuildQarOpaque;
+
+function JSValuePtr(const v: JSValue): pointer; inline;
+begin
+  Result := v.u.ptr;
+end;
+
+function TryLoadModuleFromOpaqueQars(ctx: PJSContext; const module_name: string; opaque: pointer): PJSModuleDef;
+var
+  o: PBuildQarOpaque;
+  i: integer;
+  entry: PQarEntry;
+  bytecode_len: csize_t;
+  bytecode: Pcuint8;
+  obj: JSValue;
+  eval_flags: cint;
+  m: PJSModuleDef;
+begin
+  Result := nil;
+  if opaque = nil then
+    Exit;
+  o := PBuildQarOpaque(opaque);
+  for i := 0 to High(o^.qars) do
+  begin
+    if o^.qars[i] = nil then
+      Continue;
+    entry := qar_find_entry(o^.qars[i], PChar(module_name));
+    if entry = nil then
+      Continue;
+    if qar_entry_get_type(entry) = 0 then
+      Continue;
+    if qar_entry_load_data(o^.qars[i], entry) < 0 then
+      Continue;
+    bytecode_len := 0;
+    bytecode := qar_entry_get_bytecode(entry, @bytecode_len);
+    if bytecode = nil then
+      Continue;
+    eval_flags := JS_READ_OBJ_BYTECODE or JS_READ_OBJ_REFERENCE;
+    obj := JS_ReadObject(ctx, bytecode, QWord(bytecode_len), LongInt(eval_flags));
+    if JS_IsException(obj) <> 0 then
+      Exit(nil);
+    if js_module_set_import_meta(ctx, obj, cbool(1), cbool(0)) < 0 then
+    begin
+      JS_FreeValue(ctx, obj);
+      Exit(nil);
+    end;
+    m := PJSModuleDef(JSValuePtr(obj));
+    JS_FreeValue(ctx, obj);
+    Result := m;
+    Exit;
+  end;
 end;
 
 // Helper function to find QAR file in multiple locations
@@ -975,7 +1407,7 @@ var
   entry: PQarBuildEntry;
   qar_files: TStringList;
   qar_file, found_qar: string;
-  ret: cint;
+  opaque: PBuildQarOpaque;
   // Debug variables for QAR entries
   qar_debug: PQarFile;
   entry_count_debug, i_debug: cint;
@@ -1015,7 +1447,9 @@ begin
     
     // Set up module loader with fallback (required for QAR module resolution)
     // Use wrapper to handle path mismatches (e.g., import 'qar_test_lib/math.js' but QAR has 'math.js')
-    JS_SetModuleLoaderFunc(rt, nil, @js_module_loader_build_wrapper, nil);
+    New(opaque);
+    SetLength(opaque^.qars, 0);
+    JS_SetModuleLoaderFunc(rt, nil, @js_module_loader_build_wrapper, opaque);
     
     try
       // Collect files
@@ -1086,30 +1520,28 @@ begin
           if found_qar <> '' then
           begin
             WriteLn('    -> Found at: ', found_qar);
-            ret := js_register_qar_file(ctx, PChar(found_qar), nil);
-            if ret < 0 then
+            qar_debug := qar_open(PChar(found_qar));
+            if qar_debug = nil then
             begin
-              WriteLn('    -> Warning: Failed to register QAR file: ', found_qar);
+              WriteLn('    -> Warning: Failed to open QAR file: ', found_qar);
             end
             else
             begin
-              WriteLn('    -> Successfully registered');
-              // Debug: List all entries in QAR file to see actual paths
-              qar_debug := qar_open(PChar(found_qar));
-              if qar_debug <> nil then
+              WriteLn('    -> Successfully loaded');
+              j := Length(opaque^.qars);
+              SetLength(opaque^.qars, j + 1);
+              opaque^.qars[j] := qar_debug;
+
+              entry_count_debug := qar_get_entry_count(qar_debug);
+              WriteLn('    -> QAR file contains ', entry_count_debug, ' entries:');
+              for i_debug := 0 to entry_count_debug - 1 do
               begin
-                entry_count_debug := qar_get_entry_count(qar_debug);
-                WriteLn('    -> QAR file contains ', entry_count_debug, ' entries:');
-                for i_debug := 0 to entry_count_debug - 1 do
+                entry_debug := qar_get_entry(qar_debug, i_debug);
+                if entry_debug <> nil then
                 begin
-                  entry_debug := qar_get_entry(qar_debug, i_debug);
-                  if entry_debug <> nil then
-                  begin
-                    entry_path_debug := qar_entry_get_path(entry_debug);
-                    WriteLn('      Entry ', i_debug, ': "', entry_path_debug, '"');
-                  end;
+                  entry_path_debug := qar_entry_get_path(entry_debug);
+                  WriteLn('      Entry ', i_debug, ': "', entry_path_debug, '"');
                 end;
-                qar_close(qar_debug);
               end;
             end;
           end
@@ -1160,6 +1592,13 @@ begin
       JS_FreeRuntime(rt);
     end;
   finally
+    if Assigned(opaque) then
+    begin
+      for i := 0 to High(opaque^.qars) do
+        if opaque^.qars[i] <> nil then
+          qar_close(opaque^.qars[i]);
+      Dispose(opaque);
+    end;
     qar_files.Free;
     list.Free;
   end;

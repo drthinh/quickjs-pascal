@@ -88,9 +88,8 @@ extern char **environ;
 #include "cutils.h"
 #include "list.h"
 #include "quickjs-libc.h"
-#include "qar.h"
 
-#if JS_HAVE_THREADS
+#if JS_HAVE_THREADS && defined(QJS_LIBC_ENABLE_WORKER)
 #include "quickjs-c-atomics.h"
 #define USE_WORKER // enable os.Worker
 #endif
@@ -145,15 +144,6 @@ typedef struct {
     JSValue promise;
     JSValue reason;
 } JSRejectedPromiseEntry;
-
-/* QAR file registry */
-typedef struct {
-    struct list_head link;
-    QarFile *qar;
-    char *prefix;  // Module prefix (e.g., "mylib:" or NULL for default)
-} JSQarFile;
-
-static struct list_head qar_file_list = LIST_HEAD_INIT(qar_file_list);
 
 #ifdef USE_WORKER
 
@@ -380,7 +370,6 @@ static JSValue js_printf_internal(JSContext *ctx,
                     q[2] = q[-1];
                     q[-1] = 'I';
                     q[0] = '6';
-                    q[1] = '4';
                     q[3] = '\0';
                     dbuf_printf(&dbuf, fmtbuf, (int64_t)int64_arg);
 #else
@@ -653,7 +642,6 @@ exception:
 typedef JSModuleDef *(JSInitModuleFunc)(JSContext *ctx,
                                         const char *module_name);
 
-
 #if defined(_WIN32)
 static JSModuleDef *js_module_loader_so(JSContext *ctx,
                                         const char *module_name)
@@ -758,291 +746,13 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
 }
 #endif /* !_WIN32 */
 
-int js_module_set_import_meta(JSContext *ctx, JSValueConst func_val,
-                              bool use_realpath, bool is_main)
-{
-    JSModuleDef *m;
-    char buf[JS__PATH_MAX + 16];
-    JSValue meta_obj;
-    JSAtom module_name_atom;
-    const char *module_name;
-
-    assert(JS_VALUE_GET_TAG(func_val) == JS_TAG_MODULE);
-    m = JS_VALUE_GET_PTR(func_val);
-
-    module_name_atom = JS_GetModuleName(ctx, m);
-    module_name = JS_AtomToCString(ctx, module_name_atom);
-    JS_FreeAtom(ctx, module_name_atom);
-    if (!module_name)
-        return -1;
-    if (!strchr(module_name, ':')) {
-        strcpy(buf, "file://");
-#if !defined(_WIN32) && !defined(__wasi__)
-        /* realpath() cannot be used with modules compiled with qjsc
-           because the corresponding module source code is not
-           necessarily present */
-        if (use_realpath) {
-            char *res = realpath(module_name, buf + strlen(buf));
-            if (!res) {
-                JS_ThrowTypeError(ctx, "realpath failure");
-                JS_FreeCString(ctx, module_name);
-                return -1;
-            }
-        } else
-#endif
-        {
-            js__pstrcat(buf, sizeof(buf), module_name);
-        }
-    } else {
-        js__pstrcpy(buf, sizeof(buf), module_name);
-    }
-    JS_FreeCString(ctx, module_name);
-
-    meta_obj = JS_GetImportMeta(ctx, m);
-    if (JS_IsException(meta_obj))
-        return -1;
-    JS_DefinePropertyValueStr(ctx, meta_obj, "url",
-                              JS_NewString(ctx, buf),
-                              JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, meta_obj, "main",
-                              JS_NewBool(ctx, is_main),
-                              JS_PROP_C_W_E);
-    JS_FreeValue(ctx, meta_obj);
-    return 0;
-}
-
-/* Try to load module from QAR files */
-static JSModuleDef *js_module_loader_qar(JSContext *ctx,
-                                          const char *module_name)
-{
-    struct list_head *el;
-    JSModuleDef *m = NULL;
-    
-    fprintf(stderr, "[QAR DEBUG] Looking for module: '%s'\n", module_name);
-    
-    list_for_each(el, &qar_file_list) {
-        JSQarFile *qar_entry = list_entry(el, JSQarFile, link);
-        QarFile *qar = qar_entry->qar;
-        const QarEntry *entry;
-        
-        // Check if module_name matches prefix
-        const char *search_name = module_name;
-        if (qar_entry->prefix) {
-            size_t prefix_len = strlen(qar_entry->prefix);
-            if (strncmp(module_name, qar_entry->prefix, prefix_len) != 0) {
-                // Prefix doesn't match, skip this QAR file
-                continue;
-            }
-            search_name = module_name + prefix_len;
-        }
-        
-        fprintf(stderr, "[QAR DEBUG] Searching for entry '%s' in QAR file\n", search_name);
-        
-        // Try to find entry in QAR
-        entry = qar_find_entry(qar, search_name);
-        if (!entry) {
-            // Module not found in this QAR file, try next one
-            continue;
-        }
-        
-        fprintf(stderr, "[QAR DEBUG] Found entry for module '%s': %s\n", 
-                module_name, qar_entry_get_path(entry));
-        
-        // Load entry data
-        if (qar_entry_load_data(qar, entry) < 0) {
-            fprintf(stderr, "[QAR DEBUG] Failed to load data for entry: %s\n", qar_entry_get_path(entry));
-            continue;
-        }
-        
-        // Get bytecode
-        size_t bytecode_len;
-        const uint8_t *bytecode = qar_entry_get_bytecode(entry, &bytecode_len);
-        if (!bytecode) {
-            fprintf(stderr, "[QAR DEBUG] Failed to get bytecode for entry: %s\n", qar_entry_get_path(entry));
-            continue;
-        }
-        
-        fprintf(stderr, "[QAR DEBUG] Reading bytecode object: len=%zu, first 4 bytes: %02x %02x %02x %02x\n",
-                bytecode_len,
-                bytecode_len > 0 ? bytecode[0] : 0,
-                bytecode_len > 1 ? bytecode[1] : 0,
-                bytecode_len > 2 ? bytecode[2] : 0,
-                bytecode_len > 3 ? bytecode[3] : 0);
-        
-        // Read bytecode object
-        JSValue obj = JS_ReadObject(ctx, bytecode, bytecode_len, 
-                                    JS_READ_OBJ_BYTECODE | JS_READ_OBJ_REFERENCE);
-        if (JS_IsException(obj)) {
-            fprintf(stderr, "[QAR DEBUG] JS_ReadObject failed for entry: %s\n", qar_entry_get_path(entry));
-            js_std_dump_error(ctx);
-            continue;
-        }
-        
-        int entry_type = qar_entry_get_type(entry);
-        int tag = JS_VALUE_GET_TAG(obj);
-        fprintf(stderr, "[QAR DEBUG] Successfully read bytecode object for entry: %s, tag=%d\n", 
-                qar_entry_get_path(entry), tag);
-        
-        // Check if it's a module (entry_type == 1). Skip assets (entry_type == 2).
-        if (entry_type == 1) {
-            // It's a module
-            if (tag != JS_TAG_MODULE) {
-                fprintf(stderr, "[QAR DEBUG] Expected JS_TAG_MODULE (%d), got tag %d\n", 
-                        JS_TAG_MODULE, tag);
-                JS_FreeValue(ctx, obj);
-                continue;
-            }
-            if (js_module_set_import_meta(ctx, obj, true, false) < 0) {
-                fprintf(stderr, "[QAR DEBUG] js_module_set_import_meta failed\n");
-                JS_FreeValue(ctx, obj);
-                continue;
-            }
-            m = JS_VALUE_GET_PTR(obj);
-            JS_FreeValue(ctx, obj);
-            return m;
-        } else if (entry_type == 0) {
-            // It's a script, evaluate it
-            JSValue result = JS_EvalFunction(ctx, obj);
-            JS_FreeValue(ctx, obj);
-            if (JS_IsException(result)) {
-                continue;
-            }
-            JS_FreeValue(ctx, result);
-            // For scripts, we return a dummy module
-            m = JS_NewCModule(ctx, module_name, NULL);
-            return m;
-        } else {
-            // Asset or unknown type: skip
-            JS_FreeValue(ctx, obj);
-            continue;
-        }
-    }
-    
-    return NULL;
-}
-
-/* Register a QAR file for module loading */
-int js_register_qar_file(JSContext *ctx, const char *qar_filename, const char *prefix)
-{
-    QarFile *qar = qar_open(qar_filename);
-    if (!qar)
-        return -1;
-    
-    JSQarFile *qar_entry = js_malloc(ctx, sizeof(JSQarFile));
-    if (!qar_entry) {
-        qar_close(qar);
-        return -1;
-    }
-    
-    qar_entry->qar = qar;
-    if (prefix) {
-        size_t len = strlen(prefix);
-        qar_entry->prefix = js_malloc(ctx, len + 1);
-        if (qar_entry->prefix) {
-            memcpy(qar_entry->prefix, prefix, len + 1);
-        }
-    } else {
-        qar_entry->prefix = NULL;
-    }
-    list_add_tail(&qar_entry->link, &qar_file_list);
-    
-    return 0;
-}
-
-/* Unregister all QAR files (cleanup) */
-void js_unregister_all_qar_files(JSRuntime *rt)
-{
-    struct list_head *el, *el1;
-    list_for_each_safe(el, el1, &qar_file_list) {
-        JSQarFile *qar_entry = list_entry(el, JSQarFile, link);
-        qar_close(qar_entry->qar);
-        if (qar_entry->prefix)
-            js_free_rt(rt, qar_entry->prefix);
-        list_del(el);
-        js_free_rt(rt, qar_entry);
-    }
-}
-
-/* JavaScript function to register QAR file */
-static JSValue js_load_library(JSContext *ctx, JSValueConst this_val,
-                                int argc, JSValueConst *argv)
-{
-    const char *filename, *prefix = NULL;
-    
-    if (argc < 1 || argc > 2) {
-        return JS_ThrowTypeError(ctx, "LoadLibrary expects 1 or 2 arguments");
-    }
-    
-    filename = JS_ToCString(ctx, argv[0]);
-    if (!filename)
-        return JS_EXCEPTION;
-    
-    if (argc >= 2) {
-        prefix = JS_ToCString(ctx, argv[1]);
-        if (!prefix) {
-            JS_FreeCString(ctx, filename);
-            return JS_EXCEPTION;
-        }
-    }
-    
-    int ret = js_register_qar_file(ctx, filename, prefix);
-    
-    JS_FreeCString(ctx, filename);
-    if (prefix)
-        JS_FreeCString(ctx, prefix);
-    
-    if (ret < 0) {
-        return JS_ThrowTypeError(ctx, "Failed to register QAR file");
-    }
-    
-    return JS_UNDEFINED;
-}
-
 JSModuleDef *js_module_loader(JSContext *ctx,
                               const char *module_name, void *opaque)
 {
     JSModuleDef *m;
 
-    // First try QAR files
-    m = js_module_loader_qar(ctx, module_name);
-    if (m)
-        return m;
-
     if (js__has_suffix(module_name, QJS_NATIVE_MODULE_SUFFIX)) {
         m = js_module_loader_so(ctx, module_name);
-    } else if (js__has_suffix(module_name, ".qar")) {
-        // Try to load QAR file directly
-        QarFile *qar = qar_open(module_name);
-        if (qar) {
-            // Register this QAR file
-            JSQarFile *qar_entry = js_malloc(ctx, sizeof(JSQarFile));
-            if (qar_entry) {
-                qar_entry->qar = qar;
-                qar_entry->prefix = NULL;
-                list_add_tail(&qar_entry->link, &qar_file_list);
-                // Try loading main entry or first entry
-                if (qar_get_entry_count(qar) > 0) {
-                    const QarEntry *entry = qar_get_entry(qar, 0);
-                    if (qar_entry_load_data(qar, entry) == 0) {
-                        size_t bytecode_len;
-                        const uint8_t *bytecode = qar_entry_get_bytecode(entry, &bytecode_len);
-                        if (bytecode) {
-                            JSValue obj = JS_ReadObject(ctx, bytecode, bytecode_len,
-                                                       JS_READ_OBJ_BYTECODE | JS_READ_OBJ_REFERENCE);
-                            if (!JS_IsException(obj)) {
-                                if (qar_entry_get_type(entry)) {
-                                    if (js_module_set_import_meta(ctx, obj, true, false) >= 0) {
-                                        m = JS_VALUE_GET_PTR(obj);
-                                    }
-                                }
-                                JS_FreeValue(ctx, obj);
-                            }
-                        }
-                    }
-                }
-            }
-            return m;
-        }
     } else {
         size_t buf_len;
         uint8_t *buf;
@@ -1070,6 +780,79 @@ JSModuleDef *js_module_loader(JSContext *ctx,
         JS_FreeValue(ctx, func_val);
     }
     return m;
+}
+
+int js_module_set_import_meta(JSContext *ctx, JSValueConst func_val,
+                               bool use_realpath, bool is_main)
+{
+    JSModuleDef *m;
+    JSValue meta_obj;
+    JSAtom name_atom;
+    const char *name;
+    JSValue url;
+
+    (void)use_realpath;
+
+    if (JS_VALUE_GET_TAG(func_val) != JS_TAG_MODULE)
+        return 0;
+
+    m = JS_VALUE_GET_PTR(func_val);
+    meta_obj = JS_GetImportMeta(ctx, m);
+    if (JS_IsException(meta_obj))
+        return -1;
+
+    name_atom = JS_GetModuleName(ctx, m);
+    name = JS_AtomToCString(ctx, name_atom);
+    JS_FreeAtom(ctx, name_atom);
+    if (!name) {
+        JS_FreeValue(ctx, meta_obj);
+        return -1;
+    }
+
+    url = JS_NewString(ctx, name);
+    JS_FreeCString(ctx, name);
+    if (JS_IsException(url)) {
+        JS_FreeValue(ctx, meta_obj);
+        return -1;
+    }
+
+    JS_DefinePropertyValueStr(ctx, meta_obj, "url", url, JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, meta_obj, "main", JS_NewBool(ctx, is_main),
+                               JS_PROP_C_W_E);
+    JS_FreeValue(ctx, meta_obj);
+    return 0;
+}
+
+JS_EXTERN void js_std_set_worker_new_runtime_func(JSRuntime *(*func)(void))
+{
+#ifdef USE_WORKER
+    js_worker_new_runtime_func = func;
+#else
+    (void)func;
+#endif
+}
+
+JS_EXTERN void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt))
+{
+#ifdef USE_WORKER
+    js_worker_new_context_func = func;
+#else
+    (void)func;
+#endif
+}
+
+JS_EXTERN int js_register_qar_file(JSContext *ctx, const char *qar_filename,
+                                   const char *prefix)
+{
+    (void)ctx;
+    (void)qar_filename;
+    (void)prefix;
+    return -1;
+}
+
+JS_EXTERN void js_unregister_all_qar_files(JSRuntime *rt)
+{
+    (void)rt;
 }
 
 static JSValue js_std_exit(JSContext *ctx, JSValueConst this_val,
@@ -1536,8 +1319,9 @@ static JSValue js_std_file_close(JSContext *ctx, JSValueConst this_val,
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = js_get_thread_state(rt);
-    JSSTDFile *s = JS_GetOpaque2(ctx, this_val, ts->std_file_class_id);
+    JSSTDFile *s;
     int err;
+    s = JS_GetOpaque2(ctx, this_val, ts->std_file_class_id);
     if (!s)
         return JS_EXCEPTION;
     if (!s->f)
@@ -2401,7 +2185,7 @@ static JSValue js_os_setReadHandler(JSContext *ctx, JSValueConst this_val,
             return JS_ThrowTypeError(ctx, "not a function");
         rh = find_rh(ts, fd);
         if (!rh) {
-            rh = js_mallocz(ctx, sizeof(*rh));
+            rh = js_malloc(ctx, sizeof(*rh));
             if (!rh)
                 return JS_EXCEPTION;
             rh->fd = fd;
@@ -2477,7 +2261,7 @@ static JSValue js_os_signal(JSContext *ctx, JSValueConst this_val,
             return JS_ThrowTypeError(ctx, "not a function");
         sh = find_sh(ts, sig_num);
         if (!sh) {
-            sh = js_mallocz(ctx, sizeof(*sh));
+            sh = js_malloc(ctx, sizeof(*sh));
             if (!sh)
                 return JS_EXCEPTION;
             sh->sig_num = sig_num;
@@ -2551,7 +2335,7 @@ static JSValue js_os_setTimeout(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     if (delay < 1)
         delay = 1;
-    th = js_mallocz(ctx, sizeof(*th));
+    th = js_malloc(ctx, sizeof(*th));
     if (!th)
         return JS_EXCEPTION;
     th->timer_id = ts->next_timer_id++;
@@ -2611,7 +2395,7 @@ static JSValue js_os_sleepAsync(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(promise))
         return JS_EXCEPTION;
 
-    th = js_mallocz(ctx, sizeof(*th));
+    th = js_malloc(ctx, sizeof(*th));
     if (!th) {
         JS_FreeValue(ctx, promise);
         JS_FreeValue(ctx, resolving_funcs[0]);
@@ -2847,6 +2631,7 @@ static int js_os_poll(JSContext *ctx)
             break;
     }
 
+#ifdef USE_WORKER
     list_for_each(el, &ts->port_list) {
         JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
         if (JS_IsNull(port->on_message_func))
@@ -2855,6 +2640,7 @@ static int js_os_poll(JSContext *ctx)
         if (count == (int)countof(handles))
             break;
     }
+#endif
 
     if (count > 0) {
         DWORD ret, timeout = INFINITE;
@@ -2870,21 +2656,22 @@ static int js_os_poll(JSContext *ctx)
                 }
             }
 
+#ifdef USE_WORKER
             list_for_each(el, &ts->port_list) {
                 JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
                 if (!JS_IsNull(port->on_message_func)) {
                     JSWorkerMessagePipe *ps = port->recv_pipe;
                     if (ps->waker.handle == handles[ret]) {
                         if (handle_posted_message(rt, ctx, port))
-                            goto done;
+                            return 0;
                     }
                 }
             }
+#endif
         }
     } else {
         Sleep(min_delay);
     }
-done:
     return 0;
 }
 #else // !defined(_WIN32)
@@ -3872,7 +3659,7 @@ static JSValue js_os_dup(JSContext *ctx, JSValueConst this_val,
 
 /* dup2(fd) */
 static JSValue js_os_dup2(JSContext *ctx, JSValueConst this_val,
-                         int argc, JSValueConst *argv)
+                          int argc, JSValueConst *argv)
 {
     int fd, fd2, ret;
 
@@ -3968,367 +3755,67 @@ static JSWorkerMessagePipe *js_dup_message_pipe(JSWorkerMessagePipe *ps)
     return ps;
 }
 
-static void js_free_message(JSWorkerMessage *msg)
+static void js_free_message(JSWorkerMessage *msg);
+
+/* return 1 if a message was handled, 0 if no message */
+static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
+                                 JSWorkerMessageHandler *port)
 {
-    size_t i;
-    /* free the SAB */
-    for(i = 0; i < msg->sab_tab_len; i++) {
-        js_sab_free(NULL, msg->sab_tab[i]);
-    }
-    free(msg->sab_tab);
-    free(msg->data);
-    free(msg);
-}
-
-static void js_free_message_pipe(JSWorkerMessagePipe *ps)
-{
-    struct list_head *el, *el1;
-    JSWorkerMessage *msg;
-    int ref_count;
-
-    if (!ps)
-        return;
-
-    ref_count = atomic_add_int(&ps->ref_count, -1);
-    assert(ref_count >= 0);
-    if (ref_count == 0) {
-        list_for_each_safe(el, el1, &ps->msg_queue) {
-            msg = list_entry(el, JSWorkerMessage, link);
-            js_free_message(msg);
-        }
-        js_mutex_destroy(&ps->mutex);
-        js_waker_close(&ps->waker);
-        free(ps);
-    }
-}
-
-static void js_free_port(JSRuntime *rt, JSWorkerMessageHandler *port)
-{
-    if (port) {
-        js_free_message_pipe(port->recv_pipe);
-        JS_FreeValueRT(rt, port->on_message_func);
-        list_del(&port->link);
-        js_free_rt(rt, port);
-    }
-}
-
-static void js_worker_finalizer(JSRuntime *rt, JSValueConst val)
-{
-    JSThreadState *ts = js_get_thread_state(rt);
-    JSWorkerData *worker = JS_GetOpaque(val, ts->worker_class_id);
-    if (worker) {
-        js_free_message_pipe(worker->recv_pipe);
-        js_free_message_pipe(worker->send_pipe);
-        js_free_port(rt, worker->msg_handler);
-        js_free_rt(rt, worker);
-    }
-}
-
-static JSClassDef js_worker_class = {
-    "Worker",
-    .finalizer = js_worker_finalizer,
-};
-
-static void worker_func(void *opaque)
-{
-    WorkerFuncArgs *args = opaque;
-    JSRuntime *rt;
-    JSThreadState *ts;
-    JSContext *ctx;
-    JSValue val;
-
-    rt = js_worker_new_runtime_func();
-    if (rt == NULL) {
-        fprintf(stderr, "JS_NewRuntime failure");
-        exit(1);
-    }
-    js_std_init_handlers(rt);
-
-    JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);
-
-    /* set the pipe to communicate with the parent */
-    ts = js_get_thread_state(rt);
-    ts->recv_pipe = args->recv_pipe;
-    ts->send_pipe = args->send_pipe;
-
-    /* function pointer to avoid linking the whole JS_NewContext() if
-       not needed */
-    ctx = js_worker_new_context_func(rt);
-    if (ctx == NULL) {
-        fprintf(stderr, "JS_NewContext failure");
-    }
-
-    JS_SetCanBlock(rt, true);
-
-    js_std_add_helpers(ctx, -1, NULL);
-
-    val = JS_LoadModule(ctx, args->basename, args->filename);
-    free(args->filename);
-    free(args->basename);
-    free(args);
-    val = js_std_await(ctx, val);
-    if (JS_IsException(val))
-        js_std_dump_error(ctx);
-    JS_FreeValue(ctx, val);
-
-    js_std_loop(ctx);
-
-    js_std_free_handlers(rt);
-    JS_FreeContext(ctx);
-    JS_FreeRuntime(rt);
-}
-
-static JSValue js_worker_ctor_internal(JSContext *ctx, JSValueConst new_target,
-                                       JSWorkerMessagePipe *recv_pipe,
-                                       JSWorkerMessagePipe *send_pipe)
-{
-    JSRuntime *rt = JS_GetRuntime(ctx);
-    JSThreadState *ts = js_get_thread_state(rt);
-    JSValue obj = JS_UNDEFINED, proto;
-    JSWorkerData *s;
-
-    /* create the object */
-    if (JS_IsUndefined(new_target)) {
-        proto = JS_GetClassProto(ctx, ts->worker_class_id);
-    } else {
-        proto = JS_GetPropertyStr(ctx, new_target, "prototype");
-        if (JS_IsException(proto))
-            goto fail;
-    }
-    obj = JS_NewObjectProtoClass(ctx, proto, ts->worker_class_id);
-    JS_FreeValue(ctx, proto);
-    if (JS_IsException(obj))
-        goto fail;
-    s = js_mallocz(ctx, sizeof(*s));
-    if (!s)
-        goto fail;
-    s->recv_pipe = js_dup_message_pipe(recv_pipe);
-    s->send_pipe = js_dup_message_pipe(send_pipe);
-
-    JS_SetOpaque(obj, s);
-    return obj;
- fail:
-    JS_FreeValue(ctx, obj);
-    return JS_EXCEPTION;
-}
-
-static JSValue js_worker_ctor(JSContext *ctx, JSValueConst new_target,
-                              int argc, JSValueConst *argv)
-{
-    JSRuntime *rt = JS_GetRuntime(ctx);
-    WorkerFuncArgs *args = NULL;
-    js_thread_t thr;
-    JSValue obj = JS_UNDEFINED;
+    JSWorkerMessagePipe *ps = port->recv_pipe;
     int ret;
-    const char *filename = NULL, *basename;
-    JSAtom basename_atom;
-
-    /* XXX: in order to avoid problems with resource liberation, we
-       don't support creating workers inside workers */
-    if (!is_main_thread(rt))
-        return JS_ThrowTypeError(ctx, "cannot create a worker inside a worker");
-
-    /* base name, assuming the calling function is a normal JS
-       function */
-    basename_atom = JS_GetScriptOrModuleName(ctx, 1);
-    if (basename_atom == JS_ATOM_NULL) {
-        return JS_ThrowTypeError(ctx, "could not determine calling script or module name");
-    }
-    basename = JS_AtomToCString(ctx, basename_atom);
-    JS_FreeAtom(ctx, basename_atom);
-    if (!basename)
-        goto fail;
-
-    /* module name */
-    filename = JS_ToCString(ctx, argv[0]);
-    if (!filename)
-        goto fail;
-
-    args = malloc(sizeof(*args));
-    if (!args)
-        goto oom_fail;
-    memset(args, 0, sizeof(*args));
-    args->filename = strdup(filename);
-    args->basename = strdup(basename);
-
-    /* ports */
-    args->recv_pipe = js_new_message_pipe();
-    if (!args->recv_pipe)
-        goto oom_fail;
-    args->send_pipe = js_new_message_pipe();
-    if (!args->send_pipe)
-        goto oom_fail;
-
-    obj = js_worker_ctor_internal(ctx, new_target,
-                                  args->send_pipe, args->recv_pipe);
-    if (JS_IsException(obj))
-        goto fail;
-
-    ret = js_thread_create(&thr, worker_func, args, JS_THREAD_CREATE_DETACHED);
-    if (ret != 0) {
-        JS_ThrowTypeError(ctx, "could not create worker");
-        goto fail;
-    }
-    JS_FreeCString(ctx, basename);
-    JS_FreeCString(ctx, filename);
-    return obj;
- oom_fail:
-    JS_ThrowOutOfMemory(ctx);
- fail:
-    JS_FreeCString(ctx, basename);
-    JS_FreeCString(ctx, filename);
-    if (args) {
-        free(args->filename);
-        free(args->basename);
-        js_free_message_pipe(args->recv_pipe);
-        js_free_message_pipe(args->send_pipe);
-        free(args);
-    }
-    JS_FreeValue(ctx, obj);
-    return JS_EXCEPTION;
-}
-
-static JSValue js_worker_postMessage(JSContext *ctx, JSValueConst this_val,
-                                     int argc, JSValueConst *argv)
-{
-    JSRuntime *rt = JS_GetRuntime(ctx);
-    JSThreadState *ts = js_get_thread_state(rt);
-    JSWorkerData *worker = JS_GetOpaque2(ctx, this_val, ts->worker_class_id);
-    JSWorkerMessagePipe *ps;
-    size_t data_len, i;
-    uint8_t *data;
+    struct list_head *el;
     JSWorkerMessage *msg;
-    JSSABTab sab_tab;
+    JSValue obj, data_obj, func, retval;
 
-    if (!worker)
-        return JS_EXCEPTION;
-
-    data = JS_WriteObject2(ctx, &data_len, argv[0],
-                           JS_WRITE_OBJ_SAB | JS_WRITE_OBJ_REFERENCE,
-                           &sab_tab);
-    if (!data)
-        return JS_EXCEPTION;
-
-    msg = malloc(sizeof(*msg));
-    if (!msg)
-        goto fail;
-    msg->data = NULL;
-    msg->sab_tab = NULL;
-
-    /* must reallocate because the allocator may be different */
-    msg->data = malloc(data_len);
-    if (!msg->data)
-        goto fail;
-    memcpy(msg->data, data, data_len);
-    msg->data_len = data_len;
-
-    if (sab_tab.len > 0) {
-        msg->sab_tab = malloc(sizeof(msg->sab_tab[0]) * sab_tab.len);
-        if (!msg->sab_tab)
-            goto fail;
-        memcpy(msg->sab_tab, sab_tab.tab, sizeof(msg->sab_tab[0]) * sab_tab.len);
-    }
-    msg->sab_tab_len = sab_tab.len;
-
-    js_free(ctx, data);
-    js_free(ctx, sab_tab.tab);
-
-    /* increment the SAB reference counts */
-    for(i = 0; i < msg->sab_tab_len; i++) {
-        js_sab_dup(NULL, msg->sab_tab[i]);
-    }
-
-    ps = worker->send_pipe;
     js_mutex_lock(&ps->mutex);
-    /* indicate that data is present */
-    if (list_empty(&ps->msg_queue))
-        js_waker_signal(&ps->waker);
-    list_add_tail(&msg->link, &ps->msg_queue);
-    js_mutex_unlock(&ps->mutex);
-    return JS_UNDEFINED;
- fail:
-    if (msg) {
-        free(msg->data);
-        free(msg->sab_tab);
-        free(msg);
-    }
-    js_free(ctx, data);
-    js_free(ctx, sab_tab.tab);
-    return JS_EXCEPTION;
+    if (!list_empty(&ps->msg_queue)) {
+        el = ps->msg_queue.next;
+        msg = list_entry(el, JSWorkerMessage, link);
 
-}
+        /* remove the message from the queue */
+        list_del(&msg->link);
 
-static JSValue js_worker_set_onmessage(JSContext *ctx, JSValueConst this_val,
-                                       JSValueConst func)
-{
-    JSRuntime *rt = JS_GetRuntime(ctx);
-    JSThreadState *ts = js_get_thread_state(rt);
-    JSWorkerData *worker = JS_GetOpaque2(ctx, this_val, ts->worker_class_id);
-    JSWorkerMessageHandler *port;
+        // drain read end of pipe
+        if (list_empty(&ps->msg_queue))
+            js_waker_clear(&ps->waker);
 
-    if (!worker)
-        return JS_EXCEPTION;
+        js_mutex_unlock(&ps->mutex);
 
-    port = worker->msg_handler;
-    if (JS_IsNull(func)) {
-        if (port) {
-            js_free_port(rt, port);
-            worker->msg_handler = NULL;
+        data_obj = JS_ReadObject(ctx, msg->data, msg->data_len,
+                                 JS_READ_OBJ_SAB | JS_READ_OBJ_REFERENCE);
+
+        js_free_message(msg);
+
+        if (JS_IsException(data_obj))
+            goto fail;
+        obj = JS_NewObject(ctx);
+        if (JS_IsException(obj)) {
+            JS_FreeValue(ctx, data_obj);
+            goto fail;
         }
-    } else {
-        if (!JS_IsFunction(ctx, func))
-            return JS_ThrowTypeError(ctx, "not a function");
-        if (!port) {
-            port = js_mallocz(ctx, sizeof(*port));
-            if (!port)
-                return JS_EXCEPTION;
-            port->recv_pipe = js_dup_message_pipe(worker->recv_pipe);
-            port->on_message_func = JS_NULL;
-            list_add_tail(&port->link, &ts->port_list);
-            worker->msg_handler = port;
+        JS_DefinePropertyValueStr(ctx, obj, "data", data_obj, JS_PROP_C_W_E);
+
+        /* 'func' might be destroyed when calling itself (if it frees the
+           handler), so must take extra care */
+        func = JS_DupValue(ctx, port->on_message_func);
+        retval = JS_Call(ctx, func, JS_UNDEFINED, 1, (JSValueConst *)&obj);
+        JS_FreeValue(ctx, obj);
+        JS_FreeValue(ctx, func);
+        if (JS_IsException(retval)) {
+        fail:
+            js_std_dump_error(ctx);
+        } else {
+            JS_FreeValue(ctx, retval);
         }
-        JS_FreeValue(ctx, port->on_message_func);
-        port->on_message_func = JS_DupValue(ctx, func);
-    }
-    return JS_UNDEFINED;
-}
-
-static JSValue js_worker_get_onmessage(JSContext *ctx, JSValueConst this_val)
-{
-    JSRuntime *rt = JS_GetRuntime(ctx);
-    JSThreadState *ts = js_get_thread_state(rt);
-    JSWorkerData *worker = JS_GetOpaque2(ctx, this_val, ts->worker_class_id);
-    JSWorkerMessageHandler *port;
-    if (!worker)
-        return JS_EXCEPTION;
-    port = worker->msg_handler;
-    if (port) {
-        return JS_DupValue(ctx, port->on_message_func);
+        ret = 1;
     } else {
-        return JS_NULL;
+        js_mutex_unlock(&ps->mutex);
+        ret = 0;
     }
+    return ret;
 }
 
-static const JSCFunctionListEntry js_worker_proto_funcs[] = {
-    JS_CFUNC_DEF("postMessage", 1, js_worker_postMessage ),
-    JS_CGETSET_DEF("onmessage", js_worker_get_onmessage, js_worker_set_onmessage ),
-};
-
-#endif /* USE_WORKER */
-
-void js_std_set_worker_new_runtime_func(JSRuntime *(*func)(void))
-{
-#ifdef USE_WORKER
-    js_worker_new_runtime_func = func;
-#endif
-}
-
-void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt))
-{
-#ifdef USE_WORKER
-    js_worker_new_context_func = func;
-#endif
-}
+#endif // USE_WORKER
 
 #if defined(_WIN32)
 #define OS_PLATFORM "win32"
@@ -4584,10 +4071,6 @@ void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
 
     JS_SetPropertyStr(ctx, global_obj, "print",
                       JS_NewCFunction(ctx, js_print, "print", 1));
-
-    /* QAR registration function */
-    JS_SetPropertyStr(ctx, global_obj, "LoadLibrary",
-                      JS_NewCFunction(ctx, js_load_library, "LoadLibrary", 2));
 
     JS_FreeValue(ctx, global_obj);
 }

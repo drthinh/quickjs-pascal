@@ -15,7 +15,6 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "D:/Projects/quickjs/quickjs-master/miniz/miniz.c" "CMakeFiles/qjs.dir/miniz/miniz.c.obj" "gcc" "CMakeFiles/qjs.dir/miniz/miniz.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/miniz/miniz_tdef.c" "CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj" "gcc" "CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/miniz/miniz_tinfl.c" "CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj" "gcc" "CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj.d"
-  "D:/Projects/quickjs/quickjs-master/qar.c" "CMakeFiles/qjs.dir/qar.c.obj" "gcc" "CMakeFiles/qjs.dir/qar.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/quickjs-libc.c" "CMakeFiles/qjs.dir/quickjs-libc.c.obj" "gcc" "CMakeFiles/qjs.dir/quickjs-libc.c.obj.d"
   "D:/Projects/quickjs/quickjs-master/quickjs.c" "CMakeFiles/qjs.dir/quickjs.c.obj" "gcc" "CMakeFiles/qjs.dir/quickjs.c.obj.d"
   )

@@ -4,7 +4,6 @@ D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/qjar.dir
 D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/qjs_exe.dir
 D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/run-test262.dir
 D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/api-test.dir
-D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/test_qar_load.dir
 D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/unicode_gen.dir
 D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/function_source.dir
 D:/Projects/quickjs/quickjs-master/build-mingw/CMakeFiles/edit_cache.dir

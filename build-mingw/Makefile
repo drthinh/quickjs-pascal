@@ -239,19 +239,6 @@ api-test/fast:
 .PHONY : api-test/fast
 
 #=============================================================================
-# Target rules for targets named test_qar_load
-
-# Build rule for target.
-test_qar_load: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 test_qar_load
-.PHONY : test_qar_load
-
-# fast build rule for target.
-test_qar_load/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/build
-.PHONY : test_qar_load/fast
-
-#=============================================================================
 # Target rules for targets named unicode_gen
 
 # Build rule for target.
@@ -559,30 +546,6 @@ miniz/miniz_tinfl.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.s
 .PHONY : miniz/miniz_tinfl.c.s
 
-qar.obj: qar.c.obj
-.PHONY : qar.obj
-
-# target to build an object file
-qar.c.obj:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/qar.c.obj
-.PHONY : qar.c.obj
-
-qar.i: qar.c.i
-.PHONY : qar.i
-
-# target to preprocess a source file
-qar.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/qar.c.i
-.PHONY : qar.c.i
-
-qar.s: qar.c.s
-.PHONY : qar.s
-
-# target to generate assembly for a file
-qar.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/qar.c.s
-.PHONY : qar.c.s
-
 qjar.obj: qjar.c.obj
 .PHONY : qjar.obj
 
@@ -727,30 +690,6 @@ run-test262.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/run-test262.c.s
 .PHONY : run-test262.c.s
 
-tests/test_qar_load.obj: tests/test_qar_load.c.obj
-.PHONY : tests/test_qar_load.obj
-
-# target to build an object file
-tests/test_qar_load.c.obj:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/tests/test_qar_load.c.obj
-.PHONY : tests/test_qar_load.c.obj
-
-tests/test_qar_load.i: tests/test_qar_load.c.i
-.PHONY : tests/test_qar_load.i
-
-# target to preprocess a source file
-tests/test_qar_load.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/tests/test_qar_load.c.i
-.PHONY : tests/test_qar_load.c.i
-
-tests/test_qar_load.s: tests/test_qar_load.c.s
-.PHONY : tests/test_qar_load.s
-
-# target to generate assembly for a file
-tests/test_qar_load.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/tests/test_qar_load.c.s
-.PHONY : tests/test_qar_load.c.s
-
 unicode_gen.obj: unicode_gen.c.obj
 .PHONY : unicode_gen.obj
 
@@ -794,7 +733,6 @@ help:
 	@echo ... qjs_exe
 	@echo ... qjsc
 	@echo ... run-test262
-	@echo ... test_qar_load
 	@echo ... unicode_gen
 	@echo ... api-test.obj
 	@echo ... api-test.i
@@ -829,9 +767,6 @@ help:
 	@echo ... miniz/miniz_tinfl.obj
 	@echo ... miniz/miniz_tinfl.i
 	@echo ... miniz/miniz_tinfl.s
-	@echo ... qar.obj
-	@echo ... qar.i
-	@echo ... qar.s
 	@echo ... qjar.obj
 	@echo ... qjar.i
 	@echo ... qjar.s
@@ -850,9 +785,6 @@ help:
 	@echo ... run-test262.obj
 	@echo ... run-test262.i
 	@echo ... run-test262.s
-	@echo ... tests/test_qar_load.obj
-	@echo ... tests/test_qar_load.i
-	@echo ... tests/test_qar_load.s
 	@echo ... unicode_gen.obj
 	@echo ... unicode_gen.i
 	@echo ... unicode_gen.s

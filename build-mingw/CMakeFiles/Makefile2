@@ -68,7 +68,6 @@ all: CMakeFiles/qjar.dir/all
 all: CMakeFiles/qjs_exe.dir/all
 all: CMakeFiles/run-test262.dir/all
 all: CMakeFiles/api-test.dir/all
-all: CMakeFiles/test_qar_load.dir/all
 all: CMakeFiles/function_source.dir/all
 .PHONY : all
 
@@ -79,7 +78,6 @@ codegen: CMakeFiles/qjar.dir/codegen
 codegen: CMakeFiles/qjs_exe.dir/codegen
 codegen: CMakeFiles/run-test262.dir/codegen
 codegen: CMakeFiles/api-test.dir/codegen
-codegen: CMakeFiles/test_qar_load.dir/codegen
 codegen: CMakeFiles/function_source.dir/codegen
 .PHONY : codegen
 
@@ -94,7 +92,6 @@ clean: CMakeFiles/qjar.dir/clean
 clean: CMakeFiles/qjs_exe.dir/clean
 clean: CMakeFiles/run-test262.dir/clean
 clean: CMakeFiles/api-test.dir/clean
-clean: CMakeFiles/test_qar_load.dir/clean
 clean: CMakeFiles/unicode_gen.dir/clean
 clean: CMakeFiles/function_source.dir/clean
 .PHONY : clean
@@ -106,12 +103,12 @@ clean: CMakeFiles/function_source.dir/clean
 CMakeFiles/qjs.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=8,9,10,11,12,13,14,15,16,17,18 "Built target qjs"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=8,9,10,11,12,13,14,15,16,17 "Built target qjs"
 .PHONY : CMakeFiles/qjs.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/qjs.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 11
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 10
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/qjs.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 0
 .PHONY : CMakeFiles/qjs.dir/rule
@@ -123,7 +120,7 @@ qjs: CMakeFiles/qjs.dir/rule
 # codegen rule for target.
 CMakeFiles/qjs.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=8,9,10,11,12,13,14,15,16,17,18 "Finished codegen for target qjs"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=8,9,10,11,12,13,14,15,16,17 "Finished codegen for target qjs"
 .PHONY : CMakeFiles/qjs.dir/codegen
 
 # clean rule for target.
@@ -138,12 +135,12 @@ CMakeFiles/qjs.dir/clean:
 CMakeFiles/qjsc.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=24,25,26 "Built target qjsc"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=23,24,25 "Built target qjsc"
 .PHONY : CMakeFiles/qjsc.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/qjsc.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 14
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/qjsc.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 0
 .PHONY : CMakeFiles/qjsc.dir/rule
@@ -155,7 +152,7 @@ qjsc: CMakeFiles/qjsc.dir/rule
 # codegen rule for target.
 CMakeFiles/qjsc.dir/codegen: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjsc.dir\build.make CMakeFiles/qjsc.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=24,25,26 "Finished codegen for target qjsc"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=23,24,25 "Finished codegen for target qjsc"
 .PHONY : CMakeFiles/qjsc.dir/codegen
 
 # clean rule for target.
@@ -175,7 +172,7 @@ CMakeFiles/qjar.dir/all: CMakeFiles/qjs.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/qjar.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 14
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/qjar.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 0
 .PHONY : CMakeFiles/qjar.dir/rule
@@ -202,12 +199,12 @@ CMakeFiles/qjar.dir/clean:
 CMakeFiles/qjs_exe.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=19,20,21,22,23 "Built target qjs_exe"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=18,19,20,21,22 "Built target qjs_exe"
 .PHONY : CMakeFiles/qjs_exe.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/qjs_exe.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 16
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 15
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/qjs_exe.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 0
 .PHONY : CMakeFiles/qjs_exe.dir/rule
@@ -219,7 +216,7 @@ qjs_exe: CMakeFiles/qjs_exe.dir/rule
 # codegen rule for target.
 CMakeFiles/qjs_exe.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs_exe.dir\build.make CMakeFiles/qjs_exe.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=19,20,21,22,23 "Finished codegen for target qjs_exe"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=18,19,20,21,22 "Finished codegen for target qjs_exe"
 .PHONY : CMakeFiles/qjs_exe.dir/codegen
 
 # clean rule for target.
@@ -234,12 +231,12 @@ CMakeFiles/qjs_exe.dir/clean:
 CMakeFiles/run-test262.dir/all: CMakeFiles/qjs.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=27,28,29 "Built target run-test262"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=26,27,28 "Built target run-test262"
 .PHONY : CMakeFiles/run-test262.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/run-test262.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 14
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/run-test262.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 0
 .PHONY : CMakeFiles/run-test262.dir/rule
@@ -251,7 +248,7 @@ run-test262: CMakeFiles/run-test262.dir/rule
 # codegen rule for target.
 CMakeFiles/run-test262.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\run-test262.dir\build.make CMakeFiles/run-test262.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=27,28,29 "Finished codegen for target run-test262"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=26,27,28 "Finished codegen for target run-test262"
 .PHONY : CMakeFiles/run-test262.dir/codegen
 
 # clean rule for target.
@@ -271,7 +268,7 @@ CMakeFiles/api-test.dir/all: CMakeFiles/qjs.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/api-test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 12
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/api-test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 0
 .PHONY : CMakeFiles/api-test.dir/rule
@@ -292,45 +289,13 @@ CMakeFiles/api-test.dir/clean:
 .PHONY : CMakeFiles/api-test.dir/clean
 
 #=============================================================================
-# Target rules for target CMakeFiles/test_qar_load.dir
-
-# All Build rule for target.
-CMakeFiles/test_qar_load.dir/all: CMakeFiles/qjs.dir/all
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/depend
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=30,31 "Built target test_qar_load"
-.PHONY : CMakeFiles/test_qar_load.dir/all
-
-# Build rule for subdir invocation for target.
-CMakeFiles/test_qar_load.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 13
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/test_qar_load.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 0
-.PHONY : CMakeFiles/test_qar_load.dir/rule
-
-# Convenience name for target.
-test_qar_load: CMakeFiles/test_qar_load.dir/rule
-.PHONY : test_qar_load
-
-# codegen rule for target.
-CMakeFiles/test_qar_load.dir/codegen:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=30,31 "Finished codegen for target test_qar_load"
-.PHONY : CMakeFiles/test_qar_load.dir/codegen
-
-# clean rule for target.
-CMakeFiles/test_qar_load.dir/clean:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles\test_qar_load.dir\build.make CMakeFiles/test_qar_load.dir/clean
-.PHONY : CMakeFiles/test_qar_load.dir/clean
-
-#=============================================================================
 # Target rules for target CMakeFiles/unicode_gen.dir
 
 # All Build rule for target.
 CMakeFiles/unicode_gen.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\unicode_gen.dir\build.make CMakeFiles/unicode_gen.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\unicode_gen.dir\build.make CMakeFiles/unicode_gen.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=32,33,34,35 "Built target unicode_gen"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=29,30,31,32 "Built target unicode_gen"
 .PHONY : CMakeFiles/unicode_gen.dir/all
 
 # Build rule for subdir invocation for target.
@@ -347,7 +312,7 @@ unicode_gen: CMakeFiles/unicode_gen.dir/rule
 # codegen rule for target.
 CMakeFiles/unicode_gen.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\unicode_gen.dir\build.make CMakeFiles/unicode_gen.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=32,33,34,35 "Finished codegen for target unicode_gen"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles --progress-num=29,30,31,32 "Finished codegen for target unicode_gen"
 .PHONY : CMakeFiles/unicode_gen.dir/codegen
 
 # clean rule for target.
@@ -367,7 +332,7 @@ CMakeFiles/function_source.dir/all: CMakeFiles/qjs.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/function_source.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 12
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/function_source.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start D:\Projects\quickjs\quickjs-master\build-mingw\CMakeFiles 0
 .PHONY : CMakeFiles/function_source.dir/rule

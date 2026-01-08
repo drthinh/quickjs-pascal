@@ -351,7 +351,6 @@ set(qjs_sources
     libregexp.c
     libunicode.c
     quickjs.c
-    qar.c
     miniz/miniz.c
     miniz/miniz_tinfl.c
     miniz/miniz_tdef.c
@@ -580,15 +579,6 @@ target_compile_definitions(api-test PRIVATE ${qjs_defines})
 add_use_qjs_dll_if_needed(api-test)
 target_link_libraries(api-test qjs)
 
-# QAR test loader
-add_executable(test_qar_load
-    tests/test_qar_load.c
-)
-add_qjs_libc_if_needed(test_qar_load)
-target_compile_definitions(test_qar_load PRIVATE ${qjs_defines})
-add_use_qjs_dll_if_needed(test_qar_load)
-target_link_libraries(test_qar_load qjs)
-
 # Unicode generator
 #
 
@@ -682,14 +672,12 @@ set_target_properties(qjs PROPERTIES
     SOVERSION ${QJS_VERSION_MAJOR}
 )
 install(FILES quickjs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(FILES qar.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 if(QJS_BUILD_LIBC)
     install(FILES quickjs-libc.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif()
 if(NOT IOS AND NOT TVOS AND NOT WATCHOS)
     install(TARGETS qjs_exe RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(TARGETS qjsc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-    install(TARGETS qjar RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 install(TARGETS qjs EXPORT qjsConfig
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

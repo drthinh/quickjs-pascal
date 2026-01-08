@@ -69,16 +69,15 @@ JS_EXTERN void js_std_promise_rejection_tracker(JSContext *ctx,
                                                 JSValueConst reason,
                                                 bool is_handled,
                                                 void *opaque);
+JS_EXTERN int js_register_qar_file(JSContext *ctx, const char *qar_filename,
+                                   const char *prefix);
+JS_EXTERN void js_unregister_all_qar_files(JSRuntime *rt);
 // Defaults to JS_NewRuntime, no-op if compiled without worker support.
 // Call before creating the first worker thread.
 JS_EXTERN void js_std_set_worker_new_runtime_func(JSRuntime *(*func)(void));
 // Defaults to JS_NewContext, no-op if compiled without worker support.
 // Call before creating the first worker thread.
 JS_EXTERN void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt));
-
-/* QAR (QuickJS Archive) support */
-JS_EXTERN int js_register_qar_file(JSContext *ctx, const char *qar_filename, const char *prefix);
-JS_EXTERN void js_unregister_all_qar_files(JSRuntime *rt);
 
 #undef JS_EXTERN
 

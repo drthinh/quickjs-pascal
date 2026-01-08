@@ -31,11 +31,6 @@ function js_module_loader(ctx: PJSContext; module_name: PChar; opaque: pointer):
 procedure js_std_eval_binary(ctx: PJSContext; buf: Pcuint8; buf_len: csize_t; flags: cint); cdecl; external libqjs;
 procedure js_std_promise_rejection_tracker(ctx: PJSContext; promise: JSValueConst; reason: JSValueConst; is_handled: cbool; opaque: pointer); cdecl; external libqjs;
 
-// QAR support
-function js_register_qar_file(ctx: PJSContext; qar_filename: PChar; prefix: PChar): cint; cdecl; external libqjs;
-procedure js_unregister_all_qar_files(rt: PJSRuntime); cdecl; external libqjs;
-
 implementation
 
 end.
-
