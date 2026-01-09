@@ -74,12 +74,17 @@ begin
   end;
 end;
 
+type
+  TReplGuardMode = (rgStrict, rgFriendly);
+
 // Main program
 var
   ExampleConfigs: TExampleConfigs;
   ExamplesConfigFile: string;
   rt: PJSRuntime;
   ctx: PJSContext;
+  ReplGuardMode: TReplGuardMode;
+  GuardExplicit: boolean;
   script: string;
   result_val: JSValue;
   run_script_mode: boolean;
@@ -134,6 +139,7 @@ var
   k_qar: integer;
   newDebugLevel: integer;
   exit_code: integer;
+  guardArg: string;
 
 // Run a JS file (non-interactive mode)
 function RunScriptFile(ctx: PJSContext; const filename: string): boolean;
@@ -266,6 +272,8 @@ begin
   script_filename := '';
   script_argc := 0;
   exit_code := 0;
+  ReplGuardMode := rgFriendly;
+  GuardExplicit := False;
   
   // Parse command line arguments
   i := 1;
@@ -308,6 +316,27 @@ begin
         end;
       end;
     end
+    else if (ParamStr(i) = '--guard') or (ParamStr(i) = '--repl-guard') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing value for --guard (strict|friendly)');
+        Halt(1);
+      end;
+      guardArg := LowerCase(ParamStr(i));
+      if guardArg = 'strict' then
+        ReplGuardMode := rgStrict
+      else if guardArg = 'friendly' then
+        ReplGuardMode := rgFriendly
+      else
+      begin
+        WriteLn('Error: Invalid --guard value: ', guardArg);
+        WriteLn('       Expected: strict | friendly');
+        Halt(1);
+      end;
+      GuardExplicit := True;
+    end
     else if (ParamStr(i) = '-h') or (ParamStr(i) = '--help') then
     begin
       WriteLn('QuickJS Pascal');
@@ -321,6 +350,7 @@ begin
       WriteLn('  -o, --output FILE    Build QAR file from JavaScript files/directories');
       WriteLn('  -b, --build-qar      Build QAR file (same as -o)');
       WriteLn('  -d, --debug [LEVEL]  Enable debug output (0=off, 1=basic, 2=verbose, default=1)');
+      WriteLn('  --guard MODE         REPL crash guard: strict | friendly');
       WriteLn('  -h, --help           Show this help');
       WriteLn;
       WriteLn('Examples:');
@@ -328,6 +358,7 @@ begin
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -o mylib.qar math.js utils.js');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -o mylib.qar src/');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -d 2                  (interactive mode with verbose debug)');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --guard friendly      (interactive mode, no hard crash on AV)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), '                        (interactive mode)');
       Halt(0);
     end
@@ -385,6 +416,15 @@ begin
     WriteLn('QuickJS Pascal');
     WriteLn('==================');
     WriteLn;
+  end;
+
+  // Default guard mode if not set explicitly
+  if not GuardExplicit then
+  begin
+    if qjs_log.DebugLevel > 0 then
+      ReplGuardMode := rgStrict
+    else
+      ReplGuardMode := rgFriendly;
   end;
 
   // Initialize dynamic library handle storage
@@ -546,6 +586,7 @@ begin
     WriteLn('  .qar / .tool / .verify      - QAR tooling commands');
     WriteLn('  .example ...                - Run/manage example tests');
     WriteLn('  .debug [on|off|0|1|2]       - Toggle debug');
+    WriteLn('  .guard [strict|friendly]    - REPL crash guard mode');
     WriteLn('  .mem                        - Runtime memory usage');
     WriteLn;
 
@@ -557,8 +598,10 @@ begin
       if (script = 'exit') or (script = 'quit') or (script = '.exit') or (script = '.quit') then
         Break;
 
-      if script <> '' then
-      begin
+      if script = '' then
+        Continue;
+
+      try
         if (script = 'help') or (script = '.help') then
         begin
           WriteLn('Help');
@@ -625,6 +668,47 @@ begin
           WriteLn('  - Use ".example list" to see available example test names.');
           WriteLn;
           Flush(Output);
+          Continue;
+        end;
+
+        if (Copy(script, 1, 7) = '.guard ') or (script = '.guard') then
+        begin
+          cmdLine := '';
+          if Length(script) > 7 then
+            cmdLine := Trim(Copy(script, 8, Length(script)));
+
+          if cmdLine = '' then
+          begin
+            if ReplGuardMode = rgStrict then
+              WriteLn('REPL guard mode: strict')
+            else
+              WriteLn('REPL guard mode: friendly');
+            WriteLn('Usage: .guard strict | friendly');
+            Flush(Output);
+          end
+          else
+          begin
+            cmdLine := LowerCase(cmdLine);
+            if cmdLine = 'strict' then
+              ReplGuardMode := rgStrict
+            else if cmdLine = 'friendly' then
+              ReplGuardMode := rgFriendly
+            else
+            begin
+              WriteLn('Warning: Invalid guard mode, must be strict or friendly');
+              Flush(Output);
+              Continue;
+            end;
+
+            GuardExplicit := True;
+
+            if ReplGuardMode = rgStrict then
+              WriteLn('REPL guard mode set to strict')
+            else
+              WriteLn('REPL guard mode set to friendly');
+            Flush(Output);
+          end;
+
           Continue;
         end;
 
@@ -1555,12 +1639,33 @@ begin
         if result_val.tag <> JS_TAG_UNDEFINED then
           JS_FreeValue(ctx, result_val);
       end;
+
+      except
+        on E: EAccessViolation do
+        begin
+          if ReplGuardMode = rgStrict then
+            raise
+          else
+          begin
+            WriteLn('Fatal: Access violation detected (internal error).');
+            WriteLn('The REPL will now exit cleanly.');
+            Flush(Output);
+            exit_code := 1;
+            Break;
+          end;
+        end;
+        on E: Exception do
+        begin
+          WriteLn('Error: ', E.ClassName, ': ', E.Message);
+          Flush(Output);
+          Continue;
+        end;
+      end;
+
     end;
   end;
 
   // End interactive mode block
-  end;
-
   // Cleanup
   if qjs_log.DebugLevel > 1 then
     DumpRuntimeMemoryUsageToConsole(rt);
