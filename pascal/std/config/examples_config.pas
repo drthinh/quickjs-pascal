@@ -21,7 +21,7 @@ function FindExampleConfig(const Configs: TExampleConfigs; const name: string): 
 implementation
 
 uses
-  SysUtils, Classes, fpjson, jsonparser;
+  SysUtils, Classes, fpjson, jsonparser, file_utils;
 
 function DefaultExamplesConfigFile: string;
 var
@@ -30,7 +30,7 @@ var
 begin
   exe_dir := ExtractFilePath(ExpandFileName(ParamStr(0)));
   pascal_root := ExpandFileName(IncludeTrailingPathDelimiter(exe_dir) + '..');
-  Result := IncludeTrailingPathDelimiter(pascal_root) + 'config' + PathDelim + 'qjs_examples.json';
+  Result := IncludeTrailingPathDelimiter(pascal_root) + 'config' + PathDelim + 'qjsp_config.json';
 end;
 
 // Helper function to load examples config from JSON file
@@ -118,14 +118,40 @@ end;
 procedure SaveExamplesConfigToFile(const FileName: string; const Configs: TExampleConfigs);
 var
   rootObj, examplesObj: TJSONObject;
+  existingContent: string;
+  existingJson, existingLibraries: TJSONData;
+  existingRoot: TJSONObject;
   f: TextFile;
   i: integer;
   jsonStr: string;
   out_dir: string;
 begin
   // Build JSON structure: { "examples": { "name": boolean, ... } }
+  // but preserve other existing top-level keys (e.g. libraries) when present.
   rootObj := TJSONObject.Create;
   try
+    existingContent := '';
+    existingJson := nil;
+    if FileExists(FileName) and ReadTextFileToString(FileName, existingContent) then
+    begin
+      if existingContent <> '' then
+      begin
+        try
+          existingJson := GetJSON(existingContent);
+        except
+          existingJson := nil;
+        end;
+      end;
+    end;
+
+    if (existingJson <> nil) and (existingJson is TJSONObject) then
+    begin
+      existingRoot := TJSONObject(existingJson);
+      existingLibraries := existingRoot.Find('libraries');
+      if (existingLibraries <> nil) and (existingLibraries is TJSONObject) then
+        rootObj.Add('libraries', existingLibraries.Clone);
+    end;
+
     examplesObj := TJSONObject.Create;
     rootObj.Add('examples', examplesObj);
 
@@ -149,6 +175,8 @@ begin
       CloseFile(f);
     end;
   finally
+    if existingJson <> nil then
+      existingJson.Free;
     rootObj.Free;
   end;
 end;

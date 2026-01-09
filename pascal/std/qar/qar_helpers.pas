@@ -50,6 +50,49 @@ procedure ExampleExecuteQarEntry(ctx: PJSContext; qar_filename, entry_path: stri
 
 implementation
 
+function QarRebuildBytecodeFromSource(ctx: PJSContext; entry: PQarEntryRead; const entry_name_for_log: string; is_module: boolean; out obj: JSValue): boolean;
+var
+  source_len: csize_t;
+  source: Pcuint8;
+  eval_flags: cint;
+  bc_ptr: Pcuint8;
+  bc_len: csize_t;
+  rt: PJSRuntime;
+begin
+  Result := False;
+  obj := JS_UNDEFINED;
+
+  source_len := 0;
+  source := qar_entry_get_source(entry, @source_len);
+  if (source = nil) or (source_len = 0) then
+    Exit;
+
+  eval_flags := JS_EVAL_FLAG_COMPILE_ONLY;
+  if is_module then
+    eval_flags := eval_flags or JS_EVAL_TYPE_MODULE
+  else
+    eval_flags := eval_flags or JS_EVAL_TYPE_GLOBAL;
+
+  obj := JS_Eval(ctx, PChar(source), QWord(source_len), PChar(entry_name_for_log), eval_flags);
+  if JS_IsException(obj) <> 0 then
+    Exit;
+
+  bc_len := 0;
+  bc_ptr := JS_WriteObject(ctx, @bc_len, obj, JS_WRITE_OBJ_BYTECODE or JS_WRITE_OBJ_REFERENCE);
+  if (bc_ptr <> nil) and (bc_len > 0) then
+  begin
+    SetLength(entry^.bytecode_cache, bc_len);
+    Move(bc_ptr^, entry^.bytecode_cache[0], bc_len);
+    rt := JS_GetRuntime(ctx);
+    if rt <> nil then
+      js_free_rt(rt, bc_ptr)
+    else
+      js_free(ctx, bc_ptr);
+  end;
+
+  Result := True;
+end;
+
 function RegisterQarFile(const qar_filename: string; const prefix: string): cint;
 var
   q: PQarFile;
@@ -94,6 +137,8 @@ var
   obj: JSValue;
   eval_flags: cint;
   m: PJSModuleDef;
+  ok: boolean;
+  exc: JSValue;
 begin
   try
     Result := nil;
@@ -128,13 +173,34 @@ begin
 
     bytecode_len := 0;
     bytecode := qar_entry_get_bytecode(entry, @bytecode_len);
-    if bytecode = nil then
-      Continue;
+    obj := JS_UNDEFINED;
+    ok := False;
+    if (bytecode <> nil) and (bytecode_len > 0) then
+    begin
+      eval_flags := JS_READ_OBJ_BYTECODE or JS_READ_OBJ_REFERENCE;
+      obj := JS_ReadObject(ctx, bytecode, QWord(bytecode_len), LongInt(eval_flags));
+      if JS_IsException(obj) = 0 then
+        ok := True
+      else
+      begin
+        if qjs_log.DebugLevel > 0 then
+        begin
+          WriteLn('[QAR] Bytecode load failed for module "', nameNoPrefix, '". Rebuilding from source...');
+          js_std_dump_error(ctx);
+          Flush(Output);
+          Flush(StdErr);
+        end;
+        exc := JS_GetException(ctx);
+        JS_FreeValue(ctx, exc);
+      end;
+    end;
 
-    eval_flags := JS_READ_OBJ_BYTECODE or JS_READ_OBJ_REFERENCE;
-    obj := JS_ReadObject(ctx, bytecode, QWord(bytecode_len), LongInt(eval_flags));
-    if JS_IsException(obj) <> 0 then
-      Exit(nil);
+    if not ok then
+    begin
+      ok := QarRebuildBytecodeFromSource(ctx, entry, nameNoPrefix, True, obj);
+      if not ok then
+        Continue;
+    end;
 
     if js_module_set_import_meta(ctx, obj, cbool(1), cbool(0)) < 0 then
     begin
@@ -504,6 +570,8 @@ var
   bytecode, source: Pcuint8;
   obj: JSValue;
   eval_flags: cint;
+  ok: boolean;
+  exc: JSValue;
 begin
   try
   if argc < 2 then
@@ -572,24 +640,56 @@ begin
     Exit;
   end;
 
-  // Scripts/modules: load bytecode
+  bytecode_len := 0;
   bytecode := qar_entry_get_bytecode(entry, @bytecode_len);
-  if bytecode = nil then
+  obj := JS_UNDEFINED;
+  ok := False;
+  if (bytecode <> nil) and (bytecode_len > 0) then
   begin
-    qar_close(qar);
-    Result := JS_ThrowTypeError(ctx, PChar('Failed to get bytecode'));
-    Exit;
+    eval_flags := JS_READ_OBJ_BYTECODE or JS_READ_OBJ_REFERENCE;
+    obj := JS_ReadObject(ctx, bytecode, QWord(bytecode_len), LongInt(eval_flags));
+    if JS_IsException(obj) = 0 then
+      ok := True
+    else
+    begin
+      if qjs_log.DebugLevel > 0 then
+      begin
+        WriteLn('[QAR] Bytecode load failed for entry. Rebuilding from source...');
+        js_std_dump_error(ctx);
+        Flush(Output);
+        Flush(StdErr);
+      end;
+      exc := JS_GetException(ctx);
+      JS_FreeValue(ctx, exc);
+    end;
   end;
 
-  // Read and execute bytecode
-  eval_flags := JS_READ_OBJ_BYTECODE or JS_READ_OBJ_REFERENCE;
-  obj := JS_ReadObject(ctx, bytecode, QWord(bytecode_len), LongInt(eval_flags));
-
-  if JS_IsException(obj) <> 0 then
+  if not ok then
   begin
-    qar_close(qar);
-    Result := obj;
-    Exit;
+    ok := QarRebuildBytecodeFromSource(ctx, entry, 'qar_entry', (entry_type <> 0), obj);
+    if not ok then
+    begin
+      source_len := 0;
+      source := qar_entry_get_source(entry, @source_len);
+      if (source = nil) or (source_len = 0) then
+      begin
+        qar_close(qar);
+        Result := JS_ThrowTypeError(ctx, PChar('Failed to get bytecode and source'));
+        Exit;
+      end;
+      eval_flags := JS_EVAL_FLAG_COMPILE_ONLY;
+      if entry_type <> 0 then
+        eval_flags := eval_flags or JS_EVAL_TYPE_MODULE
+      else
+        eval_flags := eval_flags or JS_EVAL_TYPE_GLOBAL;
+      obj := JS_Eval(ctx, PChar(source), QWord(source_len), PChar('qar_entry'), eval_flags);
+      if JS_IsException(obj) <> 0 then
+      begin
+        qar_close(qar);
+        Result := obj;
+        Exit;
+      end;
+    end;
   end;
 
   // Check if it's a module

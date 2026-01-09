@@ -51,6 +51,231 @@ begin
     JS_InstallStdPromiseRejectionTracker(rt);
 end;
 
+procedure LoadQjspMountsFromFile(const FileName: string; DebugLevel: integer);
+var
+  json_content: string;
+  jsonData, mountsData: TJSONData;
+  rootObj, mountsObj: TJSONObject;
+  i: integer;
+  key: string;
+  item: TJSONData;
+  folder: string;
+begin
+  qjsp_clear_mounts;
+
+  if not FileExists(FileName) then
+    Exit;
+
+  if not ReadTextFileToString(FileName, json_content) then
+    Exit;
+
+  if json_content = '' then
+    Exit;
+
+  try
+    jsonData := GetJSON(json_content);
+  except
+    on E: Exception do
+    begin
+      if DebugLevel > 0 then
+        WriteLn('[DEBUG] Failed to parse config JSON (fpjson): ', E.Message);
+      Exit;
+    end;
+  end;
+
+  try
+    if not (jsonData is TJSONObject) then
+      Exit;
+
+    rootObj := TJSONObject(jsonData);
+    mountsData := rootObj.Find('libraries');
+    if (mountsData = nil) or not (mountsData is TJSONObject) then
+      Exit;
+
+    mountsObj := TJSONObject(mountsData);
+    for i := 0 to mountsObj.Count - 1 do
+    begin
+      key := mountsObj.Names[i];
+      item := mountsObj.Items[i];
+      if (item = nil) or (item.JSONType <> jtString) then
+        Continue;
+      folder := item.AsString;
+      qjsp_register_mount(key, folder);
+    end;
+  finally
+    jsonData.Free;
+  end;
+end;
+
+function ReadConfigJsonObject(const FileName: string; DebugLevel: integer): TJSONObject;
+var
+  json_content: string;
+  jsonData: TJSONData;
+begin
+  Result := nil;
+  if not FileExists(FileName) then
+    Exit;
+  if not ReadTextFileToString(FileName, json_content) then
+    Exit;
+  if json_content = '' then
+    Exit;
+  try
+    jsonData := GetJSON(json_content);
+  except
+    on E: Exception do
+    begin
+      if DebugLevel > 0 then
+        WriteLn('[DEBUG] Failed to parse config JSON (fpjson): ', E.Message);
+      Exit;
+    end;
+  end;
+  if (jsonData <> nil) and (jsonData is TJSONObject) then
+    Result := TJSONObject(jsonData)
+  else if jsonData <> nil then
+    jsonData.Free;
+end;
+
+procedure WriteConfigJsonObject(const FileName: string; const RootObj: TJSONObject);
+var
+  f: TextFile;
+  jsonStr: string;
+  out_dir: string;
+begin
+  if RootObj = nil then
+    Exit;
+  jsonStr := RootObj.FormatJSON([]);
+  out_dir := ExtractFileDir(FileName);
+  if (out_dir <> '') and (not DirectoryExists(out_dir)) then
+    ForceDirectories(out_dir);
+  AssignFile(f, FileName);
+  Rewrite(f);
+  try
+    Write(f, jsonStr);
+  finally
+    CloseFile(f);
+  end;
+end;
+
+function EnsureLibrariesObject(var RootObj: TJSONObject): TJSONObject;
+var
+  libsData: TJSONData;
+begin
+  Result := nil;
+  if RootObj = nil then
+    RootObj := TJSONObject.Create;
+  libsData := RootObj.Find('libraries');
+  if (libsData <> nil) and (libsData is TJSONObject) then
+    Result := TJSONObject(libsData)
+  else
+  begin
+    Result := TJSONObject.Create;
+    RootObj.Add('libraries', Result);
+  end;
+end;
+
+procedure ConfigLibrariesList(const FileName: string; DebugLevel: integer);
+var
+  rootObj, libsObj: TJSONObject;
+  libsData: TJSONData;
+  i: integer;
+begin
+  rootObj := ReadConfigJsonObject(FileName, DebugLevel);
+  try
+    if rootObj = nil then
+      Exit;
+    libsData := rootObj.Find('libraries');
+    if (libsData = nil) or (not (libsData is TJSONObject)) then
+      Exit;
+    libsObj := TJSONObject(libsData);
+    for i := 0 to libsObj.Count - 1 do
+      WriteLn(libsObj.Names[i], '=', libsObj.Items[i].AsString);
+  finally
+    if rootObj <> nil then
+      rootObj.Free;
+  end;
+end;
+
+procedure ConfigLibrariesListPretty(const FileName: string; DebugLevel: integer);
+var
+  rootObj, libsObj: TJSONObject;
+  libsData: TJSONData;
+  i: integer;
+  prefix: string;
+  folder: string;
+begin
+  rootObj := ReadConfigJsonObject(FileName, DebugLevel);
+  try
+    if rootObj = nil then
+    begin
+      WriteLn('No config file: ', FileName);
+      Exit;
+    end;
+
+    libsData := rootObj.Find('libraries');
+    if (libsData = nil) or (not (libsData is TJSONObject)) then
+    begin
+      WriteLn('No libraries registered.');
+      WriteLn('Tip: .lib add <prefix> <folder>');
+      Exit;
+    end;
+
+    libsObj := TJSONObject(libsData);
+    if libsObj.Count = 0 then
+    begin
+      WriteLn('No libraries registered.');
+      WriteLn('Tip: .lib add <prefix> <folder>');
+      Exit;
+    end;
+
+    WriteLn('Registered libraries:');
+    for i := 0 to libsObj.Count - 1 do
+    begin
+      prefix := libsObj.Names[i];
+      folder := libsObj.Items[i].AsString;
+      WriteLn('  - ', prefix, ' -> ', folder);
+    end;
+  finally
+    if rootObj <> nil then
+      rootObj.Free;
+  end;
+end;
+
+procedure ConfigLibrariesAdd(const FileName: string; DebugLevel: integer; const Prefix: string; const Folder: string);
+var
+  rootObj, libsObj: TJSONObject;
+begin
+  rootObj := ReadConfigJsonObject(FileName, DebugLevel);
+  if rootObj = nil then
+    rootObj := TJSONObject.Create;
+  try
+    libsObj := EnsureLibrariesObject(rootObj);
+    libsObj.Strings[Trim(Prefix)] := Trim(Folder);
+    WriteConfigJsonObject(FileName, rootObj);
+  finally
+    rootObj.Free;
+  end;
+end;
+
+procedure ConfigLibrariesRemove(const FileName: string; DebugLevel: integer; const Prefix: string);
+var
+  rootObj, libsObj: TJSONObject;
+  libsData: TJSONData;
+begin
+  rootObj := ReadConfigJsonObject(FileName, DebugLevel);
+  if rootObj = nil then
+    Exit;
+  try
+    libsData := rootObj.Find('libraries');
+    if (libsData = nil) or (not (libsData is TJSONObject)) then
+      Exit;
+    libsObj := TJSONObject(libsData);
+    libsObj.Delete(Trim(Prefix));
+    WriteConfigJsonObject(FileName, rootObj);
+  finally
+    rootObj.Free;
+  end;
+end;
+
 // Helper function to load and execute a JS file
 function LoadAndExecuteJSFile(ctx: PJSContext; const filename: string): boolean;
 var
@@ -435,6 +660,14 @@ type
 var
   ExampleConfigs: TExampleConfigs;
   ExamplesConfigFile: string;
+  config_file_override: string;
+  lib_add_specs: TStringList;
+  lib_rm_prefixes: TStringList;
+  lib_ls_mode: boolean;
+  lib_changed: boolean;
+  eq_pos: SizeInt;
+  spec_pfx: string;
+  spec_folder: string;
   rt: PJSRuntime;
   ctx: PJSContext;
   ReplGuardMode: TReplGuardMode;
@@ -723,6 +956,11 @@ begin
   ConsoleInitUtf8;
 
   ExamplesConfigFile := DefaultExamplesConfigFile;
+  config_file_override := '';
+  lib_add_specs := TStringList.Create;
+  lib_rm_prefixes := TStringList.Create;
+  lib_ls_mode := False;
+  lib_changed := False;
 
   // Check for build QAR mode
   build_mode := False;
@@ -768,7 +1006,43 @@ begin
   i := 1;
   while i <= ParamCount do
   begin
-    if (ParamStr(i) = '-o') or (ParamStr(i) = '--output') then
+    if (ParamStr(i) = '--config') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing filename for --config');
+        Halt(1);
+      end;
+      ExamplesConfigFile := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--lib-ls') then
+    begin
+      lib_ls_mode := True;
+    end
+    else if (ParamStr(i) = '--lib-add') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing value for --lib-add (expected PREFIX=FOLDER)');
+        Halt(1);
+      end;
+      lib_add_specs.Add(ParamStr(i));
+      lib_changed := True;
+    end
+    else if (ParamStr(i) = '--lib-rm') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing value for --lib-rm (expected PREFIX)');
+        Halt(1);
+      end;
+      lib_rm_prefixes.Add(ParamStr(i));
+      lib_changed := True;
+    end
+    else if (ParamStr(i) = '-o') or (ParamStr(i) = '--output') then
     begin
       Inc(i);
       if i > ParamCount then
@@ -839,6 +1113,10 @@ begin
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' [options] -o output.qar inputs...');
       WriteLn;
       WriteLn('Options:');
+      WriteLn('  --config FILE        Use config file (default: config/qjsp_config.json)');
+      WriteLn('  --lib-ls             List registered libraries (mounts) from config');
+      WriteLn('  --lib-add PFX=DIR    Add/update a library mount (relative to pascal_root)');
+      WriteLn('  --lib-rm PFX         Remove a library mount');
       WriteLn('  -o, --output FILE    Build QAR file from JavaScript files/directories');
       WriteLn('  -b, --build-qar      Build QAR file (same as -o)');
       WriteLn('  -d, --debug [LEVEL]  Enable debug output (0=off, 1=basic, 2=verbose, default=1)');
@@ -861,6 +1139,9 @@ begin
       WriteLn('  -h, --help           Show this help');
       WriteLn;
       WriteLn('Examples:');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --lib-ls');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --lib-add java=java');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --lib-rm java');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' script.js arg1 arg2   (run JS file, no REPL)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -e "print(1+2)"       (run inline code)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -o mylib.qar math.js utils.js');
@@ -1096,6 +1377,35 @@ begin
     end;
     Inc(i);
   end;
+
+  if lib_ls_mode then
+  begin
+    ConfigLibrariesList(ExamplesConfigFile, qjs_log.DebugLevel);
+    Halt(0);
+  end;
+  if lib_changed then
+  begin
+    for i := 0 to lib_add_specs.Count - 1 do
+    begin
+      eq_pos := Pos('=', lib_add_specs[i]);
+      if eq_pos <= 0 then
+      begin
+        WriteLn('Error: Invalid --lib-add value (expected PREFIX=FOLDER): ', lib_add_specs[i]);
+        Halt(1);
+      end;
+      spec_pfx := Copy(lib_add_specs[i], 1, eq_pos - 1);
+      spec_folder := Copy(lib_add_specs[i], eq_pos + 1, Length(lib_add_specs[i]));
+      ConfigLibrariesAdd(ExamplesConfigFile, qjs_log.DebugLevel, spec_pfx, spec_folder);
+    end;
+    for i := 0 to lib_rm_prefixes.Count - 1 do
+      ConfigLibrariesRemove(ExamplesConfigFile, qjs_log.DebugLevel, lib_rm_prefixes[i]);
+    Halt(0);
+  end;
+
+  lib_add_specs.Free;
+  lib_add_specs := nil;
+  lib_rm_prefixes.Free;
+  lib_rm_prefixes := nil;
 
   // If cat mode, print file contents and exit (before any runtime init)
   if cat_mode then
@@ -1597,6 +1907,8 @@ begin
 
   ApplyDebugSettings(rt);
 
+  LoadQjspMountsFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
+
   // Set up module loader
   // App policy loader handles qjsp: prefix then falls back to std QAR/filesystem loader
   JS_SetModuleLoaderFunc(rt, nil, @qjsp_module_loader.qjsp_module_loader, nil);
@@ -1709,6 +2021,7 @@ begin
     WriteLn('  .import <module> [name]     - Import ESM module and bind to global');
     WriteLn('  .build <out.qar> <inputs..> - Build QAR from JS files/folder');
     WriteLn('  .qar / .tool / .verify      - QAR tooling commands');
+    WriteLn('  .lib ...                    - Manage libraries (mounts)');
     WriteLn('  .example ...                - Run/manage example tests');
     WriteLn('  .debug [on|off|0|1|2]       - Toggle debug');
     WriteLn('  .guard [strict|friendly]    - REPL crash guard mode');
@@ -1779,6 +2092,12 @@ begin
           WriteLn('  .verify <file.qar>');
           WriteLn('    Quick compatibility check (inspect + compatibility message).');
           WriteLn;
+          WriteLn('  .lib [command]');
+          WriteLn('    Manage library mounts (stored in config under "libraries"):');
+          WriteLn('      list                    - List registered mounts (prefix=folder)');
+          WriteLn('      add <pfx> <folder>      - Add/update a mount');
+          WriteLn('      remove <pfx>            - Remove a mount');
+          WriteLn;
           WriteLn('  .example [command]');
           WriteLn('    Manage and run built-in example tests:');
           WriteLn('      (no args) | run         - Run all enabled tests');
@@ -1809,6 +2128,7 @@ begin
           WriteLn('Tips:');
           WriteLn('  - Use ".qar help" to see QAR tooling commands.');
           WriteLn('  - Use ".example list" to see available example test names.');
+          WriteLn('  - Use ".lib list" to see registered library mounts.');
           WriteLn;
           Flush(Output);
           Continue;
@@ -2181,6 +2501,50 @@ begin
         Continue; // Bỏ qua phần xử lý script thông thường
       end;
       
+      if (Copy(script, 1, 5) = '.lib ') or (script = '.lib') then
+      begin
+        cmdLine := '';
+        if Length(script) > 5 then
+          cmdLine := Trim(Copy(script, 6, Length(script)));
+
+        cmdArgs := TStringList.Create;
+        try
+          cmdArgs.Delimiter := ' ';
+          cmdArgs.StrictDelimiter := True;
+          cmdArgs.DelimitedText := cmdLine;
+
+          if (cmdArgs.Count = 0) or ((cmdArgs.Count = 1) and (LowerCase(cmdArgs[0]) = 'list')) then
+          begin
+            ConfigLibrariesListPretty(ExamplesConfigFile, qjs_log.DebugLevel);
+          end
+          else if (cmdArgs.Count >= 3) and (LowerCase(cmdArgs[0]) = 'add') then
+          begin
+            ConfigLibrariesAdd(ExamplesConfigFile, qjs_log.DebugLevel, cmdArgs[1], cmdArgs[2]);
+            LoadQjspMountsFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
+            WriteLn('Added library mount: ', cmdArgs[1], '=', cmdArgs[2]);
+          end
+          else if (cmdArgs.Count >= 2) and ((LowerCase(cmdArgs[0]) = 'remove') or (LowerCase(cmdArgs[0]) = 'rm')) then
+          begin
+            ConfigLibrariesRemove(ExamplesConfigFile, qjs_log.DebugLevel, cmdArgs[1]);
+            LoadQjspMountsFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
+            WriteLn('Removed library mount: ', cmdArgs[1]);
+          end
+          else
+          begin
+            WriteLn('Usage: .lib <command>');
+            WriteLn('Commands:');
+            WriteLn('  list');
+            WriteLn('  add <prefix> <folder>');
+            WriteLn('  remove <prefix>');
+          end;
+        finally
+          cmdArgs.Free;
+        end;
+
+        Flush(Output);
+        Continue;
+      end;
+
       // Handle .example command to manage and run example scripts
       if (Copy(script, 1, 9) = '.example ') or (script = '.example') then
       begin

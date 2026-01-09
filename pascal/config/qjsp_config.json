@@ -1,4 +1,7 @@
 {
+  "libraries" : {
+    "java" : "java"
+  },
   "examples" : {
     "../tests/async_test.js" : true
   }
