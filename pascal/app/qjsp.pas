@@ -140,6 +140,8 @@ var
   newDebugLevel: integer;
   exit_code: integer;
   guardArg: string;
+  eval_mode: boolean;
+  eval_code: string;
 
 // Run a JS file (non-interactive mode)
 function RunScriptFile(ctx: PJSContext; const filename: string): boolean;
@@ -258,6 +260,67 @@ begin
   Result := True;
 end;
 
+function RunEvalCode(ctx: PJSContext; const source_name: string; const code: string): boolean;
+var
+  eval_flags: cint;
+  is_module: boolean;
+  result_val: JSValue;
+  job_result, loop_result: cint;
+  pending_ctx: PJSContext;
+begin
+  Result := False;
+
+  is_module := False;
+  if (Pos('import ', code) > 0) or (Pos('export ', code) > 0) then
+    is_module := True
+  else if JS_DetectModule(PChar(code), QWord(Length(code))) <> 0 then
+    is_module := True;
+
+  if is_module then
+    eval_flags := JS_EVAL_TYPE_MODULE
+  else
+    eval_flags := JS_EVAL_TYPE_GLOBAL;
+
+  result_val := JS_Eval(ctx, PChar(code), QWord(Length(code)), PChar(source_name), eval_flags);
+  if JS_IsException(result_val) <> 0 then
+  begin
+    js_std_dump_error(ctx);
+    JS_FreeValue(ctx, result_val);
+    Exit;
+  end;
+
+  job_result := 0;
+  pending_ctx := nil;
+  if eval_flags = JS_EVAL_TYPE_MODULE then
+  begin
+    repeat
+      job_result := JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx);
+      if job_result < 0 then
+      begin
+        if pending_ctx <> nil then
+          js_std_dump_error(pending_ctx)
+        else
+          js_std_dump_error(ctx);
+        Break;
+      end;
+    until job_result = 0;
+  end;
+
+  if job_result >= 0 then
+  begin
+    loop_result := js_std_loop(ctx);
+    if loop_result <> 0 then
+    begin
+      js_std_dump_error(ctx);
+      JS_FreeValue(ctx, result_val);
+      Exit;
+    end;
+  end;
+
+  JS_FreeValue(ctx, result_val);
+  Result := True;
+end;
+
 begin
   ConsoleInitUtf8;
 
@@ -272,6 +335,8 @@ begin
   script_filename := '';
   script_argc := 0;
   exit_code := 0;
+  eval_mode := False;
+  eval_code := '';
   ReplGuardMode := rgFriendly;
   GuardExplicit := False;
   
@@ -344,23 +409,37 @@ begin
       WriteLn;
       WriteLn('Usage:');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' [options] [script.js [args...]]');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' [options] -e "code" [args...]');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' [options] -o output.qar inputs...');
       WriteLn;
       WriteLn('Options:');
       WriteLn('  -o, --output FILE    Build QAR file from JavaScript files/directories');
       WriteLn('  -b, --build-qar      Build QAR file (same as -o)');
       WriteLn('  -d, --debug [LEVEL]  Enable debug output (0=off, 1=basic, 2=verbose, default=1)');
+      WriteLn('  -e CODE              Evaluate JavaScript CODE');
       WriteLn('  --guard MODE         REPL crash guard: strict | friendly');
       WriteLn('  -h, --help           Show this help');
       WriteLn;
       WriteLn('Examples:');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' script.js arg1 arg2   (run JS file, no REPL)');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' -e "print(1+2)"       (run inline code)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -o mylib.qar math.js utils.js');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -o mylib.qar src/');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -d 2                  (interactive mode with verbose debug)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' --guard friendly      (interactive mode, no hard crash on AV)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), '                        (interactive mode)');
       Halt(0);
+    end
+    else if (ParamStr(i) = '-e') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing code for -e');
+        Halt(1);
+      end;
+      eval_mode := True;
+      eval_code := ParamStr(i);
     end
     else
     begin
@@ -373,8 +452,25 @@ begin
     Inc(i);
   end;
   
-  // If not building, treat first non-option argument as script to run (non-interactive)
-  if (not build_mode) and (input_count > 0) then
+  // If not building, decide between -e code and script file execution
+  if (not build_mode) and eval_mode then
+  begin
+    run_script_mode := True;
+    script_filename := '<eval>';
+    script_argc := input_count + 1;
+    SetLength(script_args, script_argc);
+    SetLength(script_args_str, script_argc);
+
+    script_args_str[0] := script_filename;
+    script_args[0] := PChar(script_args_str[0]);
+
+    for i := 0 to input_count - 1 do
+    begin
+      script_args_str[i + 1] := input_files[i];
+      script_args[i + 1] := PChar(script_args_str[i + 1]);
+    end;
+  end
+  else if (not build_mode) and (input_count > 0) then
   begin
     run_script_mode := True;
     script_filename := input_files[0];
@@ -525,21 +621,12 @@ begin
   if not run_script_mode then
   begin
     file_content :=
-      'import * as bjson from ''qjs:bjson'';' + LineEnding +
-      'import * as std from ''qjs:std'';' + LineEnding +
-      'import * as os from ''qjs:os'';' + LineEnding +
-      'globalThis.bjson = bjson;' + LineEnding +
-      'globalThis.std = std;' + LineEnding +
-      'globalThis.os = os;' + LineEnding +
-      'if (globalThis.setTimeout === void 0) globalThis.setTimeout = os.setTimeout;' + LineEnding +
-      'if (globalThis.clearTimeout === void 0) globalThis.clearTimeout = os.clearTimeout;' + LineEnding +
-      'if (globalThis.setInterval === void 0) globalThis.setInterval = os.setInterval;' + LineEnding +
-      'if (globalThis.clearInterval === void 0) globalThis.clearInterval = os.clearInterval;' + LineEnding;
+      'import ''qjsp:runtime/repl_globals.js'';' + LineEnding;
 
     result_val := JS_Eval(ctx,
       PChar(file_content),
       QWord(Length(file_content)),
-      PChar('<init>'),
+      PChar('<init_repl_globals>'),
       JS_EVAL_TYPE_MODULE);
 
     if JS_IsException(result_val) <> 0 then
@@ -564,8 +651,16 @@ begin
 
   if run_script_mode then
   begin
-    if not RunScriptFile(ctx, script_filename) then
-      exit_code := 1;
+    if eval_mode then
+    begin
+      if not RunEvalCode(ctx, '<eval>', eval_code) then
+        exit_code := 1;
+    end
+    else
+    begin
+      if not RunScriptFile(ctx, script_filename) then
+        exit_code := 1;
+    end;
   end
   else
   begin
@@ -1320,9 +1415,9 @@ begin
             WriteLn('  rebuild <in.qar> <out.qar>  - Rebuild QAR');
             WriteLn('  code <file.qar> <entry>     - Display source code of entry');
             WriteLn('  version                     - QAR/QuickJS version');
-            WriteLn('  help                        - Hiển thị trợ giúp');
+            WriteLn('  help                        - Display help');
             WriteLn;
-            WriteLn('Ví dụ:');
+            WriteLn('Examples:');
             WriteLn('  .qar info --init-lib');
             WriteLn('  .qar build output.qar src/');
             WriteLn('  .qar inspect file.qar');
