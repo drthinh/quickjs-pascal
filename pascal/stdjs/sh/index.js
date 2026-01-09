@@ -8,9 +8,24 @@ import * as proc from "qjsp:os/process.js";
 import * as env from "qjsp:os/env.js";
 import { exec, execFile } from "qjsp:os/exec.js";
 
+import { fetch as _fetch } from "qjsp:net/fetch.js";
+import * as http from "qjsp:net/http.js";
+
 import { runBuiltin } from "qjsp:sh/builtins.js";
 
 export const platform = system.platform;
+
+export const fetch = _fetch;
+
+export async function download(url, outPath, opts) {
+  const p = String(outPath);
+  const r = await _fetch(String(url), opts);
+  if (!r || typeof r.status !== "number") throw new Error("download: invalid response");
+  if (r.status < 200 || r.status >= 300) throw new Error(`download: HTTP ${r.status}`);
+  const ab = await r.arrayBuffer();
+  fs.writeFile(p, new Uint8Array(ab));
+  return p;
+}
 
 function _toStr(v) {
   return v == null ? "" : String(v);
@@ -611,6 +626,7 @@ function _runBuiltin(cmd, args, stdinText) {
     proc,
     env,
     system,
+    http,
   };
   return runBuiltin(cmd, args, stdinText, api);
 }

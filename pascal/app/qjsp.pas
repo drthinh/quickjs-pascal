@@ -12,7 +12,7 @@ uses
   console_utf8,
   examples_config,
   file_utils,
-  qjsp_module_loader, http_helpers, fs_watch_helpers;
+  qjsp_module_loader, http_helpers, http_async_helpers, fs_watch_helpers;
 
 const
   APP_AUTHOR = 'Nguyen Duc Thinh - dr.nguyenducthinh@gmail.com';
@@ -1681,6 +1681,7 @@ begin
   dll_helpers.RegisterDllHelpers(ctx);
   compression_helpers.RegisterCompressionHelpers(ctx);
   http_helpers.RegisterHttpHelpers(ctx);
+  http_async_helpers.RegisterHttpAsyncHelpers(ctx);
   fs_watch_helpers.RegisterFsWatchHelpers(ctx);
 
   if run_script_mode then

@@ -29,10 +29,123 @@ export function runBuiltin(cmd, args, stdinText, api) {
     warnCompat,
     splitLines,
     writeRedirectText,
+    http,
   } = api;
 
   if (cmd === "pwd") return pwd();
   if (cmd === "echo") return echo(...args.slice(1));
+
+  if (cmd === "wget" || cmd === "curl") {
+    if (stdinText != null) throw new Error(cmd + ": stdin piping not supported");
+    if (!http || typeof http.request !== "function") throw new Error(cmd + ": http client not available");
+
+    let url = "";
+    let outFile = "";
+    let followRedirects = cmd === "curl" ? true : true;
+    let method = "GET";
+    const headersObj = {};
+    let data = void 0;
+
+    // Minimal arg parsing
+    for (let i = 1; i < args.length; i++) {
+      const rawA = toStr(args[i]);
+      const expanded = expandShortFlags(rawA);
+      const list = expanded ? expanded : [rawA];
+
+      for (let j = 0; j < list.length; j++) {
+        const a = toStr(list[j]);
+
+        if (a === "-L") {
+          followRedirects = true;
+          continue;
+        }
+
+        if (a === "-O") {
+          // wget: use last path segment
+          continue;
+        }
+
+        if (a === "-o" || a === "-O" || a === "--output") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (!v) throw new Error(cmd + ": missing output file after " + a);
+          outFile = resolvePathExpanded(expandArg(v));
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "-X" || a === "--request") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (!v) throw new Error(cmd + ": missing method after " + a);
+          method = String(v).toUpperCase();
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "-H" || a === "--header") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (!v) throw new Error(cmd + ": missing header after " + a);
+          const s = String(v);
+          const p = s.indexOf(":");
+          if (p <= 0) throw new Error(cmd + ": invalid header: " + s);
+          const k = s.slice(0, p).trim();
+          const vv = s.slice(p + 1).trim();
+          headersObj[k] = vv;
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "-d" || a === "--data") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (v === "") throw new Error(cmd + ": missing data after " + a);
+          data = String(v);
+          if (method === "GET") method = "POST";
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (!isFlag(a) && !url) {
+          url = String(expandArg(a));
+          continue;
+        }
+      }
+    }
+
+    if (!url) throw new Error("Usage: " + cmd + " [options] <url>");
+
+    // wget -O: infer output name
+    if (cmd === "wget" && outFile === "" && args.includes("-O")) {
+      try {
+        const u = String(url);
+        const clean = u.split("?")[0].split("#")[0];
+        const b = clean.replace(/\\/g, "/");
+        const name = b.endsWith("/") ? "index.html" : b.slice(b.lastIndexOf("/") + 1) || "index.html";
+        outFile = resolvePathExpanded(name);
+      } catch (e) {
+        outFile = resolvePathExpanded("index.html");
+      }
+    }
+
+    const r = http.request(method, url, {
+      headers: headersObj,
+      body: data,
+      followRedirects,
+      responseType: outFile ? "arraybuffer" : "text",
+    });
+
+    if (!r || typeof r.status !== "number") throw new Error(cmd + ": invalid response");
+    if (r.status < 200 || r.status >= 300) throw new Error(cmd + ": HTTP " + r.status);
+
+    if (outFile) {
+      fs.writeFile(outFile, r.body);
+      return "";
+    }
+
+    return r.text();
+  }
 
   if (cmd === "ps") {
     if (stdinText != null) throw new Error("ps: stdin piping not supported");
