@@ -1,0 +1,21 @@
+export { System } from "qjsp:java/lang/system.js";
+export { Object } from "qjsp:java/lang/object.js";
+export { String } from "qjsp:java/lang/string.js";
+export { Math } from "qjsp:java/lang/math.js";
+export { Throwable } from "qjsp:java/lang/throwable.js";
+export { Exception } from "qjsp:java/lang/exception.js";
+export { RuntimeException } from "qjsp:java/lang/runtimeexception.js";
+export { Error } from "qjsp:java/lang/error.js";
+
+export { Boolean } from "qjsp:java/lang/boolean.js";
+export { Number } from "qjsp:java/lang/number.js";
+export { Integer } from "qjsp:java/lang/integer.js";
+export { Long } from "qjsp:java/lang/long.js";
+export { Float } from "qjsp:java/lang/float.js";
+export { Double } from "qjsp:java/lang/double.js";
+export { Character } from "qjsp:java/lang/character.js";
+export { StringBuffer } from "qjsp:java/lang/stringbuffer.js";
+export { NullPointerException } from "qjsp:java/lang/nullpointerexception.js";
+export { IllegalArgumentException } from "qjsp:java/lang/illegalargumentexception.js";
+export { IndexOutOfBoundsException } from "qjsp:java/lang/indexoutofboundsexception.js";
+export { NumberFormatException } from "qjsp:java/lang/numberformatexception.js";

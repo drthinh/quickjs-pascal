@@ -30,3 +30,5 @@ export * as os from "qjsp:os/index.js";
 export * as sh from "qjsp:sh/index.js";
 
 export * as url from "qjsp:url/index.js";
+
+export * as zip from "qjsp:zip/index.js";
