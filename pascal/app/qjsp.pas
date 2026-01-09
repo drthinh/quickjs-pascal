@@ -3,219 +3,12 @@ program qjsp;
 {$mode objfpc}{$H+}
 
 uses
-  {$IFDEF WINDOWS}Windows,{$ENDIF}
   SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_intrinsics, quickjs_memdebug,
   quickjs_std, quickjs_qar, quickjs_miniz, quickjs_debug, qar, Classes,
   fpjson, jsonparser,
-  qar_helpers, dll_helpers, compression_helpers;
-
-procedure WriteLnUtf8(const p: PChar);
-{$IFDEF WINDOWS}
-var
-  wide: UnicodeString;
-  len: Integer;
-  handle: THandle;
-  written: DWORD;
-  newlineWide: WideString;
-begin
-  if p = nil then Exit;
-  len := MultiByteToWideChar(CP_UTF8, 0, p, -1, nil, 0);
-  if len <= 0 then Exit;
-  // Allocate space including null terminator, then trim after conversion
-  SetLength(wide, len);
-  if len > 0 then
-  begin
-    MultiByteToWideChar(CP_UTF8, 0, p, -1, PWideChar(wide), len);
-    SetLength(wide, len - 1); // drop null terminator
-  end;
-  handle := GetStdHandle(STD_OUTPUT_HANDLE);
-  if (handle <> INVALID_HANDLE_VALUE) and (GetFileType(handle) = FILE_TYPE_CHAR) then
-  begin
-    WriteConsoleW(handle, PWideChar(wide), Length(wide), @written, nil);
-    newlineWide := WideString(LineEnding);
-    WriteConsoleW(handle, PWideChar(newlineWide), Length(newlineWide), @written, nil);
-  end
-  else
-    WriteLn(wide);
-end;
-{$ELSE}
-begin
-  if p = nil then Exit;
-  WriteLn(p);
-end;
-{$ENDIF}
-
-function ReadLnUtf8: string;
-{$IFDEF WINDOWS}
-var
-  handle: THandle;
-  buf: array[0..255] of WideChar;
-  readCount: DWORD;
-  ws: UnicodeString;
-  i: Integer;
-begin
-  handle := GetStdHandle(STD_INPUT_HANDLE);
-  if (handle <> INVALID_HANDLE_VALUE) and (GetFileType(handle) = FILE_TYPE_CHAR) then
-  begin
-    ws := '';
-    while True do
-    begin
-      if not ReadConsoleW(handle, @buf[0], Length(buf), @readCount, nil) then
-        Break;
-      if readCount = 0 then
-        Break;
-      for i := 0 to readCount - 1 do
-      begin
-        case buf[i] of
-          #10:
-            begin
-              Result := UTF8Encode(ws);
-              Exit;
-            end;
-          #13:
-            Continue;
-        else
-          ws := ws + buf[i];
-        end;
-      end;
-      // If buffer ended without newline, continue reading
-    end;
-    Result := UTF8Encode(ws);
-    Exit;
-  end;
-  // If not a console (redirected), fall through to RTL ReadLn (code page already set to UTF-8)
-{$ENDIF}
-  ReadLn(Result);
-end;
-
-// Example test configuration type
-type
-  TExampleConfig = record
-    enabled: boolean;
-    name: string;
-  end;
-
-var
-  ExampleConfigs: array of TExampleConfig;
-  ExamplesConfigFile: string = 'examples_config.json';
-
-// Forward declaration so it can be used from LoadExamplesConfig
-procedure SaveExamplesConfig(ctx: PJSContext); forward;
-
-// Helper function to load examples config from JSON file
-procedure LoadExamplesConfig(ctx: PJSContext);
-var
-  json_content, line: string;
-  f: TextFile;
-  jsonData, examplesData: TJSONData;
-  rootObj, examplesObj: TJSONObject;
-  i, count: integer;
-  key: string;
-  item: TJSONData;
-  enabled: boolean;
-begin
-  // Start with empty configuration
-  SetLength(ExampleConfigs, 0);
-
-  // If config file does not exist, leave the list empty
-  if not FileExists(ExamplesConfigFile) then
-    Exit;
-
-  // Read JSON file into a single string
-  json_content := '';
-  AssignFile(f, ExamplesConfigFile);
-  Reset(f);
-  try
-    while not EOF(f) do
-    begin
-      ReadLn(f, line);
-      if json_content <> '' then
-        json_content := json_content + LineEnding;
-      json_content := json_content + line;
-    end;
-  finally
-    CloseFile(f);
-  end;
-
-  if json_content = '' then
-    Exit;
-
-  // Parse JSON using FreePascal's fpjson
-  try
-    jsonData := GetJSON(json_content);
-  except
-    on E: Exception do
-    begin
-      if qar_helpers.DebugLevel > 0 then
-        WriteLn('[DEBUG] Failed to parse examples config JSON (fpjson): ', E.Message);
-      Exit;
-    end;
-  end;
-
-  try
-    if not (jsonData is TJSONObject) then
-      Exit;
-
-    rootObj := TJSONObject(jsonData);
-    examplesData := rootObj.Find('examples');
-    if (examplesData = nil) or not (examplesData is TJSONObject) then
-      Exit;
-
-    examplesObj := TJSONObject(examplesData);
-    count := examplesObj.Count;
-    SetLength(ExampleConfigs, count);
-
-    for i := 0 to count - 1 do
-    begin
-      key := examplesObj.Names[i];
-      item := examplesObj.Items[i];
-
-      if (item <> nil) and (item.JSONType = jtBoolean) then
-        enabled := item.AsBoolean
-      else
-        enabled := False;
-
-      ExampleConfigs[i].name := key;
-      ExampleConfigs[i].enabled := enabled;
-    end;
-  finally
-    jsonData.Free;
-  end;
-end;
-
-// Helper function to save examples config to JSON file
-procedure SaveExamplesConfig(ctx: PJSContext);
-var
-  rootObj, examplesObj: TJSONObject;
-  f: TextFile;
-  i: integer;
-  jsonStr: string;
-begin
-  // Build JSON structure: { "examples": { "name": boolean, ... } }
-  rootObj := TJSONObject.Create;
-  try
-    examplesObj := TJSONObject.Create;
-    rootObj.Add('examples', examplesObj);
-
-    // Add each example to examples object
-    for i := 0 to Length(ExampleConfigs) - 1 do
-      examplesObj.Add(ExampleConfigs[i].name, ExampleConfigs[i].enabled);
-
-    // Serialize to string
-    jsonStr := rootObj.FormatJSON([]);
-
-    // Write to file
-    AssignFile(f, ExamplesConfigFile);
-    Rewrite(f);
-    try
-      Write(f, jsonStr);
-    finally
-      CloseFile(f);
-    end;
-  finally
-    rootObj.Free;
-  end;
-end;
+  qar_helpers, dll_helpers, compression_helpers,
+  console_utf8,
+  examples_config;
 
 procedure ApplyDebugSettings(rt: PJSRuntime);
 begin
@@ -228,22 +21,6 @@ begin
     JS_InstallLoggingPromiseRejectionTracker(rt)
   else
     JS_InstallStdPromiseRejectionTracker(rt);
-end;
-
-// Helper function to find example config index by name
-function FindExampleConfig(const name: string): integer;
-var
-  i: integer;
-begin
-  Result := -1;
-  for i := 0 to Length(ExampleConfigs) - 1 do
-  begin
-    if ExampleConfigs[i].name = name then
-    begin
-      Result := i;
-      Exit;
-    end;
-  end;
 end;
 
 // Helper function to load and execute a JS file
@@ -326,6 +103,8 @@ end;
 
 // Main program
 var
+  ExampleConfigs: TExampleConfigs;
+  ExamplesConfigFile: string;
   rt: PJSRuntime;
   ctx: PJSContext;
   script: string;
@@ -520,15 +299,9 @@ begin
 end;
 
 begin
-  {$IFDEF WINDOWS}
-  // Ensure console I/O and RTL conversions use UTF-8 so JS strings print correctly
-  SetMultiByteConversionCodePage(CP_UTF8);
-  SetTextCodePage(Input, CP_UTF8);
-  SetTextCodePage(Output, CP_UTF8);
-  SetTextCodePage(StdErr, CP_UTF8);
-  SetConsoleOutputCP(CP_UTF8);
-  SetConsoleCP(CP_UTF8);
-  {$ENDIF}
+  ConsoleInitUtf8;
+
+  ExamplesConfigFile := DefaultExamplesConfigFile;
 
   // Check for build QAR mode
   build_mode := False;
@@ -712,26 +485,45 @@ begin
   else
     js_std_add_helpers(ctx, 0, nil);
 
-  file_content :=
-    'import ''qjsp:runtime/globals.js'';' + LineEnding;
+  // Ensure stdjs/ can be resolved regardless of where qjsp is launched from.
+  // After restructuring, stdjs/ is a sibling of app/.
+  old_dir := GetCurrentDir;
+  try
+    script_dir := ExtractFilePath(ExpandFileName(ParamStr(0)));
+    script_dir := ExpandFileName(IncludeTrailingPathDelimiter(script_dir) + '..');
+    try
+      SetCurrentDir(script_dir);
+    except
+      // ignore
+    end;
 
-  result_val := JS_Eval(ctx,
-    PChar(file_content),
-    QWord(Length(file_content)),
-    PChar('<init_stdjs_runtime>'),
-    JS_EVAL_TYPE_MODULE);
+    file_content :=
+      'import ''qjsp:runtime/globals.js'';' + LineEnding;
 
-  if JS_IsException(result_val) <> 0 then
-  begin
-    js_std_dump_error(ctx);
-    JS_FreeValue(ctx, result_val);
-  end
-  else
-  begin
-    JS_FreeValue(ctx, result_val);
-    pending_ctx := nil;
-    while JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx) > 0 do
+    result_val := JS_Eval(ctx,
+      PChar(file_content),
+      QWord(Length(file_content)),
+      PChar('<init_stdjs_runtime>'),
+      JS_EVAL_TYPE_MODULE);
+
+    if JS_IsException(result_val) <> 0 then
     begin
+      js_std_dump_error(ctx);
+      JS_FreeValue(ctx, result_val);
+    end
+    else
+    begin
+      JS_FreeValue(ctx, result_val);
+      pending_ctx := nil;
+      while JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx) > 0 do
+      begin
+      end;
+    end;
+  finally
+    try
+      SetCurrentDir(old_dir);
+    except
+      // ignore
     end;
   end;
 
@@ -784,7 +576,7 @@ begin
   else
   begin
     // Load examples configuration
-    LoadExamplesConfig(ctx);
+    LoadExamplesConfigFromFile(ExampleConfigs, ExamplesConfigFile, qar_helpers.DebugLevel);
 
     WriteLn('QuickJS version: ', JS_GetVersion);
     if qar_helpers.DebugLevel > 0 then
@@ -1246,7 +1038,7 @@ begin
           else if (cmdArgs.Count >= 2) and (LowerCase(cmdArgs[0]) = 'add') then
           begin
             // Add a new test (enabled by default)
-            j := FindExampleConfig(cmdArgs[1]);
+            j := examples_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
             if j >= 0 then
             begin
               WriteLn('Test "', cmdArgs[1], '" already exists');
@@ -1256,14 +1048,14 @@ begin
               SetLength(ExampleConfigs, Length(ExampleConfigs) + 1);
               ExampleConfigs[Length(ExampleConfigs) - 1].name := cmdArgs[1];
               ExampleConfigs[Length(ExampleConfigs) - 1].enabled := True;
-              SaveExamplesConfig(ctx);
+              SaveExamplesConfigToFile(ExamplesConfigFile, ExampleConfigs);
               WriteLn('Added test "', cmdArgs[1], '" (enabled)');
             end;
           end
           else if (cmdArgs.Count >= 2) and (LowerCase(cmdArgs[0]) = 'remove') then
           begin
             // Remove a test
-            j := FindExampleConfig(cmdArgs[1]);
+            j := examples_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
             if j < 0 then
             begin
               WriteLn('Test "', cmdArgs[1], '" not found');
@@ -1274,14 +1066,14 @@ begin
               for i := j to Length(ExampleConfigs) - 2 do
                 ExampleConfigs[i] := ExampleConfigs[i + 1];
               SetLength(ExampleConfigs, Length(ExampleConfigs) - 1);
-              SaveExamplesConfig(ctx);
+              SaveExamplesConfigToFile(ExamplesConfigFile, ExampleConfigs);
               WriteLn('Removed test "', cmdArgs[1], '"');
             end;
           end
           else if (cmdArgs.Count >= 2) and (LowerCase(cmdArgs[0]) = 'enable') then
           begin
             // Enable a test
-            j := FindExampleConfig(cmdArgs[1]);
+            j := examples_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
             if j < 0 then
             begin
               WriteLn('Test "', cmdArgs[1], '" not found');
@@ -1289,14 +1081,14 @@ begin
             else
             begin
               ExampleConfigs[j].enabled := True;
-              SaveExamplesConfig(ctx);
+              SaveExamplesConfigToFile(ExamplesConfigFile, ExampleConfigs);
               WriteLn('Enabled test "', cmdArgs[1], '"');
             end;
           end
           else if (cmdArgs.Count >= 2) and (LowerCase(cmdArgs[0]) = 'disable') then
           begin
             // Disable a test
-            j := FindExampleConfig(cmdArgs[1]);
+            j := examples_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
             if j < 0 then
             begin
               WriteLn('Test "', cmdArgs[1], '" not found');
@@ -1304,7 +1096,7 @@ begin
             else
             begin
               ExampleConfigs[j].enabled := False;
-              SaveExamplesConfig(ctx);
+              SaveExamplesConfigToFile(ExamplesConfigFile, ExampleConfigs);
               WriteLn('Disabled test "', cmdArgs[1], '"');
             end;
           end

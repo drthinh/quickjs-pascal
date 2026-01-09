@@ -15,13 +15,13 @@
 ### Windows:
 
 ```cmd
-fpc -B -Mobjfpc -Scghi -O2 -Xs -XX -l -vewnhibq -Fu. -oQuickJSPascal.exe main.pas
+fpc -B -Mobjfpc -Scghi -O2 -Xs -XX -l -vewnhibq -Fu. -Fu.\\std -Fu.\\std\\platform -Fu.\\std\\qar -Fu.\\app -o"qjsp.exe" app\\qjsp.pas
 ```
 
 ### Linux:
 
 ```bash
-fpc -B -Mobjfpc -Scghi -O2 -Xs -XX -l -vewnhibq -Fu. -oQuickJSPascal main.pas
+fpc -B -Mobjfpc -Scghi -O2 -Xs -XX -l -vewnhibq -Fu. -Fu./std -Fu./std/platform -Fu./std/qar -Fu./app -oQuickJSPascal app/qjsp.pas
 ```
 
 ### Giải thích các tham số:
@@ -35,6 +35,10 @@ fpc -B -Mobjfpc -Scghi -O2 -Xs -XX -l -vewnhibq -Fu. -oQuickJSPascal main.pas
 - `-l`: Link dynamically
 - `-vewnhibq`: Verbose options
 - `-Fu.`: Unit search path (current directory)
+- `-Fu./std`: Unit search path for stable core units
+- `-Fu./std/platform`: Unit search path for OS/platform abstractions
+- `-Fu./std/qar`: Unit search path for QAR support and module loader
+- `-Fu./app`: Unit search path for app entrypoints
 - `-o`: Output filename
 
 ## Build từ Lazarus IDE
@@ -46,6 +50,7 @@ fpc -B -Mobjfpc -Scghi -O2 -Xs -XX -l -vewnhibq -Fu. -oQuickJSPascal main.pas
 ### Cấu hình Project Options:
 
 - **Paths**: Đảm bảo thư mục `pascal` được thêm vào Unit search paths
+- **Paths**: Đảm bảo các thư mục `pascal`, `pascal/std`, `pascal/std/platform`, `pascal/app` được thêm vào Unit search paths
 - **Linking**: Chọn "Link Style" = "Dynamic"
 - **Target**: Chọn platform phù hợp (Win32/Win64/Linux)
 

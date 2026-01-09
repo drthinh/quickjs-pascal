@@ -824,6 +824,7 @@ var
   module_name_str: string;
   mapped_name: string;
   exe_dir: string;
+  pascal_root: string;
   abs_path: string;
   base_dir: string;
   basename: string;
@@ -840,18 +841,18 @@ begin
   if Pos('qjsp:', module_name_str) = 1 then
   begin
     exe_dir := ExtractFilePath(ExpandFileName(ParamStr(0)));
+    pascal_root := ExpandFileName(IncludeTrailingPathDelimiter(exe_dir) + '..');
     mapped_name := Copy(module_name_str, Length('qjsp:') + 1, Length(module_name_str));
     if (mapped_name <> '') and ((mapped_name[1] = '/') or (mapped_name[1] = '\')) then
       mapped_name := Copy(mapped_name, 2, Length(mapped_name));
     mapped_name := StringReplace(mapped_name, '/', PathDelim, [rfReplaceAll]);
     mapped_name := StringReplace(mapped_name, '\', PathDelim, [rfReplaceAll]);
-    abs_path := IncludeTrailingPathDelimiter(exe_dir) + 'stdjs' + PathDelim + mapped_name;
-    base_dir := IncludeTrailingPathDelimiter(GetCurrentDir);
-    mapped_name := ExtractRelativePath(base_dir, abs_path);
+    abs_path := IncludeTrailingPathDelimiter(pascal_root) + 'stdjs' + PathDelim + mapped_name;
+    mapped_name := 'stdjs' + PathDelim + mapped_name;
     mapped_name := StringReplace(mapped_name, PathDelim, '/', [rfReplaceAll]);
     if DebugLevel > 0 then
     begin
-      WriteLn('[DEBUG] qjsp: map "', module_name_str, '" -> "', mapped_name, '" (base="', base_dir, '")');
+      WriteLn('[DEBUG] qjsp: map "', module_name_str, '" -> "', mapped_name, '"');
       Flush(Output);
     end;
     m := js_module_loader(ctx, PChar(mapped_name), opaque);
