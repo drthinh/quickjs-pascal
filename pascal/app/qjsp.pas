@@ -11,7 +11,7 @@ uses
   examples_config,
   file_utils,
   qjs_log,
-  qjsp_module_loader;
+  qjsp_module_loader, http_helpers;
 
 procedure ApplyDebugSettings(rt: PJSRuntime);
 begin
@@ -198,15 +198,6 @@ begin
   else
   begin
     eval_flags := JS_EVAL_TYPE_GLOBAL;
-    if script_dir <> '' then
-    begin
-      test_path := IncludeTrailingPathDelimiter(script_dir) + 'qar_test.qar';
-      if FileExists(test_path) then
-      begin
-        if qjs_log.DebugLevel > 0 then
-          WriteLn('[DEBUG] Found qar_test.qar in script directory (no auto-register; use LoadLibrary("', test_path, '") if needed)');
-      end;
-    end;
   end;
 
   result_val := JS_Eval(ctx, PChar(file_content), QWord(Length(file_content)),
@@ -648,6 +639,7 @@ begin
   qar_helpers.RegisterQarHelpers(ctx);
   dll_helpers.RegisterDllHelpers(ctx);
   compression_helpers.RegisterCompressionHelpers(ctx);
+  http_helpers.RegisterHttpHelpers(ctx);
 
   if run_script_mode then
   begin

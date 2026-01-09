@@ -8,3 +8,7 @@ export * as io from "qjsp:io/index.js";
 export * as time from "qjsp:time/index.js";
 
 export * as concurrent from "qjsp:concurrent/index.js";
+
+export * as log from "qjsp:log/index.js";
+
+export * as net from "qjsp:net/index.js";
