@@ -1,4 +1,4 @@
-import { installTextEncoding } from "../polyfills/text_encoding.js";
+import { installTextEncoding } from "qjsp:polyfills/text_encoding.js";
 import * as os from "qjs:os";
 
 export function installRuntimeGlobals() {

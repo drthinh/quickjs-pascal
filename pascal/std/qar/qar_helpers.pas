@@ -5,7 +5,7 @@ unit qar_helpers;
 interface
 
 uses
-  SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_std, qar;
+  SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_std, qar, qjs_log;
 
 // Type alias for QAR reading functions (from qar unit)
 type
@@ -14,7 +14,6 @@ type
 // Global variable to store current script directory for LoadLibrary resolution
 var
   CurrentScriptDir: string = '';
-  DebugLevel: integer = 0;  // Debug level: 0 = off, 1 = basic, 2 = verbose
 
 type
   TRegisteredQar = record
@@ -222,7 +221,7 @@ var
   prefix_str: string;
 begin
   // Debug: function được gọi
-  if DebugLevel > 0 then
+  if qjs_log.DebugLevel > 0 then
   begin
     WriteLn('[LoadLibrary] Function called with argc=', argc);
     Flush(Output);
@@ -231,7 +230,7 @@ begin
   
   if argc < 1 then
   begin
-    if DebugLevel > 0 then
+    if qjs_log.DebugLevel > 0 then
     begin
       WriteLn('[LoadLibrary] Error: argc < 1');
       Flush(Output);
@@ -243,7 +242,7 @@ begin
   filename := JS_ToCString(ctx, argv[0]);
   if filename = nil then
   begin
-    if DebugLevel > 0 then
+    if qjs_log.DebugLevel > 0 then
     begin
       WriteLn('[LoadLibrary] Error: JS_ToCString returned nil');
       Flush(Output);
@@ -262,7 +261,7 @@ begin
     prefix := JS_ToCString(ctx, argv[1]);
     if prefix = nil then
     begin
-      if DebugLevel > 0 then
+      if qjs_log.DebugLevel > 0 then
       begin
         WriteLn('[LoadLibrary] Error: JS_ToCString for prefix returned nil');
         Flush(Output);
@@ -273,7 +272,7 @@ begin
   end;
 
   // Try to find QAR file in multiple locations
-  if DebugLevel > 0 then
+  if qjs_log.DebugLevel > 0 then
   begin
     WriteLn('[LoadLibrary] Looking for QAR file: ', filename_str);
     WriteLn('[LoadLibrary] Current working directory: ', GetCurrentDir);
@@ -286,7 +285,7 @@ begin
   
   if found_path = '' then
   begin
-    if DebugLevel > 0 then
+    if qjs_log.DebugLevel > 0 then
     begin
       // Build search paths message
       search_paths := 'Searched in: ' + GetCurrentDir;
@@ -311,7 +310,7 @@ begin
     Exit;
   end;
   
-  if DebugLevel > 0 then
+  if qjs_log.DebugLevel > 0 then
   begin
     WriteLn('[LoadLibrary] Found QAR file at: ', found_path);
     Flush(Output);
@@ -321,7 +320,7 @@ begin
   ret := RegisterQarFile(found_path, prefix_str);
 
   // Log kết quả trước khi free prefix
-  if DebugLevel > 0 then
+  if qjs_log.DebugLevel > 0 then
   begin
     if ret < 0 then
     begin
@@ -822,44 +821,15 @@ function js_module_loader_wrapper(ctx: PJSContext; module_name: PChar; opaque: p
 var
   m: PJSModuleDef;
   module_name_str: string;
-  mapped_name: string;
-  exe_dir: string;
-  pascal_root: string;
-  abs_path: string;
-  base_dir: string;
   basename: string;
   last_slash: integer;
 begin
   module_name_str := string(module_name);
 
-  if DebugLevel > 1 then
+  if qjs_log.DebugLevel > 1 then
   begin
     WriteLn('[DEBUG] module_loader: request "', module_name_str, '"');
     Flush(Output);
-  end;
-
-  if Pos('qjsp:', module_name_str) = 1 then
-  begin
-    exe_dir := ExtractFilePath(ExpandFileName(ParamStr(0)));
-    pascal_root := ExpandFileName(IncludeTrailingPathDelimiter(exe_dir) + '..');
-    mapped_name := Copy(module_name_str, Length('qjsp:') + 1, Length(module_name_str));
-    if (mapped_name <> '') and ((mapped_name[1] = '/') or (mapped_name[1] = '\')) then
-      mapped_name := Copy(mapped_name, 2, Length(mapped_name));
-    mapped_name := StringReplace(mapped_name, '/', PathDelim, [rfReplaceAll]);
-    mapped_name := StringReplace(mapped_name, '\', PathDelim, [rfReplaceAll]);
-    abs_path := IncludeTrailingPathDelimiter(pascal_root) + 'stdjs' + PathDelim + mapped_name;
-    mapped_name := 'stdjs' + PathDelim + mapped_name;
-    mapped_name := StringReplace(mapped_name, PathDelim, '/', [rfReplaceAll]);
-    if DebugLevel > 0 then
-    begin
-      WriteLn('[DEBUG] qjsp: map "', module_name_str, '" -> "', mapped_name, '"');
-      Flush(Output);
-    end;
-    m := js_module_loader(ctx, PChar(mapped_name), opaque);
-    if m <> nil then
-      Exit(m);
-    Result := nil;
-    Exit;
   end;
 
   // First try registered QARs (both prefixed and non-prefixed module names)
@@ -890,11 +860,14 @@ begin
   if last_slash > 0 then
   begin
     basename := Copy(module_name_str, last_slash + 1, Length(module_name_str));
-    if DebugLevel > 0 then
+    if qjs_log.DebugLevel > 0 then
       WriteLn('[DEBUG] Trying basename only: "', basename, '"');
-    WriteLn('[WARNING] Using basename fallback - if multiple QAR files contain "', basename, '",');
-    WriteLn('          the first one found will be used. Consider using prefixes to avoid conflicts.');
-    Flush(Output);
+    if qjs_log.DebugLevel > 0 then
+    begin
+      WriteLn('[WARNING] Using basename fallback - if multiple QAR files contain "', basename, '",');
+      WriteLn('          the first one found will be used. Consider using prefixes to avoid conflicts.');
+      Flush(Output);
+    end;
     m := TryLoadModuleFromRegisteredQars(ctx, basename);
     if m <> nil then
       Exit(m);
