@@ -1,4 +1,39 @@
+Error: Unknown command: --cat
 
-import*as os from"qjs:os";const _d=h=>{let r='';for(let i=0;i<h.length;i+=2){r+=String.fromCharCode(parseInt(h.slice(i,i+2),16));}return r;};function a(){return new Promise(b=>{os.setTimeout(()=>{b(_d('4f7065726174696f6e20636f6d706c65746564'));},2000);});}
-async function c(){console.log(_d('5374617274696e672e2e2e'));const d=await a();console.log(d);console.log(_d('46696e69736865642e'));}
-c();console.log(_d('5468652072657374206f66207468652073637269707420636f6e74696e75657320746f2072756e20696e20746865206d65616e74696d652e'));
+QAR Tool - QuickJS Archive Utility
+
+Sử dụng:
+  qar_tool [options] [command] [arguments]
+
+Commands:
+  info                    - Hiển thị thông tin phiên bản QAR và QuickJS
+  build <output> <files>  - Tạo file QAR từ các file JavaScript
+  inspect <file.qar>      - Kiểm tra và hiển thị thông tin chi tiết file QAR
+  rebuild <input> <output> - Biên dịch lại QAR để phù hợp phiên bản QuickJS mới
+  code <file.qar> <entry> - Hiển thị mã nguồn của một entry trong file QAR
+  version                 - Hiển thị phiên bản
+  help                    - Hiển thị trợ giúp này
+
+Options:
+  --init-lib              - Khởi tạo thư viện QuickJS mặc định khi hiển thị info
+  --minify                - Minify JS sources via qjsp + minify script before building QAR
+  --minify-safe           - Shortcut: --minify + --safe-rename + --encode-strings
+  --minify-script <file>  - Chỉ định script minify (mặc định: minify_qjsp.js).
+                           Lưu ý: các flag nâng cao (safe-rename/encode-strings) nằm trong minify_qjsp.js
+  --minify-flag <arg>     - Truyền thêm flag cho script minify (có thể lặp lại)
+  --keep-temp             - Giữ thư mục staging tạm (hữu ích để debug minify)
+
+Ví dụ:
+  qar_tool info
+  qar_tool info --init-lib
+  qar_tool build output.qar file1.js file2.js
+  qar_tool build output.qar src/
+  qar_tool --minify build output.qar src/
+  qar_tool --minify build out.qar src/ --minify-flag --minify-only
+  qar_tool --minify-safe build out.qar src/
+  qar_tool --minify build out.qar src/ --minify-flag --safe-rename --minify-flag --encode-strings
+  qar_tool inspect file.qar
+  qar_tool rebuild old.qar new.qar
+  qar_tool code mylib.qar my_module.js
+  qar_tool version
+

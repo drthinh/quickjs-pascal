@@ -173,6 +173,7 @@ type
 
 function InspectQarFile(const qar_filename: string): TQarInspectionResult;
 procedure PrintQarInspection(const result: TQarInspectionResult);
+procedure PrintQarInspectionFiltered(const result: TQarInspectionResult; const prefix: string);
 // entry_main / entry_init cho phép override entry_points khi rebuild (có thể rỗng để giữ nguyên).
 function RebuildQarFile(const input_qar: string; const output_qar: string;
   const entry_main: string = ''; const entry_init: string = ''): cint;
@@ -2132,9 +2133,12 @@ begin
 end;
 
 // Print QAR inspection results
-procedure PrintQarInspection(const result: TQarInspectionResult);
+procedure PrintQarInspectionFiltered(const result: TQarInspectionResult; const prefix: string);
 var
   i: integer;
+  shown_count: integer;
+  pfx: string;
+  has_compressed: boolean;
 begin
   WriteLn('=== QAR File Inspection ===');
   WriteLn('File: ', result.qar_file);
@@ -2147,17 +2151,35 @@ begin
   WriteLn('  Compatibility: ', result.compatibility_message);
   WriteLn;
   
+  pfx := prefix;
+  pfx := StringReplace(pfx, '\\', '/', [rfReplaceAll]);
+  shown_count := 0;
+  has_compressed := False;
+  for i := 0 to result.entry_count - 1 do
+  begin
+    if (pfx <> '') and (Copy(result.entries[i].path, 1, Length(pfx)) <> pfx) then
+      Continue;
+    Inc(shown_count);
+    if result.entries[i].is_compressed then
+      has_compressed := True;
+  end;
+
   WriteLn('Compression Status:');
-  if result.has_compressed_entries then
+  if has_compressed then
     WriteLn('  QAR contains compressed entries')
   else
     WriteLn('  QAR entries are not compressed');
   WriteLn;
   
-  WriteLn('Entries (', result.entry_count, '):');
+  WriteLn('Entries (', shown_count, '):');
+  shown_count := 0;
   for i := 0 to result.entry_count - 1 do
   begin
-    WriteLn('  [', i + 1, '] ', result.entries[i].path);
+    if (pfx <> '') and (Copy(result.entries[i].path, 1, Length(pfx)) <> pfx) then
+      Continue;
+    Inc(shown_count);
+
+    WriteLn('  [', shown_count, '] ', result.entries[i].path);
     WriteLn('      Type: ', result.entries[i].entry_type);
     if result.entries[i].is_compressed then
     begin
@@ -2192,6 +2214,11 @@ begin
     WriteLn('Dependencies: None');
   end;
   WriteLn;
+end;
+
+procedure PrintQarInspection(const result: TQarInspectionResult);
+begin
+  PrintQarInspectionFiltered(result, '');
 end;
 
 // Rebuild QAR file to match current QuickJS version.

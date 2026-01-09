@@ -3,14 +3,15 @@ program qjsp;
 {$mode objfpc}{$H+}
 
 uses
-  SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_intrinsics, quickjs_memdebug,
-  quickjs_std, quickjs_qar, quickjs_miniz, quickjs_debug, qar, Classes,
+  SysUtils, Classes, ctypes, process,
+  quickjs_types, quickjs_core, quickjs_std,
+  qjs_log,
+  qar, qjsp_qar_tooling, quickjs_miniz, quickjs_debug, quickjs_memdebug,
   fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers,
   console_utf8,
   examples_config,
   file_utils,
-  qjs_log,
   qjsp_module_loader, http_helpers, fs_watch_helpers;
 
 procedure ApplyDebugSettings(rt: PJSRuntime);
@@ -74,6 +75,333 @@ begin
   end;
 end;
 
+function EnsureDirExists(const dir: string): boolean;
+begin
+  if dir = '' then
+    Exit(False);
+  if DirectoryExists(dir) then
+    Exit(True);
+  Result := ForceDirectories(dir);
+end;
+
+function CopyFileTo(const src, dst: string): boolean;
+var
+  inS, outS: TFileStream;
+begin
+  Result := False;
+  if not FileExists(src) then
+    Exit;
+  if not EnsureDirExists(ExtractFileDir(dst)) then
+    Exit;
+  try
+    inS := TFileStream.Create(src, fmOpenRead or fmShareDenyNone);
+    try
+      outS := TFileStream.Create(dst, fmCreate);
+      try
+        outS.CopyFrom(inS, 0);
+        Result := True;
+      finally
+        outS.Free;
+      end;
+    finally
+      inS.Free;
+    end;
+  except
+    Result := False;
+  end;
+end;
+
+function DeleteDirRecursive(const dir: string): boolean;
+var
+  sr: TSearchRec;
+  p: string;
+begin
+  Result := True;
+  if (dir = '') or (not DirectoryExists(dir)) then
+    Exit(True);
+
+  if FindFirst(IncludeTrailingPathDelimiter(dir) + '*', faAnyFile, sr) = 0 then
+  begin
+    repeat
+      if (sr.Name = '.') or (sr.Name = '..') then
+        Continue;
+      p := IncludeTrailingPathDelimiter(dir) + sr.Name;
+      if (sr.Attr and faDirectory) <> 0 then
+      begin
+        if not DeleteDirRecursive(p) then
+          Result := False;
+      end
+      else
+      begin
+        try
+          if not DeleteFile(p) then
+            Result := False;
+        except
+          Result := False;
+        end;
+      end;
+    until FindNext(sr) <> 0;
+    FindClose(sr);
+  end;
+
+  try
+    if not RemoveDir(dir) then
+      Result := False;
+  except
+    Result := False;
+  end;
+end;
+
+function RunMinifyScript(const minify_script: string; const minify_flags: array of string;
+  const input_js, output_js: string): boolean;
+var
+  p: TProcess;
+  self_path: string;
+  k: integer;
+begin
+  Result := False;
+  self_path := ExpandFileName(ParamStr(0));
+  if not FileExists(self_path) then
+    Exit;
+  if not FileExists(minify_script) then
+    Exit;
+  if not EnsureDirExists(ExtractFileDir(output_js)) then
+    Exit;
+
+  p := TProcess.Create(nil);
+  try
+    p.Executable := self_path;
+    p.Options := [poWaitOnExit, poUsePipes];
+    p.Parameters.Add(minify_script);
+    p.Parameters.Add(input_js);
+    p.Parameters.Add(output_js);
+    for k := 0 to Length(minify_flags) - 1 do
+      p.Parameters.Add(minify_flags[k]);
+    try
+      p.Execute;
+    except
+      Exit;
+    end;
+    Result := p.ExitStatus = 0;
+  finally
+    p.Free;
+  end;
+end;
+
+function CopyDirRecursive(const minify_script: string; const minify_flags: array of string;
+  do_minify: boolean; const src_dir, dst_dir: string): boolean;
+var
+  sr: TSearchRec;
+  src_path, dst_path: string;
+  ext: string;
+begin
+  Result := False;
+  if not DirectoryExists(src_dir) then
+    Exit;
+  if not EnsureDirExists(dst_dir) then
+    Exit;
+
+  if FindFirst(IncludeTrailingPathDelimiter(src_dir) + '*', faAnyFile, sr) = 0 then
+  begin
+    repeat
+      if (sr.Name = '.') or (sr.Name = '..') then
+        Continue;
+      src_path := IncludeTrailingPathDelimiter(src_dir) + sr.Name;
+      dst_path := IncludeTrailingPathDelimiter(dst_dir) + sr.Name;
+      if (sr.Attr and faDirectory) <> 0 then
+      begin
+        if not CopyDirRecursive(minify_script, minify_flags, do_minify, src_path, dst_path) then
+        begin
+          FindClose(sr);
+          Exit;
+        end;
+      end
+      else
+      begin
+        ext := LowerCase(ExtractFileExt(sr.Name));
+        if (do_minify) and ((ext = '.js') or (ext = '.mjs')) then
+        begin
+          if not RunMinifyScript(minify_script, minify_flags, src_path, dst_path) then
+          begin
+            FindClose(sr);
+            Exit;
+          end;
+        end
+        else
+        begin
+          if not CopyFileTo(src_path, dst_path) then
+          begin
+            FindClose(sr);
+            Exit;
+          end;
+        end;
+      end;
+    until FindNext(sr) <> 0;
+    FindClose(sr);
+  end;
+  Result := True;
+end;
+
+function ExtractManifestEntryPointMain(const manifest_json: UTF8String): UTF8String;
+var
+  keyPos, p: SizeInt;
+  startQ, endQ: SizeInt;
+  s: UTF8String;
+begin
+  Result := '';
+  s := manifest_json;
+  keyPos := Pos('"entry_points"', s);
+  if keyPos <= 0 then
+    Exit;
+  p := keyPos + Length('"entry_points"');
+  while (p <= Length(s)) and (s[p] <> '{') do
+    Inc(p);
+  if p > Length(s) then
+    Exit;
+
+  keyPos := Pos('"main"', Copy(s, p, Length(s)));
+  if keyPos <= 0 then
+    Exit;
+  keyPos := keyPos + p - 1;
+
+  p := keyPos + Length('"main"');
+  while (p <= Length(s)) and (s[p] <> ':') do
+    Inc(p);
+  if p > Length(s) then
+    Exit;
+  Inc(p);
+  while (p <= Length(s)) and (s[p] <= ' ') do
+    Inc(p);
+  if (p > Length(s)) or (s[p] <> '"') then
+    Exit;
+  startQ := p + 1;
+  endQ := startQ;
+  while (endQ <= Length(s)) and (s[endQ] <> '"') do
+    Inc(endQ);
+  if endQ > Length(s) then
+    Exit;
+  Result := Copy(s, startQ, endQ - startQ);
+end;
+
+function ParseQarEntrySpec(const spec: string; out qar_path: string; out entry_path: string): boolean;
+var
+  sep_pos: SizeInt;
+  lower_spec: string;
+begin
+  Result := False;
+  qar_path := '';
+  entry_path := '';
+  lower_spec := LowerCase(spec);
+  sep_pos := Pos('.qar/', lower_spec);
+  if sep_pos = 0 then
+    sep_pos := Pos('.qar\\', lower_spec);
+  if sep_pos <= 0 then
+    Exit;
+  qar_path := Copy(spec, 1, sep_pos + 3);
+  entry_path := Copy(spec, sep_pos + 5, Length(spec));
+  entry_path := StringReplace(entry_path, '\\', '/', [rfReplaceAll]);
+  Result := (qar_path <> '') and (entry_path <> '');
+end;
+
+function ReadFileToBytes(const filename: string; out bytes: TBytes): boolean;
+var
+  fs: TFileStream;
+begin
+  Result := False;
+  SetLength(bytes, 0);
+  if not FileExists(filename) then
+    Exit;
+  try
+    fs := TFileStream.Create(filename, fmOpenRead or fmShareDenyNone);
+    try
+      if fs.Size > 0 then
+      begin
+        SetLength(bytes, fs.Size);
+        if fs.Read(bytes[0], Length(bytes)) <> Length(bytes) then
+        begin
+          SetLength(bytes, 0);
+          Exit;
+        end;
+      end;
+      Result := True;
+    finally
+      fs.Free;
+    end;
+  except
+    SetLength(bytes, 0);
+    Result := False;
+  end;
+end;
+
+function WriteBytesToFile(const filename: string; const bytes: TBytes): boolean;
+var
+  fs: TFileStream;
+begin
+  Result := False;
+  if not EnsureDirExists(ExtractFileDir(filename)) then
+    Exit;
+  try
+    fs := TFileStream.Create(filename, fmCreate);
+    try
+      if Length(bytes) > 0 then
+        fs.WriteBuffer(bytes[0], Length(bytes));
+      Result := True;
+    finally
+      fs.Free;
+    end;
+  except
+    Result := False;
+  end;
+end;
+
+function PrepareStagedInputs(const minify_script: string; const minify_flags: array of string;
+  do_minify: boolean; var temp_stage_dir: string;
+  const in_files: array of string; out staged_files: array of string): boolean;
+var
+  t: string;
+  src, dst: string;
+  idx: integer;
+  ext: string;
+begin
+  Result := False;
+  if Length(in_files) <> Length(staged_files) then
+    Exit;
+
+  t := GetTempDir(False);
+  temp_stage_dir := IncludeTrailingPathDelimiter(t) + 'qjsp_qar_stage_' + IntToStr(GetTickCount64);
+  if not EnsureDirExists(temp_stage_dir) then
+    Exit;
+
+  for idx := 0 to Length(in_files) - 1 do
+  begin
+    src := in_files[idx];
+    if DirectoryExists(src) then
+    begin
+      dst := IncludeTrailingPathDelimiter(temp_stage_dir) + 'dir_' + IntToStr(idx);
+      if not CopyDirRecursive(minify_script, minify_flags, do_minify, src, dst) then
+        Exit;
+      staged_files[idx] := dst;
+    end
+    else
+    begin
+      dst := IncludeTrailingPathDelimiter(temp_stage_dir) + ExtractFileName(src);
+      ext := LowerCase(ExtractFileExt(src));
+      if (do_minify) and ((ext = '.js') or (ext = '.mjs')) then
+      begin
+        if not RunMinifyScript(minify_script, minify_flags, src, dst) then
+          Exit;
+      end
+      else
+      begin
+        if not CopyFileTo(src, dst) then
+          Exit;
+      end;
+      staged_files[idx] := dst;
+    end;
+  end;
+  Result := True;
+end;
+
 type
   TReplGuardMode = (rgStrict, rgFriendly);
 
@@ -121,6 +449,56 @@ var
   output_file: string;
   input_files: array of string;
   input_count: integer;
+  cat_mode: boolean;
+  cat_file: string;
+  qar_run_mode: boolean;
+  qar_run_spec: string;
+  qar_extract_mode: boolean;
+  qar_extract_file: string;
+  qar_extract_dir: string;
+  qar_in_place: boolean;
+  qar_add_mode: boolean;
+  qar_rm_mode: boolean;
+  qar_edit_in: string;
+  qar_edit_out: string;
+  qar_edit_entry: string;
+  qar_add_local_file: string;
+  qar_ls_mode: boolean;
+  qar_ls_file: string;
+  qar_ls_prefix: string;
+  qar_sep_pos: SizeInt;
+  qar_path: string;
+  entry_path: string;
+  qar_entry_count: cint;
+  qar_entry_i: cint;
+  qar_entry_p: PQarEntry;
+  qar_entry_s: PChar;
+  pfx: string;
+  qar_manifest_len: csize_t;
+  qar_manifest_ptr: PChar;
+  qar_manifest_str: UTF8String;
+  qar_main_entry: UTF8String;
+  qar_src_bytes: TBytes;
+  qar_src_len: csize_t;
+  qar_src_ptr: Pcuint8;
+  qar_run_qar_path: string;
+  qar_run_entry: string;
+  eval_filename: string;
+  qar_temp_dir: string;
+  qar_tmp_out: string;
+  out_path: string;
+  remove_found: boolean;
+  do_minify: boolean;
+  keep_temp: boolean;
+  minify_safe: boolean;
+  minify_script: string;
+  minify_flags: array of string;
+  temp_stage_dir: string;
+  staged: array of string;
+  build_inputs_stage: array of string;
+  build_inputs_list: array of string;
+  qar_inputs_list: array of string;
+  qar_inputs_stage: array of string;
   // For .build command
   build_args: TStringList;
   build_output: string;
@@ -322,6 +700,30 @@ begin
   output_file := '';
   input_count := 0;
   SetLength(input_files, 0);
+  cat_mode := False;
+  cat_file := '';
+  qar_run_mode := False;
+  qar_run_spec := '';
+  qar_extract_mode := False;
+  qar_extract_file := '';
+  qar_extract_dir := '';
+  qar_in_place := False;
+  qar_add_mode := False;
+  qar_rm_mode := False;
+  qar_edit_in := '';
+  qar_edit_out := '';
+  qar_edit_entry := '';
+  qar_add_local_file := '';
+  qar_ls_mode := False;
+  qar_ls_file := '';
+  qar_ls_prefix := '';
+  eval_filename := '<eval>';
+  do_minify := False;
+  keep_temp := False;
+  minify_safe := False;
+  minify_script := '';
+  SetLength(minify_flags, 0);
+  temp_stage_dir := '';
   run_script_mode := False;
   script_filename := '';
   script_argc := 0;
@@ -409,6 +811,20 @@ begin
       WriteLn('  -d, --debug [LEVEL]  Enable debug output (0=off, 1=basic, 2=verbose, default=1)');
       WriteLn('  -e CODE              Evaluate JavaScript CODE');
       WriteLn('  --guard MODE         REPL crash guard: strict | friendly');
+      WriteLn('  --cat FILE           Print file contents and exit');
+      WriteLn('                      (supports: file.qar/entryPath to print embedded source)');
+      WriteLn('  --qar-cat FILE       Alias of --cat (for QAR tooling compatibility)');
+      WriteLn('  --qar-ls FILE [PFX]  List entries in a QAR file (optionally filtered by prefix)');
+      WriteLn('  --qar-run TARGET     Run QAR entry: file.qar/entry.js or file.qar (manifest main)');
+      WriteLn('  --qar-extract FILE DIR  Extract QAR entries to DIR/<entryPath>');
+      WriteLn('  --in-place           For --qar-add/--qar-rm: update input QAR in place (rebuild+replace)');
+      WriteLn('  --qar-add IN OUT ENTRY  Add/replace entry from local file path ENTRY');
+      WriteLn('  --qar-rm IN OUT ENTRY   Remove entry path from QAR');
+      WriteLn('  --minify             Minify JS sources via minify_qjsp.js before building QAR');
+      WriteLn('  --minify-safe        Shortcut: --minify + --safe-rename + --encode-strings');
+      WriteLn('  --minify-script FILE Specify minify script (default: minify_qjsp.js)');
+      WriteLn('  --minify-flag ARG    Pass through flag(s) to minify script (repeatable)');
+      WriteLn('  --keep-temp          Keep temp staging folder when using --minify');
       WriteLn('  -h, --help           Show this help');
       WriteLn;
       WriteLn('Examples:');
@@ -416,10 +832,208 @@ begin
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -e "print(1+2)"       (run inline code)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -o mylib.qar math.js utils.js');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -o mylib.qar src/');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --cat src/main.js');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --cat mylib.qar/index.js');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --qar-ls mylib.qar');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --qar-run mylib.qar/index.js arg1 arg2');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --qar-extract mylib.qar out_dir');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --qar-rm --in-place mylib.qar index.js');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -d 2                  (interactive mode with verbose debug)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' --guard friendly      (interactive mode, no hard crash on AV)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), '                        (interactive mode)');
       Halt(0);
+    end
+    else if (ParamStr(i) = '--cat') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing filename for --cat');
+        Halt(1);
+      end;
+      cat_mode := True;
+      cat_file := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--qar-cat') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing filename for --qar-cat');
+        Halt(1);
+      end;
+      cat_mode := True;
+      cat_file := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--qar-run') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing target for --qar-run');
+        Halt(1);
+      end;
+      qar_run_mode := True;
+      qar_run_spec := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--qar-extract') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing filename for --qar-extract');
+        Halt(1);
+      end;
+      qar_extract_mode := True;
+      qar_extract_file := ParamStr(i);
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing output directory for --qar-extract');
+        Halt(1);
+      end;
+      qar_extract_dir := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--in-place') then
+    begin
+      qar_in_place := True;
+    end
+    else if (ParamStr(i) = '--qar-add') then
+    begin
+      // Support: --qar-add --in-place in.qar entry/path.js
+      if (i + 1 <= ParamCount) and (ParamStr(i + 1) = '--in-place') then
+      begin
+        qar_in_place := True;
+        Inc(i);
+      end;
+
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing input filename for --qar-add');
+        Halt(1);
+      end;
+      qar_add_mode := True;
+      qar_edit_in := ParamStr(i);
+
+      if not qar_in_place then
+      begin
+        Inc(i);
+        if i > ParamCount then
+        begin
+          WriteLn('Error: Missing output filename for --qar-add');
+          Halt(1);
+        end;
+        qar_edit_out := ParamStr(i);
+      end
+      else
+      begin
+        qar_edit_out := qar_edit_in;
+      end;
+
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing entry path for --qar-add');
+        Halt(1);
+      end;
+      qar_add_local_file := ParamStr(i);
+      // Default archive entry path: just the filename of the local file.
+      // This matches common usage: --qar-add --in-place in.qar ../path/to/file.js
+      qar_edit_entry := ExtractFileName(qar_add_local_file);
+    end
+    else if (ParamStr(i) = '--qar-rm') then
+    begin
+      // Support: --qar-rm --in-place in.qar entry/path.js
+      if (i + 1 <= ParamCount) and (ParamStr(i + 1) = '--in-place') then
+      begin
+        qar_in_place := True;
+        Inc(i);
+      end;
+
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing input filename for --qar-rm');
+        Halt(1);
+      end;
+      qar_rm_mode := True;
+      qar_edit_in := ParamStr(i);
+
+      if not qar_in_place then
+      begin
+        Inc(i);
+        if i > ParamCount then
+        begin
+          WriteLn('Error: Missing output filename for --qar-rm');
+          Halt(1);
+        end;
+        qar_edit_out := ParamStr(i);
+      end
+      else
+      begin
+        qar_edit_out := qar_edit_in;
+      end;
+
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing entry path for --qar-rm');
+        Halt(1);
+      end;
+      qar_edit_entry := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--qar-ls') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing filename for --qar-ls');
+        Halt(1);
+      end;
+      qar_ls_mode := True;
+      qar_ls_file := ParamStr(i);
+
+      // Optional prefix argument
+      if (i + 1 <= ParamCount) and (Copy(ParamStr(i + 1), 1, 2) <> '--') then
+      begin
+        Inc(i);
+        qar_ls_prefix := ParamStr(i);
+      end;
+    end
+    else if (ParamStr(i) = '--minify') then
+    begin
+      do_minify := True;
+    end
+    else if (ParamStr(i) = '--minify-safe') then
+    begin
+      do_minify := True;
+      minify_safe := True;
+    end
+    else if (ParamStr(i) = '--keep-temp') then
+    begin
+      keep_temp := True;
+    end
+    else if (ParamStr(i) = '--minify-script') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing filename for --minify-script');
+        Halt(1);
+      end;
+      minify_script := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--minify-flag') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing value for --minify-flag');
+        Halt(1);
+      end;
+      SetLength(minify_flags, Length(minify_flags) + 1);
+      minify_flags[Length(minify_flags) - 1] := ParamStr(i);
     end
     else if (ParamStr(i) = '-e') then
     begin
@@ -441,6 +1055,342 @@ begin
       Inc(input_count);
     end;
     Inc(i);
+  end;
+
+  // If cat mode, print file contents and exit (before any runtime init)
+  if cat_mode then
+  begin
+    if cat_file = '-' then
+    begin
+      while not EOF(Input) do
+      begin
+        ReadLn(line);
+        WriteLn(line);
+      end;
+      Halt(0);
+    end;
+
+    // Support: file.qar/entryPath -> print embedded source/asset payload
+    qar_sep_pos := Pos('.qar/', LowerCase(cat_file));
+    if qar_sep_pos = 0 then
+      qar_sep_pos := Pos('.qar\\', LowerCase(cat_file));
+
+    if qar_sep_pos > 0 then
+    begin
+      if not QarCatSpecToStdout(cat_file, file_content) then
+      begin
+        WriteLn(file_content);
+        Halt(1);
+      end;
+      Halt(0);
+    end;
+
+    if not ResolveScriptPath(cat_file, script_path) then
+    begin
+      WriteLn('Error: File not found: ', cat_file);
+      Halt(1);
+    end;
+
+    if not ReadTextFileToString(script_path, file_content) then
+    begin
+      WriteLn('Error: Failed to read file: ', script_path);
+      Halt(1);
+    end;
+
+    Write(file_content);
+    Halt(0);
+  end;
+
+  // If QAR list mode, list entries and exit (before any runtime init)
+  if qar_ls_mode then
+  begin
+    if not ResolveScriptPath(qar_ls_file, script_path) then
+    begin
+      WriteLn('Error: File not found: ', qar_ls_file);
+      Halt(1);
+    end;
+
+    // Keep CLI compatibility: optional prefix filter, but use the same formatter as qar_tool inspect
+    pfx := qar_ls_prefix;
+    if not QarPrintInspection(script_path, pfx, file_content) then
+    begin
+      WriteLn(file_content);
+      Halt(1);
+    end;
+    Halt(0);
+  end;
+
+  // If QAR extract mode, extract entries and exit (before any runtime init)
+  if qar_extract_mode then
+  begin
+    if not ResolveScriptPath(qar_extract_file, script_path) then
+    begin
+      WriteLn('Error: File not found: ', qar_extract_file);
+      Halt(1);
+    end;
+    if not EnsureDirExists(qar_extract_dir) then
+    begin
+      WriteLn('Error: Cannot create output directory: ', qar_extract_dir);
+      Halt(1);
+    end;
+
+    if not QarExtractToDir(script_path, qar_extract_dir, file_content) then
+    begin
+      WriteLn(file_content);
+      Halt(1);
+    end;
+    Halt(0);
+  end;
+
+  // QAR add/rm are rebuild-based operations and exit (before any runtime init)
+  if qar_add_mode or qar_rm_mode then
+  begin
+    if not ResolveScriptPath(qar_edit_in, script_path) then
+    begin
+      WriteLn('Error: File not found: ', qar_edit_in);
+      Halt(1);
+    end;
+    if not FileExists(script_path) then
+    begin
+      WriteLn('Error: QAR file not found: ', script_path);
+      Halt(1);
+    end;
+
+    if qar_add_mode and (not FileExists(qar_add_local_file)) then
+    begin
+      WriteLn('Error: Local file not found for --qar-add: ', qar_add_local_file);
+      Halt(1);
+    end;
+
+    if (do_minify) and (minify_script = '') then
+      minify_script := 'minify_qjsp.js';
+    if do_minify then
+    begin
+      if not FileExists(minify_script) then
+        minify_script := 'minify.js';
+      if not FileExists(minify_script) then
+      begin
+        WriteLn('Error: minify script not found: ', minify_script);
+        Halt(1);
+      end;
+      minify_script := ExpandFileName(minify_script);
+    end;
+
+    qar_temp_dir := IncludeTrailingPathDelimiter(GetTempDir) +
+      'qjsp_qar_edit_' + FormatDateTime('yyyymmddhhnnsszzz', Now) + PathDelim;
+    if not ForceDirectories(qar_temp_dir) then
+    begin
+      WriteLn('Error: Cannot create temporary directory');
+      Halt(1);
+    end;
+
+    try
+      qar_debug := qar_open(PChar(script_path));
+      if qar_debug = nil then
+      begin
+        WriteLn('Error: Failed to open QAR file: ', script_path);
+        Halt(1);
+      end;
+
+      try
+        // Extract all sources/assets to temp dir
+        qar_entry_count := qar_get_entry_count(qar_debug);
+        for qar_entry_i := 0 to qar_entry_count - 1 do
+        begin
+          qar_entry_p := qar_get_entry(qar_debug, qar_entry_i);
+          if qar_entry_p = nil then
+            Continue;
+          qar_entry_s := qar_entry_get_path(qar_entry_p);
+          if qar_entry_s = nil then
+            Continue;
+          if qar_entry_load_data(qar_debug, qar_entry_p) < 0 then
+            Continue;
+
+          qar_src_len := 0;
+          qar_src_ptr := qar_entry_get_source(qar_entry_p, @qar_src_len);
+          if qar_src_ptr = nil then
+            Continue;
+
+          SetLength(qar_src_bytes, qar_src_len);
+          if qar_src_len > 0 then
+            Move(qar_src_ptr^, qar_src_bytes[0], qar_src_len);
+
+          out_path := qar_temp_dir + string(qar_entry_s);
+          out_path := StringReplace(out_path, '/', PathDelim, [rfReplaceAll]);
+          if not WriteBytesToFile(out_path, qar_src_bytes) then
+          begin
+            WriteLn('Error: Failed to write temp file: ', out_path);
+            Halt(1);
+          end;
+        end;
+      finally
+        qar_close(qar_debug);
+        qar_debug := nil;
+      end;
+
+      // Apply operation
+      qar_edit_entry := StringReplace(qar_edit_entry, '\\', '/', [rfReplaceAll]);
+      if qar_rm_mode then
+      begin
+        out_path := qar_temp_dir + qar_edit_entry;
+        out_path := StringReplace(out_path, '/', PathDelim, [rfReplaceAll]);
+        remove_found := FileExists(out_path);
+        if remove_found then
+          DeleteFile(out_path);
+        if not remove_found then
+        begin
+          WriteLn('Error: Entry not found in QAR: ', qar_edit_entry);
+          Halt(1);
+        end;
+      end
+      else if qar_add_mode then
+      begin
+        out_path := qar_temp_dir + qar_edit_entry;
+        out_path := StringReplace(out_path, '/', PathDelim, [rfReplaceAll]);
+        if not CopyFileTo(qar_add_local_file, out_path) then
+        begin
+          WriteLn('Error: Failed to copy file into temp dir');
+          Halt(1);
+        end;
+      end;
+
+      // Rebuild (optionally via minify staging)
+      if qar_in_place then
+        qar_tmp_out := script_path + '.tmp'
+      else
+        qar_tmp_out := qar_edit_out;
+
+      if do_minify then
+      begin
+        SetLength(staged, 1);
+        build_inputs_stage := [qar_temp_dir];
+        if not PrepareStagedInputs(minify_script, minify_flags, True, temp_stage_dir, build_inputs_stage, staged) then
+        begin
+          WriteLn('Error: Failed to prepare minified inputs');
+          Halt(1);
+        end;
+        if qar.BuildQar(qar_tmp_out, staged) < 0 then
+          Halt(1);
+      end
+      else
+      begin
+        if qar.BuildQar(qar_tmp_out, [qar_temp_dir]) < 0 then
+          Halt(1);
+      end;
+
+      if qar_in_place then
+      begin
+        if not CopyFileTo(qar_tmp_out, script_path) then
+        begin
+          WriteLn('Error: Failed to replace input QAR');
+          Halt(1);
+        end;
+        DeleteFile(qar_tmp_out);
+      end;
+    finally
+      if (do_minify) and (temp_stage_dir <> '') then
+      begin
+        if keep_temp then
+          WriteLn('Keeping temp staging dir: ', temp_stage_dir)
+        else
+          DeleteDirRecursive(temp_stage_dir);
+        temp_stage_dir := '';
+      end;
+      DeleteDirRecursive(qar_temp_dir);
+    end;
+    Halt(0);
+  end;
+
+  // If QAR run mode, load source and configure eval + args (before any runtime init)
+  if qar_run_mode then
+  begin
+    qar_run_qar_path := '';
+    qar_run_entry := '';
+    if ParseQarEntrySpec(qar_run_spec, qar_run_qar_path, qar_run_entry) then
+    begin
+      // ok
+    end
+    else
+    begin
+      // treat as file.qar (run manifest main)
+      qar_run_qar_path := qar_run_spec;
+      qar_run_entry := '';
+    end;
+
+    if not ResolveScriptPath(qar_run_qar_path, script_path) then
+    begin
+      WriteLn('Error: File not found: ', qar_run_qar_path);
+      Halt(1);
+    end;
+
+    qar_debug := qar_open(PChar(script_path));
+    if qar_debug = nil then
+    begin
+      WriteLn('Error: Failed to open QAR file: ', script_path);
+      Halt(1);
+    end;
+
+    try
+      if qar_run_entry = '' then
+      begin
+        qar_manifest_len := 0;
+        qar_manifest_ptr := qar_get_manifest(qar_debug, @qar_manifest_len);
+        if (qar_manifest_ptr = nil) or (qar_manifest_len = 0) then
+        begin
+          WriteLn('Error: QAR has no manifest; cannot auto-run main entry');
+          Halt(1);
+        end;
+        SetString(qar_manifest_str, qar_manifest_ptr, qar_manifest_len);
+        qar_main_entry := ExtractManifestEntryPointMain(qar_manifest_str);
+        if qar_main_entry = '' then
+        begin
+          WriteLn('Error: Manifest has no entry_points.main');
+          Halt(1);
+        end;
+        qar_run_entry := string(qar_main_entry);
+      end;
+
+      qar_run_entry := StringReplace(qar_run_entry, '\\', '/', [rfReplaceAll]);
+      qar_entry_p := qar_find_entry(qar_debug, PChar(qar_run_entry));
+      if qar_entry_p = nil then
+      begin
+        WriteLn('Error: Entry not found: ', qar_run_entry);
+        Halt(1);
+      end;
+      if qar_entry_load_data(qar_debug, qar_entry_p) < 0 then
+      begin
+        WriteLn('Error: Failed to load entry data: ', qar_run_entry);
+        Halt(1);
+      end;
+
+      qar_source_len := 0;
+      qar_source_ptr := qar_entry_get_source(qar_entry_p, @qar_source_len);
+      if (qar_source_ptr = nil) or (qar_source_len = 0) then
+      begin
+        WriteLn('Error: Entry has no source/asset payload: ', qar_run_entry);
+        Halt(1);
+      end;
+
+      SetString(eval_code, PChar(qar_source_ptr), qar_source_len);
+      eval_filename := script_path + '/' + qar_run_entry;
+      eval_mode := True;
+
+      run_script_mode := True;
+      script_filename := eval_filename;
+      script_argc := input_count + 1;
+      SetLength(script_args, script_argc);
+      SetLength(script_args_str, script_argc);
+      script_args_str[0] := script_filename;
+      script_args[0] := PChar(script_args_str[0]);
+      for i := 0 to input_count - 1 do
+      begin
+        script_args_str[i + 1] := input_files[i];
+        script_args[i + 1] := PChar(script_args_str[i + 1]);
+      end;
+    finally
+      qar_close(qar_debug);
+      qar_debug := nil;
+    end;
   end;
   
   // If not building, decide between -e code and script file execution
@@ -490,12 +1440,62 @@ begin
       Halt(1);
     end;
     
+    if minify_safe then
+    begin
+      SetLength(minify_flags, Length(minify_flags) + 2);
+      minify_flags[Length(minify_flags) - 2] := '--safe-rename';
+      minify_flags[Length(minify_flags) - 1] := '--encode-strings';
+    end;
+
+    if do_minify then
+    begin
+      if minify_script = '' then
+        minify_script := 'minify_qjsp.js';
+      if not FileExists(minify_script) then
+        minify_script := 'minify.js';
+      if not FileExists(minify_script) then
+      begin
+        WriteLn('Error: minify script not found: ', minify_script);
+        Halt(1);
+      end;
+      minify_script := ExpandFileName(minify_script);
+    end;
+
     SetLength(input_files, input_count);
-    // Khi gọi từ main.pas không chỉ định entry_points (dùng giá trị mặc định rỗng)
-    if qar.BuildQar(output_file, input_files) < 0 then
-      Halt(1)
+
+    if do_minify then
+    begin
+      SetLength(staged, Length(input_files));
+      build_inputs_stage := input_files;
+      try
+        if not PrepareStagedInputs(minify_script, minify_flags, True, temp_stage_dir, input_files, staged) then
+        begin
+          WriteLn('Error: Failed to prepare minified inputs');
+          Halt(1);
+        end;
+        build_inputs_stage := staged;
+        if qar.BuildQar(output_file, build_inputs_stage) < 0 then
+          Halt(1)
+        else
+          Halt(0);
+      finally
+        if temp_stage_dir <> '' then
+        begin
+          if keep_temp then
+            WriteLn('Keeping temp staging dir: ', temp_stage_dir)
+          else
+            DeleteDirRecursive(temp_stage_dir);
+        end;
+        temp_stage_dir := '';
+      end;
+    end
     else
-      Halt(0);
+    begin
+      if qar.BuildQar(output_file, input_files) < 0 then
+        Halt(1)
+      else
+        Halt(0);
+    end;
   end;
   
   if not run_script_mode then
@@ -646,7 +1646,7 @@ begin
   begin
     if eval_mode then
     begin
-      if not RunEvalCode(ctx, '<eval>', eval_code) then
+      if not RunEvalCode(ctx, eval_filename, eval_code) then
         exit_code := 1;
     end
     else
@@ -715,9 +1715,13 @@ begin
           WriteLn('    QAR tooling:');
           WriteLn('      info [--init-lib]       - QAR/QuickJS info');
           WriteLn('      build <out.qar> <inputs...>');
+          WriteLn('      ls <file.qar> [prefix]  - List entries (inspect-style output)');
           WriteLn('      inspect <file.qar>      - Inspect QAR details');
+          WriteLn('      cat <file.qar/entryPath>');
+          WriteLn('      cat <file.qar> <entryPath> - Print embedded source/asset payload');
+          WriteLn('      extract <file.qar> <out_dir> - Extract entries to directory');
           WriteLn('      rebuild <in.qar> <out.qar>');
-          WriteLn('      code <file.qar> <entryPath> - Print embedded source code');
+          WriteLn('      code <file.qar> <entryPath> - (legacy) Print embedded source code');
           WriteLn('      version                 - QAR/QuickJS version');
           WriteLn('      help                    - This command list');
           WriteLn;
@@ -1304,9 +2308,74 @@ begin
               else
               begin
                 build_output := build_args[0];
-                SetLength(build_inputs, build_args.Count - 1);
-                for j := 1 to build_args.Count - 1 do
-                  build_inputs[j - 1] := build_args[j];
+                do_minify := False;
+                keep_temp := False;
+                minify_safe := False;
+                minify_script := '';
+                SetLength(minify_flags, 0);
+                SetLength(build_inputs_list, 0);
+
+                j := 1;
+                while j <= build_args.Count - 1 do
+                begin
+                  if build_args[j] = '--minify' then
+                    do_minify := True
+                  else if build_args[j] = '--minify-safe' then
+                  begin
+                    do_minify := True;
+                    minify_safe := True;
+                  end
+                  else if build_args[j] = '--keep-temp' then
+                    keep_temp := True
+                  else if (build_args[j] = '--minify-script') and (j + 1 <= build_args.Count - 1) then
+                  begin
+                    Inc(j);
+                    minify_script := build_args[j];
+                  end
+                  else if (build_args[j] = '--minify-flag') and (j + 1 <= build_args.Count - 1) then
+                  begin
+                    Inc(j);
+                    SetLength(minify_flags, Length(minify_flags) + 1);
+                    minify_flags[Length(minify_flags) - 1] := build_args[j];
+                  end
+                  else
+                  begin
+                    SetLength(build_inputs_list, Length(build_inputs_list) + 1);
+                    build_inputs_list[Length(build_inputs_list) - 1] := build_args[j];
+                  end;
+                  Inc(j);
+                end;
+
+                build_inputs := build_inputs_list;
+
+                if Length(build_inputs) = 0 then
+                begin
+                  WriteLn('Error: No input files specified');
+                  Flush(Output);
+                  Continue;
+                end;
+
+                if minify_safe then
+                begin
+                  SetLength(minify_flags, Length(minify_flags) + 2);
+                  minify_flags[Length(minify_flags) - 2] := '--safe-rename';
+                  minify_flags[Length(minify_flags) - 1] := '--encode-strings';
+                end;
+
+                if do_minify then
+                begin
+                  if minify_script = '' then
+                    minify_script := 'minify_qjsp.js';
+                  if not FileExists(minify_script) then
+                    minify_script := 'minify.js';
+                  if not FileExists(minify_script) then
+                  begin
+                    WriteLn('Error: minify script not found: ', minify_script);
+                    Flush(Output);
+                    Continue;
+                  end;
+                  minify_script := ExpandFileName(minify_script);
+                end;
                 
                 WriteLn('Building QAR file: ', build_output);
                 WriteLn('Input files/directories:');
@@ -1314,15 +2383,52 @@ begin
                   WriteLn('  ', build_inputs[j]);
                 Flush(Output);
                 
-                if qar.BuildQar(build_output, build_inputs) < 0 then
+                if do_minify then
                 begin
-                  WriteLn('Error: Failed to build QAR file');
-                  Flush(Output);
+                  SetLength(staged, Length(build_inputs));
+                  build_inputs_stage := build_inputs;
+                  temp_stage_dir := '';
+                  try
+                    if not PrepareStagedInputs(minify_script, minify_flags, True, temp_stage_dir, build_inputs, staged) then
+                    begin
+                      WriteLn('Error: Failed to prepare minified inputs');
+                      Flush(Output);
+                      Continue;
+                    end;
+                    build_inputs_stage := staged;
+                    if qar.BuildQar(build_output, build_inputs_stage) < 0 then
+                    begin
+                      WriteLn('Error: Failed to build QAR file');
+                      Flush(Output);
+                    end
+                    else
+                    begin
+                      WriteLn('Successfully created QAR file: ', build_output);
+                      Flush(Output);
+                    end;
+                  finally
+                    if temp_stage_dir <> '' then
+                    begin
+                      if keep_temp then
+                        WriteLn('Keeping temp staging dir: ', temp_stage_dir)
+                      else
+                        DeleteDirRecursive(temp_stage_dir);
+                    end;
+                    temp_stage_dir := '';
+                  end;
                 end
                 else
                 begin
-                  WriteLn('Successfully created QAR file: ', build_output);
-                  Flush(Output);
+                  if qar.BuildQar(build_output, build_inputs) < 0 then
+                  begin
+                    WriteLn('Error: Failed to build QAR file');
+                    Flush(Output);
+                  end
+                  else
+                  begin
+                    WriteLn('Successfully created QAR file: ', build_output);
+                    Flush(Output);
+                  end;
                 end;
               end;
             finally
@@ -1458,9 +2564,74 @@ begin
               Continue;
             end;
             qar_output := cmdArgs[1];
-            SetLength(qar_inputs, cmdArgs.Count - 2);
-            for k_qar := 2 to cmdArgs.Count - 1 do
-              qar_inputs[k_qar - 2] := cmdArgs[k_qar];
+
+            do_minify := False;
+            keep_temp := False;
+            minify_safe := False;
+            minify_script := '';
+            SetLength(minify_flags, 0);
+            SetLength(qar_inputs_list, 0);
+
+            k_qar := 2;
+            while k_qar <= cmdArgs.Count - 1 do
+            begin
+              if cmdArgs[k_qar] = '--minify' then
+                do_minify := True
+              else if cmdArgs[k_qar] = '--minify-safe' then
+              begin
+                do_minify := True;
+                minify_safe := True;
+              end
+              else if cmdArgs[k_qar] = '--keep-temp' then
+                keep_temp := True
+              else if (cmdArgs[k_qar] = '--minify-script') and (k_qar + 1 <= cmdArgs.Count - 1) then
+              begin
+                Inc(k_qar);
+                minify_script := cmdArgs[k_qar];
+              end
+              else if (cmdArgs[k_qar] = '--minify-flag') and (k_qar + 1 <= cmdArgs.Count - 1) then
+              begin
+                Inc(k_qar);
+                SetLength(minify_flags, Length(minify_flags) + 1);
+                minify_flags[Length(minify_flags) - 1] := cmdArgs[k_qar];
+              end
+              else
+              begin
+                SetLength(qar_inputs_list, Length(qar_inputs_list) + 1);
+                qar_inputs_list[Length(qar_inputs_list) - 1] := cmdArgs[k_qar];
+              end;
+              Inc(k_qar);
+            end;
+            qar_inputs := qar_inputs_list;
+
+            if Length(qar_inputs) = 0 then
+            begin
+              WriteLn('Error: No input files specified');
+              Flush(Output);
+              Continue;
+            end;
+
+            if minify_safe then
+            begin
+              SetLength(minify_flags, Length(minify_flags) + 2);
+              minify_flags[Length(minify_flags) - 2] := '--safe-rename';
+              minify_flags[Length(minify_flags) - 1] := '--encode-strings';
+            end;
+
+            if do_minify then
+            begin
+              if minify_script = '' then
+                minify_script := 'minify_qjsp.js';
+              if not FileExists(minify_script) then
+                minify_script := 'minify.js';
+              if not FileExists(minify_script) then
+              begin
+                WriteLn('Error: minify script not found: ', minify_script);
+                Flush(Output);
+                Continue;
+              end;
+              minify_script := ExpandFileName(minify_script);
+            end;
 
             WriteLn('Building QAR file: ', qar_output);
             WriteLn('Input files/directories:');
@@ -1468,7 +2639,34 @@ begin
               WriteLn('  ', qar_inputs[k_qar]);
             Flush(Output);
 
-            qar_ret := qar.BuildQar(qar_output, qar_inputs);
+            if do_minify then
+            begin
+              SetLength(staged, Length(qar_inputs));
+              qar_inputs_stage := qar_inputs;
+              temp_stage_dir := '';
+              try
+                if not PrepareStagedInputs(minify_script, minify_flags, True, temp_stage_dir, qar_inputs, staged) then
+                begin
+                  WriteLn('Error: Failed to prepare minified inputs');
+                  Flush(Output);
+                  Continue;
+                end;
+                qar_inputs_stage := staged;
+                qar_ret := qar.BuildQar(qar_output, qar_inputs_stage);
+              finally
+                if temp_stage_dir <> '' then
+                begin
+                  if keep_temp then
+                    WriteLn('Keeping temp staging dir: ', temp_stage_dir)
+                  else
+                    DeleteDirRecursive(temp_stage_dir);
+                end;
+                temp_stage_dir := '';
+              end;
+            end
+            else
+              qar_ret := qar.BuildQar(qar_output, qar_inputs);
+
             if qar_ret < 0 then
               WriteLn('Error: Failed to build QAR file')
             else
@@ -1483,17 +2681,73 @@ begin
               Continue;
             end;
             qar_input := cmdArgs[1];
-            if not FileExists(qar_input) then
+            if not QarPrintInspection(qar_input, '', file_content) then
             begin
-              WriteLn('Error: QAR file not found: ', qar_input);
+              WriteLn(file_content);
               Flush(Output);
               Continue;
             end;
-            qar_inspection := qar.InspectQarFile(qar_input);
-            try
-              qar.PrintQarInspection(qar_inspection);
-            finally
-              qar_inspection.dependencies.Free;
+          end
+          else if (subcmd = 'ls') then
+          begin
+            if cmdArgs.Count < 2 then
+            begin
+              WriteLn('Usage: .qar ls <file.qar> [prefix]');
+              Flush(Output);
+              Continue;
+            end;
+            qar_input := cmdArgs[1];
+            if cmdArgs.Count >= 3 then
+              pfx := cmdArgs[2]
+            else
+              pfx := '';
+            if not QarPrintInspection(qar_input, pfx, file_content) then
+            begin
+              WriteLn(file_content);
+              Flush(Output);
+              Continue;
+            end;
+          end
+          else if (subcmd = 'cat') then
+          begin
+            if cmdArgs.Count < 2 then
+            begin
+              WriteLn('Usage: .qar cat <file.qar/entryPath>');
+              WriteLn('   or: .qar cat <file.qar> <entryPath>');
+              Flush(Output);
+              Continue;
+            end;
+
+            if cmdArgs.Count >= 3 then
+              cmdLine := cmdArgs[1] + '/' + cmdArgs[2]
+            else
+              cmdLine := cmdArgs[1];
+
+            if not QarCatSpecToStdout(cmdLine, file_content) then
+            begin
+              WriteLn(file_content);
+              Flush(Output);
+              Continue;
+            end;
+
+            // Ensure the next REPL prompt starts on a new line.
+            WriteLn;
+          end
+          else if (subcmd = 'extract') then
+          begin
+            if cmdArgs.Count < 3 then
+            begin
+              WriteLn('Usage: .qar extract <file.qar> <out_dir>');
+              Flush(Output);
+              Continue;
+            end;
+            qar_input := cmdArgs[1];
+            qar_output := cmdArgs[2];
+            if not QarExtractToDir(qar_input, qar_output, file_content) then
+            begin
+              WriteLn(file_content);
+              Flush(Output);
+              Continue;
             end;
           end
           else if (subcmd = 'rebuild') then
