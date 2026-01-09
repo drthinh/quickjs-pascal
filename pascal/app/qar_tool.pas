@@ -26,8 +26,8 @@
  *   qar_tool rebuild old.qar new.qar
  *   qar_tool version
  *
- * Tác giả: QuickJS Pascal Binding
- * Ngày: 2024
+ * Tác giả: Nguyễn Đức Thịnh (dr.nguyenducthinh@gmail.com)
+ * Ngày: 2026
  ******************************************************************************}
 
 program qar_tool;
@@ -35,10 +35,15 @@ program qar_tool;
 {$mode objfpc}{$H+}
 
 uses
-  SysUtils, ctypes, qar;
+  SysUtils, ctypes, qar, process, Classes;
 
 var
   init_default_lib: boolean = False;
+  do_minify: boolean = False;
+  keep_temp: boolean = False;
+  minify_script: string = '';
+  minify_flags: array of string;
+  temp_stage_dir: string = '';
   i: integer;
   cmd: string;
   output_file: string = '';
@@ -49,6 +54,246 @@ var
   entry_main: string = '';
   entry_init: string = '';
   entry_name_code: string = '';
+
+function EnsureDirExists(const dir: string): boolean;
+begin
+  if dir = '' then
+    Exit(False);
+  if DirectoryExists(dir) then
+    Exit(True);
+  Result := ForceDirectories(dir);
+end;
+
+function CopyFileTo(const src, dst: string): boolean;
+var
+  inS, outS: TFileStream;
+begin
+  Result := False;
+  if not FileExists(src) then
+    Exit;
+  if not EnsureDirExists(ExtractFileDir(dst)) then
+    Exit;
+  try
+    inS := TFileStream.Create(src, fmOpenRead or fmShareDenyNone);
+    try
+      outS := TFileStream.Create(dst, fmCreate);
+      try
+        outS.CopyFrom(inS, 0);
+        Result := True;
+      finally
+        outS.Free;
+      end;
+    finally
+      inS.Free;
+    end;
+  except
+    Result := False;
+  end;
+end;
+
+function DeleteDirRecursive(const dir: string): boolean;
+var
+  sr: TSearchRec;
+  p: string;
+begin
+  Result := True;
+  if (dir = '') or (not DirectoryExists(dir)) then
+    Exit(True);
+
+  if FindFirst(IncludeTrailingPathDelimiter(dir) + '*', faAnyFile, sr) = 0 then
+  begin
+    repeat
+      if (sr.Name = '.') or (sr.Name = '..') then
+        Continue;
+      p := IncludeTrailingPathDelimiter(dir) + sr.Name;
+      if (sr.Attr and faDirectory) <> 0 then
+      begin
+        if not DeleteDirRecursive(p) then
+          Result := False;
+      end
+      else
+      begin
+        try
+          if not DeleteFile(p) then
+            Result := False;
+        except
+          Result := False;
+        end;
+      end;
+    until FindNext(sr) <> 0;
+    FindClose(sr);
+  end;
+
+  try
+    if not RemoveDir(dir) then
+      Result := False;
+  except
+    Result := False;
+  end;
+end;
+
+function RunMinifyScript(const input_js, output_js: string): boolean;
+var
+  p: TProcess;
+  qjsp_path: string;
+  k: integer;
+  exe_dir: string;
+begin
+  Result := False;
+  exe_dir := ExtractFilePath(ParamStr(0));
+  qjsp_path := ExpandFileName(exe_dir + 'qjsp.exe');
+  if not FileExists(qjsp_path) then
+  begin
+    qjsp_path := ExpandFileName('qjsp.exe');
+  end;
+  if not FileExists(qjsp_path) then
+  begin
+    WriteLn('Error: qjsp.exe not found (needed for --minify). Expected next to qar_tool.exe or in current directory.');
+    Exit;
+  end;
+
+  if minify_script = '' then
+    minify_script := ExpandFileName(exe_dir + 'minify_qjsp.js');
+  if not FileExists(minify_script) then
+    minify_script := ExpandFileName('minify_qjsp.js');
+  if not FileExists(minify_script) then
+    minify_script := ExpandFileName(exe_dir + 'minify.js');
+  if not FileExists(minify_script) then
+  begin
+    minify_script := ExpandFileName('minify.js');
+  end;
+  if not FileExists(minify_script) then
+  begin
+    WriteLn('Error: minify script not found: ', minify_script);
+    Exit;
+  end;
+
+  if not EnsureDirExists(ExtractFileDir(output_js)) then
+    Exit;
+
+  p := TProcess.Create(nil);
+  try
+    p.Executable := qjsp_path;
+    p.Options := [poWaitOnExit, poUsePipes];
+    p.Parameters.Add(minify_script);
+    p.Parameters.Add(input_js);
+    p.Parameters.Add(output_js);
+    for k := 0 to Length(minify_flags) - 1 do
+      p.Parameters.Add(minify_flags[k]);
+    try
+      p.Execute;
+    except
+      Exit;
+    end;
+    Result := p.ExitStatus = 0;
+    if not Result then
+      WriteLn('Error: minify failed for ', input_js, ' (exit=', p.ExitStatus, ')');
+  finally
+    p.Free;
+  end;
+end;
+
+function CopyDirRecursive(const src_dir, dst_dir: string): boolean;
+var
+  sr: TSearchRec;
+  src_path, dst_path: string;
+  ext: string;
+begin
+  Result := False;
+  if not DirectoryExists(src_dir) then
+    Exit;
+  if not EnsureDirExists(dst_dir) then
+    Exit;
+
+  if FindFirst(IncludeTrailingPathDelimiter(src_dir) + '*', faAnyFile, sr) = 0 then
+  begin
+    repeat
+      if (sr.Name = '.') or (sr.Name = '..') then
+        Continue;
+      src_path := IncludeTrailingPathDelimiter(src_dir) + sr.Name;
+      dst_path := IncludeTrailingPathDelimiter(dst_dir) + sr.Name;
+      if (sr.Attr and faDirectory) <> 0 then
+      begin
+        if not CopyDirRecursive(src_path, dst_path) then
+        begin
+          FindClose(sr);
+          Exit;
+        end;
+      end
+      else
+      begin
+        ext := LowerCase(ExtractFileExt(sr.Name));
+        if (do_minify) and ((ext = '.js') or (ext = '.mjs')) then
+        begin
+          if not RunMinifyScript(src_path, dst_path) then
+          begin
+            FindClose(sr);
+            Exit;
+          end;
+        end
+        else
+        begin
+          if not CopyFileTo(src_path, dst_path) then
+          begin
+            FindClose(sr);
+            Exit;
+          end;
+        end;
+      end;
+    until FindNext(sr) <> 0;
+    FindClose(sr);
+  end;
+  Result := True;
+end;
+
+function PrepareStagedInputs(const in_files: array of string; out staged_files: array of string): boolean;
+var
+  t: string;
+  src, dst: string;
+  idx: integer;
+  ext: string;
+begin
+  Result := False;
+  if Length(in_files) <> Length(staged_files) then
+    Exit;
+
+  t := GetTempDir(False);
+  temp_stage_dir := IncludeTrailingPathDelimiter(t) + 'qar_tool_stage_' + IntToStr(GetTickCount64);
+  if not EnsureDirExists(temp_stage_dir) then
+  begin
+    WriteLn('Error: cannot create temp dir: ', temp_stage_dir);
+    Exit;
+  end;
+
+  for idx := 0 to Length(in_files) - 1 do
+  begin
+    src := in_files[idx];
+    if DirectoryExists(src) then
+    begin
+      dst := IncludeTrailingPathDelimiter(temp_stage_dir) + 'dir_' + IntToStr(idx);
+      if not CopyDirRecursive(src, dst) then
+        Exit;
+      staged_files[idx] := dst;
+    end
+    else
+    begin
+      dst := IncludeTrailingPathDelimiter(temp_stage_dir) + ExtractFileName(src);
+      ext := LowerCase(ExtractFileExt(src));
+      if (do_minify) and ((ext = '.js') or (ext = '.mjs')) then
+      begin
+        if not RunMinifyScript(src, dst) then
+          Exit;
+      end
+      else
+      begin
+        if not CopyFileTo(src, dst) then
+          Exit;
+      end;
+      staged_files[idx] := dst;
+    end;
+  end;
+  Result := True;
+end;
 
 procedure PrintUsage;
 begin
@@ -68,12 +313,18 @@ begin
   WriteLn;
   WriteLn('Options:');
   WriteLn('  --init-lib              - Khởi tạo thư viện QuickJS mặc định khi hiển thị info');
+  WriteLn('  --minify                - Minify JS sources via qjsp + minify script before building QAR');
+  WriteLn('  --minify-script <file>  - Chỉ định script minify (mặc định: minify_qjsp.js)');
+  WriteLn('  --minify-flag <arg>     - Truyền thêm flag cho script minify (có thể lặp lại)');
+  WriteLn('  --keep-temp             - Giữ thư mục staging tạm (hữu ích để debug minify)');
   WriteLn;
   WriteLn('Ví dụ:');
   WriteLn('  qar_tool info');
   WriteLn('  qar_tool info --init-lib');
   WriteLn('  qar_tool build output.qar file1.js file2.js');
   WriteLn('  qar_tool build output.qar src/');
+  WriteLn('  qar_tool --minify build output.qar src/');
+  WriteLn('  qar_tool --minify --minify-script minify.js --minify-flag --minify-only build out.qar src/');
   WriteLn('  qar_tool inspect file.qar');
   WriteLn('  qar_tool rebuild old.qar new.qar');
   WriteLn('  qar_tool code mylib.qar my_module.js');
@@ -96,6 +347,8 @@ end;
 procedure BuildQarFile;
 var
   ret: cint;
+  staged: array of string;
+  build_inputs: array of string;
 begin
   if Length(input_files) = 0 then
   begin
@@ -118,7 +371,30 @@ begin
   if (entry_main <> '') or (entry_init <> '') then
     WriteLn;
   
-  ret := BuildQar(output_file, input_files, entry_main, entry_init);
+  build_inputs := input_files;
+  if do_minify then
+  begin
+    SetLength(staged, Length(input_files));
+    if not PrepareStagedInputs(input_files, staged) then
+    begin
+      WriteLn('Error: Failed to prepare minified inputs');
+      Halt(1);
+    end;
+    build_inputs := staged;
+  end;
+
+  try
+    ret := BuildQar(output_file, build_inputs, entry_main, entry_init);
+  finally
+    if (do_minify) and (temp_stage_dir <> '') then
+    begin
+      if keep_temp or (ret < 0) then
+        WriteLn('Keeping temp staging dir: ', temp_stage_dir)
+      else
+        DeleteDirRecursive(temp_stage_dir);
+    end;
+    temp_stage_dir := '';
+  end;
   if ret < 0 then
   begin
     WriteLn('Error: Failed to build QAR file');
@@ -220,6 +496,7 @@ end;
 procedure RebuildQarFileCommand;
 var
   ret: cint;
+  staged: array of string;
 begin
   if input_file = '' then
   begin
@@ -248,7 +525,29 @@ begin
   if (entry_main <> '') or (entry_init <> '') then
     WriteLn;
   
-  ret := qar.RebuildQarFile(input_file, output_file, entry_main, entry_init);
+  if do_minify then
+  begin
+    SetLength(staged, 1);
+    if not PrepareStagedInputs([input_file], staged) then
+    begin
+      WriteLn('Error: Failed to prepare minified inputs');
+      Halt(1);
+    end;
+    input_file := staged[0];
+  end;
+
+  try
+    ret := qar.RebuildQarFile(input_file, output_file, entry_main, entry_init);
+  finally
+    if (do_minify) and (temp_stage_dir <> '') then
+    begin
+      if keep_temp or (ret < 0) then
+        WriteLn('Keeping temp staging dir: ', temp_stage_dir)
+      else
+        DeleteDirRecursive(temp_stage_dir);
+    end;
+    temp_stage_dir := '';
+  end;
   if ret < 0 then
   begin
     WriteLn('Error: Failed to rebuild QAR file');
@@ -269,6 +568,7 @@ begin
   output_file := '';
   input_file := '';
   SetLength(input_files, 0);
+  SetLength(minify_flags, 0);
   
   // Parse options and command
   while i <= ParamCount do
@@ -276,6 +576,29 @@ begin
     if (ParamStr(i) = '--init-lib') or (ParamStr(i) = '-i') then
     begin
       init_default_lib := True;
+      Inc(i);
+    end
+    else if (ParamStr(i) = '--minify') then
+    begin
+      do_minify := True;
+      Inc(i);
+    end
+    else if (ParamStr(i) = '--keep-temp') then
+    begin
+      keep_temp := True;
+      Inc(i);
+    end
+    else if (ParamStr(i) = '--minify-script') and (i < ParamCount) then
+    begin
+      Inc(i);
+      minify_script := ParamStr(i);
+      Inc(i);
+    end
+    else if (ParamStr(i) = '--minify-flag') and (i < ParamCount) then
+    begin
+      Inc(i);
+      SetLength(minify_flags, Length(minify_flags) + 1);
+      minify_flags[Length(minify_flags) - 1] := ParamStr(i);
       Inc(i);
     end
     // Thiết lập entry main cho manifest khi build/rebuild
@@ -309,6 +632,49 @@ begin
     end
     else
     begin
+      // Allow known options after the command/arguments (e.g. "qar_tool rebuild in out --minify")
+      if (ParamStr(i) = '--minify') then
+      begin
+        do_minify := True;
+        Inc(i);
+        Continue;
+      end
+      else if (ParamStr(i) = '--keep-temp') then
+      begin
+        keep_temp := True;
+        Inc(i);
+        Continue;
+      end
+      else if (ParamStr(i) = '--minify-script') and (i < ParamCount) then
+      begin
+        Inc(i);
+        minify_script := ParamStr(i);
+        Inc(i);
+        Continue;
+      end
+      else if (ParamStr(i) = '--minify-flag') and (i < ParamCount) then
+      begin
+        Inc(i);
+        SetLength(minify_flags, Length(minify_flags) + 1);
+        minify_flags[Length(minify_flags) - 1] := ParamStr(i);
+        Inc(i);
+        Continue;
+      end
+      else if (ParamStr(i) = '--main') and (i < ParamCount) then
+      begin
+        Inc(i);
+        entry_main := ParamStr(i);
+        Inc(i);
+        Continue;
+      end
+      else if (ParamStr(i) = '--init') and (i < ParamCount) then
+      begin
+        Inc(i);
+        entry_init := ParamStr(i);
+        Inc(i);
+        Continue;
+      end;
+
       // Arguments for command
       if cmd = 'build' then
       begin

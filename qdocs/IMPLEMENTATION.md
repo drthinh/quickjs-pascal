@@ -1,119 +1,113 @@
-# QuickJS QAR Implementation Summary
+# QuickJS QAR Implementation Summary (Pascal-owned)
 
-## Đã triển khai
+## Tổng quan / Overview
 
-### 1. Công cụ QAR Packager (`qjar.c`)
-- Biên dịch nhiều file/thư mục JavaScript thành bytecode
-- Đóng gói bytecode và source code vào file QAR
-- Tạo manifest JSON chứa thông tin về các entry
-- Hỗ trợ cả ES modules và classic scripts
+**VI:** Trong repo này, toàn bộ QAR (QuickJS Archive) đã được chuyển sang **Pascal**. Các file C `qjar.c`, `qar.c`, `qar.h` được coi là **legacy / không còn dùng** trong luồng build/runtime hiện tại.
 
-### 2. QAR Reader Library (`qar.c`, `qar.h`)
-- Đọc và parse QAR files
-- Lấy bytecode và source code từ entries
-- Hỗ trợ tìm kiếm entry theo path
-- Cache dữ liệu để tối ưu hiệu suất
+**EN:** In this repository, the QAR (QuickJS Archive) system is **implemented and owned by Pascal**. The C files `qjar.c`, `qar.c`, `qar.h` are considered **legacy / not used** by the current build/runtime flow.
 
-### 3. Tích hợp vào QuickJS Module Loader
-- Tự động load modules từ QAR files
-- Hỗ trợ import/export ES6 modules
-- Fallback về source code nếu bytecode không tương thích
-- API để đăng ký QAR files: `js_register_qar_file()`
+## Đã triển khai / Implemented
 
-### 4. CMake Configuration
-- Build tool `qjar` executable
-- Build QAR reader library
-- Static linking với GCC (không phụ thuộc DLL)
-- Tối ưu kích thước binary với `-Os -ffunction-sections -fdata-sections`
+### 1) QAR builder + CLI tooling (Pascal)
 
-### 5. Tests và Documentation
-- Test files trong `tests/`
-- Documentation trong `qdocs/qar_usage.md`
-- Example code trong `tests/test_qar_load.c`
+**VI:**
+- Build QAR từ file/thư mục JS + asset.
+- Compile JS thành bytecode bằng QuickJS (`JS_Eval(..., COMPILE_ONLY)` + `JS_WriteObject`).
+- Nén bytecode/source (miniz) và ghi manifest.
+- CLI tool: `pascal/app/qar_tool.pas`.
 
-## Cấu trúc Files
+**EN:**
+- Build QAR from JS files/folders + assets.
+- Compile JS into bytecode via QuickJS (`JS_Eval(..., COMPILE_ONLY)` + `JS_WriteObject`).
+- Compress bytecode/source (miniz) and write a manifest.
+- CLI tool: `pascal/app/qar_tool.pas`.
+
+**Source / Nguồn:** `pascal/std/qar/qar.pas` (`BuildQar`, `InspectQarFile`, `RebuildQarFile`).
+
+### 2) QAR reader + runtime registry (Pascal)
+
+**VI:**
+- Đọc file QAR (open/find_entry/load_data/get_bytecode/get_source).
+- Đăng ký QAR runtime bằng `LoadLibrary("file.qar", "prefix:")` hoặc `RegisterQarFile(...)`.
+- Module loader wrapper ưu tiên QAR registry trước, sau đó filesystem.
+
+**EN:**
+- Read QAR files (open/find_entry/load_data/get_bytecode/get_source).
+- Register QAR containers at runtime via `LoadLibrary("file.qar", "prefix:")` or `RegisterQarFile(...)`.
+- Module loader wrapper tries QAR registry first, then filesystem.
+
+**Source / Nguồn:**
+- Reader/format API: `pascal/std/qar/qar.pas` (`qar_open`, `qar_find_entry`, ...)
+- Runtime loader + JS APIs: `pascal/std/qar/qar_helpers.pas` (`RegisterQarHelpers`, `js_module_loader_wrapper`, ...)
+
+### 3) Tích hợp module loader (Pascal host policy)
+
+**VI:** Module loader được cài ở chương trình Pascal (`qjsp`) bằng `JS_SetModuleLoaderFunc` và policy như sau:
+- `qjsp:` import -> map tới `pascal/stdjs/...` (filesystem).
+- import còn lại -> `qar_helpers.js_module_loader_wrapper` (QAR registry -> filesystem fallback).
+
+**EN:** The module loader is installed by the Pascal host (`qjsp`) via `JS_SetModuleLoaderFunc` and uses this policy:
+- `qjsp:` imports map to `pascal/stdjs/...` (filesystem).
+- all other imports go through `qar_helpers.js_module_loader_wrapper` (QAR registry -> filesystem fallback).
+
+**Source / Nguồn:** `pascal/app/qjsp.pas`, `pascal/app/qjsp_module_loader.pas`.
+
+## Cấu trúc files / File structure
 
 ```
 quickjs-master/
-├── qjar.c              # QAR packager tool
-├── qar.c               # QAR reader implementation
-├── qar.h               # QAR reader header
-├── quickjs-libc.c      # Modified với QAR support
-├── quickjs-libc.h      # Added QAR API exports
-├── CMakeLists.txt      # Updated với QAR build config
-├── tests/
-│   ├── test_qar.js     # JavaScript test
-│   ├── test_qar_load.c # C test
-│   └── qar_test_lib/   # Test library files
+├── pascal/
+│   ├── app/
+│   │   ├── qjsp.pas                 # Host runtime (REPL + run-script)
+│   │   ├── qjsp_module_loader.pas   # Policy loader: qjsp: + QAR wrapper
+│   │   └── qar_tool.pas             # CLI: build/inspect/rebuild/code
+│   └── std/
+│       └── qar/
+│           ├── qar.pas              # QAR format + build/inspect/rebuild
+│           └── qar_helpers.pas      # QAR registry + JS bindings + loader wrapper
 └── qdocs/
-    ├── readme.md       # Requirements
-    └── qar_usage.md    # Usage guide
+    └── IMPLEMENTATION.md            # This document
 ```
 
-## Cách sử dụng
+## Cách sử dụng / Usage
 
-### 1. Build project
+### 1) Build QAR bằng CLI tool / Build QAR via CLI tool
+
+**VI/EN:** (chạy executable `qar_tool` sau khi build Pascal app)
 
 ```bash
-mkdir build
-cd build
-cmake ..
-make qjar
-make test_qar_load
+qar_tool build out.qar path/to/file.js
+qar_tool build out.qar path/to/folder/
+qar_tool inspect out.qar
+qar_tool rebuild in.qar out_new.qar
+qar_tool code out.qar entry/path.js
 ```
 
-### 2. Tạo QAR file
-
-```bash
-# Đóng gói thư mục
-./qjar -o mylib.qar ../tests/qar_test_lib/
-
-# Đóng gói file đơn lẻ
-./qjar -o math.qar ../tests/qar_test_lib/math.js
-```
-
-### 3. Sử dụng QAR trong C code
-
-```c
-#include "quickjs-libc.h"
-
-JSRuntime *rt = JS_NewRuntime();
-JSContext *ctx = JS_NewContext(rt);
-js_std_init_handlers(rt);
-JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);
-
-// Đăng ký QAR file
-js_register_qar_file(ctx, "mylib.qar", NULL);
-
-// Load và chạy module
-JSValue module = JS_LoadModule(ctx, "math", "math");
-JS_ResolveModule(ctx, module);
-JSValue result = JS_EvalFunction(ctx, module);
-```
-
-### 4. Sử dụng QAR trong JavaScript
+### 2) Dùng QAR trong `qjsp` (JavaScript) / Use QAR from `qjsp` (JavaScript)
 
 ```javascript
-// Import từ QAR
-import { add, multiply } from 'math.js';
-console.log(add(2, 3));
+// Register a QAR container (optional prefix recommended)
+LoadLibrary("mylib.qar", "mylib:");
+
+// Import from QAR using prefix notation
+import { add } from "mylib:math.js";
+print(add(2, 3));
 ```
 
-## API Exports
+### 3) APIs (Pascal)
 
-### C API (quickjs-libc.h)
+**VI:** API không còn nằm trong `quickjs-libc.h`. QAR APIs chính nằm trong Pascal units.
 
-- `int js_register_qar_file(JSContext *ctx, const char *qar_filename, const char *prefix)`
-- `void js_unregister_all_qar_files(JSRuntime *rt)`
+**EN:** APIs are no longer exported via `quickjs-libc.h`. The main QAR APIs live in Pascal units.
 
-### QAR Reader API (qar.h)
-
-- `QarFile *qar_open(const char *filename)`
-- `void qar_close(QarFile *qar)`
-- `const QarEntry *qar_find_entry(QarFile *qar, const char *path)`
-- `const uint8_t *qar_entry_get_bytecode(const QarEntry *entry, size_t *len)`
-- `const uint8_t *qar_entry_get_source(const QarEntry *entry, size_t *len)`
-- `int qar_entry_load_data(QarFile *qar, const QarEntry *entry)`
+- `pascal/std/qar/qar.pas`
+  - `function BuildQar(const output_file: string; const input_files: array of string; const entry_main: string = ''; const entry_init: string = ''): cint;`
+  - `function InspectQarFile(const qar_filename: string): TQarInspectionResult;`
+  - `function RebuildQarFile(const input_qar: string; const output_qar: string; const entry_main: string = ''; const entry_init: string = ''): cint;`
+- `pascal/std/qar/qar_helpers.pas`
+  - `function RegisterQarFile(const qar_filename: string; const prefix: string): cint;`
+  - `function js_module_loader_wrapper(...): PJSModuleDef;`
+  - `procedure RegisterQarHelpers(ctx: PJSContext);`
 
 ## QAR File Format
 
@@ -146,8 +140,7 @@ console.log(add(2, 3));
 
 ## Notes
 
-- Bytecode format phụ thuộc vào phiên bản QuickJS
-- QAR files có thể được sử dụng như thư viện
-- Module loader tự động tìm trong QAR files đã đăng ký
-- Source code được lưu để có thể recompile khi cần
-
+- **VI:** Bytecode format phụ thuộc vào phiên bản QuickJS. Dùng `qar_tool inspect` để xem version/compatibility và `qar_tool rebuild` để rebuild.
+- **EN:** Bytecode format depends on the QuickJS version. Use `qar_tool inspect` to view version/compatibility and `qar_tool rebuild` to rebuild.
+- **VI:** Các file C `qjar.c`, `qar.c`, `qar.h` là legacy/không dùng trong luồng hiện tại.
+- **EN:** The C files `qjar.c`, `qar.c`, `qar.h` are legacy/not used in the current flow.

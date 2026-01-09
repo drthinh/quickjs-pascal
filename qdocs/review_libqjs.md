@@ -1,5 +1,7 @@
 Mình sẽ kiểm tra trực tiếp trong repo:
 
+ **VI/EN (note):** Trong repo hiện tại, QAR được implement ở tầng **Pascal**. Các file C `qar.c/qar.h` được coi là legacy và không thuộc luồng QAR hiện tại.
+
 1. Xem `libqjs` export những hàm nào (từ file `.def` hoặc file build).
 2. Liệt kê các unit Pascal `quickjs_*.pas` và các khai báo `external 'libqjs'`.
 3. So sánh để xem còn thiếu hàm nào.
@@ -92,7 +94,7 @@ Ví dụ các hàm **có trong DLL nhưng không thấy trong *.pas**:
   - Một số conversion nâng cao (ToNumber/ToObject/ToBigInt64/ToBigUint64,…).
   - Miniz streaming API.
 
-Thêm binding cho các hàm còn thiếu thì khá dễ: chỉ cần dịch khai báo từ `quickjs.h` / `qar.h` / `miniz.h` sang Pascal và gắn `external libqjs`.
+Thêm binding cho các hàm còn thiếu thì khá dễ: chỉ cần dịch khai báo từ `quickjs.h` / `miniz.h` sang Pascal và gắn `external libqjs`.
 
 ---
 
@@ -103,7 +105,7 @@ Dựa trên repo này:
 - [libqjs.dll](cci:7://file:///d:/Projects/quickjs/quickjs-master/pascal/libqjs.dll:0:0-0:0) là **gộp** của:
   - QuickJS core (`quickjs.c`, `quickjs.h`)
   - QuickJS libc (`quickjs-libc.c`)
-  - QAR (`qar.c`, `qar.h`)
+  - (legacy) QAR C-side (`qar.c`, `qar.h`) - không dùng trong luồng hiện tại
   - miniz (nén/giải nén)
 - Export list trong `.def` khớp với những thứ mình kỳ vọng từ QuickJS + libc + QAR + miniz.  
   Không có dấu hiệu “hack kỳ lạ” ở ABI (tất cả Pascal units dùng `{$packrecords c}` và `ctypes`, rất chuẩn).

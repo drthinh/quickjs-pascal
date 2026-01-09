@@ -1,4 +1,6 @@
 # QAR File Structure
+ 
+ **VI/EN (important):** Trong repo này, QAR được implement bằng **Pascal**. Các ví dụ/tooling kiểu C (`qjar`, `qar.c/qar.h`, `js_register_qar_file`) là **legacy / không dùng** trong luồng hiện tại.
 
 ## Tổng quan
 
@@ -64,22 +66,23 @@ N+32          8?    (chỉ khi nén) Original source size (uint64_t)
 
 ## Nội dung QAR File
 
-### ✅ Có chứa Bytecode (cho script/module)
+### Có chứa Bytecode (cho script/module)
 - Mỗi entry JS chứa bytecode được compile với `JS_WriteObject()` (`JS_WRITE_OBJ_BYTECODE | JS_WRITE_OBJ_REFERENCE`)
 - Bytecode format phụ thuộc vào phiên bản QuickJS
 
-### ✅ Có chứa Source Code hoặc Asset Payload
+### Có chứa Source Code hoặc Asset Payload
 - JS entries: chứa source code JavaScript gốc (fallback, debug, sourcemap)
 - Asset entries: bytecode_size = 0, payload được lưu ở phần `source` (raw bytes)
 
-### ✅ Hỗ trợ nén theo entry
+### Hỗ trợ nén theo entry
 - Bit1 trong flags bật khi entry được nén.
 - Khi nén, hai trường kích thước thêm (original bytecode/source) được ghi để biết kích thước thật trước nén.
 
 ### ❌ WinZip/Không thể đọc được
 - QAR là định dạng binary tùy chỉnh, không phải ZIP format
 - WinZip, 7-Zip, hoặc các công cụ nén khác **KHÔNG THỂ** đọc được file QAR
-- Cần sử dụng công cụ `qjar` để tạo và `qar` API để đọc
+ - **VI:** Cần sử dụng `qar_tool` (Pascal) để tạo/inspect/rebuild, hoặc dùng `qjsp` helpers (`GetQarInfo`, `GetQarAsset`, ...).
+ - **EN:** Use `qar_tool` (Pascal) to build/inspect/rebuild, or use the `qjsp` helpers (`GetQarInfo`, `GetQarAsset`, ...).
 
 ## So sánh với các format khác
 
@@ -93,16 +96,18 @@ N+32          8?    (chỉ khi nén) Original source size (uint64_t)
 
 ### Tạo QAR file
 ```bash
-qjar -o mylib.qar src/math.js src/utils.js
+qar_tool build mylib.qar src/math.js src/utils.js
 ```
 
-### Đọc QAR file trong C
-```c
-QarFile *qar = qar_open("mylib.qar");
-const QarEntry *entry = qar_find_entry(qar, "math.js");
-size_t bytecode_len;
-const uint8_t *bytecode = qar_entry_get_bytecode(entry, &bytecode_len);
-const uint8_t *source = qar_entry_get_source(entry, &source_len);
+### Đọc/inspect QAR (khuyến nghị) / Read/inspect QAR (recommended)
+```bash
+qar_tool inspect mylib.qar
+qar_tool code mylib.qar math.js
+```
+
+```javascript
+// inside qjsp
+print(GetQarInfo('mylib.qar'));
 ```
 
 ## Lưu ý

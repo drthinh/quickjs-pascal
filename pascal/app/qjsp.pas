@@ -11,7 +11,7 @@ uses
   examples_config,
   file_utils,
   qjs_log,
-  qjsp_module_loader, http_helpers;
+  qjsp_module_loader, http_helpers, fs_watch_helpers;
 
 procedure ApplyDebugSettings(rt: PJSRuntime);
 begin
@@ -640,6 +640,7 @@ begin
   dll_helpers.RegisterDllHelpers(ctx);
   compression_helpers.RegisterCompressionHelpers(ctx);
   http_helpers.RegisterHttpHelpers(ctx);
+  fs_watch_helpers.RegisterFsWatchHelpers(ctx);
 
   if run_script_mode then
   begin

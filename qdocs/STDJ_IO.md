@@ -40,6 +40,16 @@ API:
 - `remove(path)`
 - `rename(oldPath, newPath)`
 
+- `walk(dir, { recursive=true, includeDirs=false, filter? })`: iterator (`for..of` / `Array.from`)
+- `walkArray(dir, opts): string[]`
+- `walkFiles(dir, opts)`: iterator
+- `walkDirs(dir, opts)`: iterator
+
+- `copyFile(src, dst)`
+- `copyDir(srcDir, dstDir, { overwrite=false })`
+
+- `removeTree(path)` / `rmrf(path)`
+
 ### Ghi chú Windows newline
 
 `writeTextFile` được implement bằng binary mode (TextEncoder -> Uint8Array) để tránh Windows tự chuyển `\n` thành `\r\n`.

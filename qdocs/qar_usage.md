@@ -1,26 +1,34 @@
 # QuickJS Archive (QAR) Usage Guide
-
+ 
 ## Overview
-
-QAR (QuickJS Archive) là định dạng đóng gói tương tự Java JAR, cho phép:
-- Đóng gói nhiều file JavaScript thành một file QAR
-- Lưu trữ cả bytecode và source code
+ 
+**VI:** QAR (QuickJS Archive) là định dạng đóng gói tương tự Java JAR, cho phép:
+- Đóng gói nhiều file JavaScript và asset thành một file QAR
+- Lưu trữ bytecode (module/script) và source/payload
 - Load và sử dụng như thư viện với import/export
-- Tự động fallback về source code nếu bytecode không tương thích
+ 
+**EN:** QAR (QuickJS Archive) is a packaging format (similar to Java JAR) that allows:
+- Bundling multiple JavaScript files and assets into a single QAR file
+- Storing bytecode (module/script) and source/payload
+- Loading and using it as a library via ES module imports
+ 
+**VI/EN (important):** Trong repo này, QAR được implement bằng **Pascal** (`pascal/std/qar/qar.pas`, `pascal/std/qar/qar_helpers.pas`). Các ví dụ/tooling kiểu C (`qjar`, `qar.c/qar.h`, `js_register_qar_file`) là **legacy / không dùng** trong luồng hiện tại.
 
 ## Tạo QAR file
-
-Sử dụng công cụ `qjar` để tạo QAR file:
-
+ 
+**VI:** Dùng CLI tool Pascal `qar_tool` để tạo QAR file.
+ 
+**EN:** Use the Pascal CLI tool `qar_tool` to build QAR files.
+ 
 ```bash
-# Đóng gói một file
-qjar -o mylib.qar src/math.js
-
-# Đóng gói nhiều file
-qjar -o mylib.qar src/math.js src/utils.js
-
-# Đóng gói cả thư mục
-qjar -o mylib.qar src/
+# Single file
+qar_tool build mylib.qar src/math.js
+ 
+# Multiple files
+qar_tool build mylib.qar src/math.js src/utils.js
+ 
+# Whole directory
+qar_tool build mylib.qar src/
 ```
 
 ## Cấu trúc QAR file
@@ -34,88 +42,47 @@ QAR file chứa:
   - Bytecode (đã compile)
   - Source code (để fallback)
 
-## Sử dụng QAR trong code C
-
-```c
-#include "quickjs-libc.h"
-
-// Đăng ký QAR file
-js_register_qar_file(ctx, "mylib.qar", NULL);
-
-// Module loader sẽ tự động tìm trong QAR files
-// Khi import "math.js", nó sẽ load từ QAR
-```
+## Sử dụng QAR trong runtime Pascal (`qjsp`) / Using QAR in the Pascal runtime (`qjsp`)
+ 
+**VI:** `qjsp` cung cấp helper `LoadLibrary()` và module loader policy để import từ QAR.
+ 
+**EN:** `qjsp` provides the `LoadLibrary()` helper and a module loader policy to import from QAR.
 
 ## Sử dụng QAR trong JavaScript
-
+ 
 ```javascript
-// Import module từ QAR
-import { add, multiply } from 'math.js';
-import { greet } from 'utils.js';
-
+// 1) Register a QAR container (prefix recommended)
+LoadLibrary('mylib.qar', 'mylib:');
+ 
+// 2) Import from QAR using prefix notation
+import { add } from 'mylib:math.js';
+import { greet } from 'mylib:utils.js';
+ 
 console.log(add(2, 3));
 console.log(greet("World"));
 ```
 
 ## API Reference
-
-### C API
-
-#### `js_register_qar_file(JSContext *ctx, const char *qar_filename, const char *prefix)`
-
-Đăng ký một QAR file để module loader sử dụng.
-
-- `ctx`: JSContext
-- `qar_filename`: Đường dẫn đến file QAR
-- `prefix`: Prefix cho module names (NULL nếu không dùng prefix)
-
-Returns: 0 nếu thành công, -1 nếu lỗi
-
-#### `js_unregister_all_qar_files(JSRuntime *rt)`
-
-Xóa tất cả QAR files đã đăng ký.
-
-- `rt`: JSRuntime
-
-### QAR Reader API
-
-#### `QarFile *qar_open(const char *filename)`
-
-Mở một QAR file để đọc.
-
-#### `void qar_close(QarFile *qar)`
-
-Đóng QAR file.
-
-#### `const QarEntry *qar_find_entry(QarFile *qar, const char *path)`
-
-Tìm entry theo path.
-
-#### `const uint8_t *qar_entry_get_bytecode(const QarEntry *entry, size_t *len)`
-
-Lấy bytecode của entry.
-
-#### `const uint8_t *qar_entry_get_source(const QarEntry *entry, size_t *len)`
-
-Lấy source code của entry.
+ 
+### Pascal APIs
+ 
+**VI:** QAR APIs chính nằm trong Pascal units.
+ 
+**EN:** The main QAR APIs live in Pascal units.
+ 
+- `pascal/std/qar/qar.pas`
+  - `BuildQar(...)`
+  - `InspectQarFile(...)`
+  - `RebuildQarFile(...)`
+- `pascal/std/qar/qar_helpers.pas`
+  - `RegisterQarFile(...)`
+  - `RegisterQarHelpers(ctx)` (exposes `LoadLibrary`, `GetQarInfo`, ... to JS)
 
 ## Ví dụ
 
 Xem `tests/test_qar.js` và `tests/qar_test_lib/` để biết ví dụ sử dụng.
 
-## Build
-
-```bash
-mkdir build
-cd build
-cmake ..
-make qjar
-make test_qar_load
-```
-
 ## Notes
-
-- Bytecode format phụ thuộc vào phiên bản QuickJS
-- Nếu bytecode không tương thích, hệ thống sẽ tự động compile lại từ source code
-- QAR files có thể được sử dụng như thư viện với import/export ES6 modules
-
+ 
+- **VI:** Bytecode phụ thuộc phiên bản QuickJS. Dùng `qar_tool inspect` để xem version/compatibility và `qar_tool rebuild` để rebuild.
+- **EN:** Bytecode depends on the QuickJS version. Use `qar_tool inspect` to view version/compatibility and `qar_tool rebuild` to rebuild.

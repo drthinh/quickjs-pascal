@@ -7,6 +7,8 @@
    - Hoặc sử dụng Lazarus IDE (bao gồm FPC)
 
 2. **libqjs.dll** (Windows) hoặc **libqjs.so** (Linux)
+   - **VI:** QAR được implement ở tầng **Pascal** trong repo này. Các file C `qjar.c/qar.c/qar.h` được coi là legacy.
+   - **EN:** QAR is implemented at the **Pascal** layer in this repo. The C files `qjar.c/qar.c/qar.h` are considered legacy.
    - Cần được build từ QuickJS source với QAR support
    - Đặt file DLL/SO trong cùng thư mục với executable hoặc trong PATH
 
@@ -148,7 +150,7 @@ console.log("Hello World");
 2. **QAR test**:
 ```bash
 # Tạo QAR file test
-qjar -o test.qar test.js
+qar_tool build test.qar test.js
 
 # Chạy chương trình và gõ:
 LoadLibrary('test.qar');

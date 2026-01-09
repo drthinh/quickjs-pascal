@@ -2,13 +2,13 @@
 
 ## Trả lời nhanh
 
-### ✅ QAR có chứa mã nguồn không?
+### QAR có chứa mã nguồn không?
 **Có** - Mỗi entry chứa cả source code JavaScript gốc
 
-### ✅ QAR có chứa bytecode không?
+### QAR có chứa bytecode không?
 **Có** - Mỗi entry chứa bytecode đã được compile
 
-### ❌ WinZip có thể đọc QAR không?
+### WinZip có thể đọc QAR không?
 **Không** - QAR là định dạng binary tùy chỉnh, không phải ZIP
 
 ## Cấu trúc QAR File
@@ -29,48 +29,51 @@ QAR File
 
 ## Sử dụng nhanh (Không cần hardcode trong C!)
 
+**VI/EN (important):** Trong repo này, QAR được implement bằng **Pascal**. Các ví dụ/tooling kiểu C (`qjar`, `qar.c/qar.h`, `js_register_qar_file`) là **legacy / không dùng** trong luồng hiện tại.
+
 ### 1. Tạo QAR file
 ```bash
-qjar -o mylib.qar src/math.js src/utils.js
+# Build with Pascal tool
+qar_tool build mylib.qar src/math.js src/utils.js
 ```
 
 ### 2. Đăng ký QAR từ JavaScript (Đơn giản nhất!)
 ```javascript
-// Chỉ cần gọi LoadLibrary() - tự động có sẵn khi dùng js_std_add_helpers()
-LoadLibrary('mylib.qar');
+// Register a QAR container (prefix recommended)
+LoadLibrary('mylib.qar', 'mylib:');
 ```
 
 ### 3. Import và sử dụng modules
 ```javascript
-import * as math from './src/math.js';
-import { greet } from './src/utils.js';
+import * as math from 'mylib:math.js';
+import { greet } from 'mylib:utils.js';
 
 console.log(math.add(2, 3));
 console.log(greet("World"));
 ```
 
-### Hoặc đăng ký từ C code (nếu cần)
-```c
-js_register_qar_file(ctx, "mylib.qar", NULL);
-JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);
-```
+### Legacy (C-based) / Di sản (C)
+
+**VI:** Các ví dụ đăng ký QAR từ C bằng `js_register_qar_file(...)` và build bằng `qjar` là **legacy** trong repo này.
+
+**EN:** C-based registration via `js_register_qar_file(...)` and building via `qjar` are **legacy** in this repo.
 
 ## Load nhiều QAR files
 
-### Không dùng prefix (tìm trong tất cả)
-```c
-js_register_qar_file(ctx, "mathlib.qar", NULL);
-js_register_qar_file(ctx, "utilslib.qar", NULL);
+### Không dùng prefix (tìm trong tất cả) / No prefix (search all)
 
-// Module loader sẽ tìm trong tất cả QAR files theo thứ tự đăng ký
+```javascript
+LoadLibrary('mathlib.qar');
+LoadLibrary('utilslib.qar');
+// The first match wins; prefer prefixes to avoid conflicts.
 ```
 
-### Dùng prefix để phân biệt
-```c
-js_register_qar_file(ctx, "mathlib.qar", "math:");
-js_register_qar_file(ctx, "utilslib.qar", "utils:");
+### Dùng prefix để phân biệt / Use prefixes to avoid conflicts
 
-// Trong JavaScript:
+```javascript
+LoadLibrary('mathlib.qar', 'math:');
+LoadLibrary('utilslib.qar', 'utils:');
+
 import * as math from 'math:math.js';
 import { greet } from 'utils:utils.js';
 ```
@@ -88,13 +91,10 @@ Xem các file:
 
 ```bash
 # Tạo QAR
-qjar -o qar_test.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
+qar_tool build qar_test.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
 
-# Test load
-test_qar_load qar_test.qar math.js
-
-# Test với qjs
-qjs --module tests/test_qar_usage.js
+# Inspect
+qar_tool inspect qar_test.qar
 ```
 
 ## Module Resolution

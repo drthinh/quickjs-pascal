@@ -26,6 +26,7 @@ function isAlphanum(c) {
 
 const RESERVED_KEYWORDS = new Set([
   'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'export', 'extends', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'return', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'let', 'enum', 'await', 'implements', 'package', 'protected', 'static', 'interface', 'private', 'public', 'null', 'true', 'false',
+  'async',
   // context keywords we must preserve
   'of',
 ]);

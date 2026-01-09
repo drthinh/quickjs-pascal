@@ -18,8 +18,10 @@ function qjsp_module_loader(ctx: PJSContext; module_name: PChar; opaque: pointer
 var
   module_name_str: string;
   mapped_name: string;
+  mapped_name_alt: string;
   exe_dir: string;
   pascal_root: string;
+  ex: JSValue;
 begin
   module_name_str := string(module_name);
 
@@ -37,6 +39,20 @@ begin
     qjs_log.DebugMsg(0, 'qjsp: map "' + module_name_str + '" -> "' + mapped_name + '"');
 
     Result := js_module_loader(ctx, PChar(mapped_name), opaque);
+    if Result = nil then
+    begin
+      ex := JS_GetException(ctx);
+      JS_FreeValue(ctx, ex);
+      mapped_name_alt := mapped_name + '.js';
+      Result := js_module_loader(ctx, PChar(mapped_name_alt), opaque);
+    end;
+    if Result = nil then
+    begin
+      ex := JS_GetException(ctx);
+      JS_FreeValue(ctx, ex);
+      mapped_name_alt := IncludeTrailingPathDelimiter(mapped_name) + 'index.js';
+      Result := js_module_loader(ctx, PChar(mapped_name_alt), opaque);
+    end;
     Exit;
   end;
 

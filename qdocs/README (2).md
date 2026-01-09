@@ -2,6 +2,8 @@
 
 Dự án Free Pascal sử dụng libqjs.dll với đầy đủ tính năng QuickJS và hỗ trợ QAR (QuickJS Archive).
 
+**VI/EN (important):** Trong repo này, QAR được implement ở tầng **Pascal**. Các file C `qjar.c/qar.c/qar.h` và API kiểu `js_register_qar_file(...)` là **legacy / không dùng** trong luồng hiện tại.
+
 ## Tính năng
 
 - ✅ Sử dụng đầy đủ API của QuickJS
@@ -25,9 +27,10 @@ pascal/
 ├── quickjs_core.pas     # API QuickJS cốt lõi (libqjs.dll)
 ├── quickjs_std.pas      # Bindings quickjs-libc (console, std/os/bjson, worker hooks)
 ├── quickjs_miniz.pas    # Bindings miniz (mz_compress/mz_uncompress…)
-├── quickjs_qar.pas      # Bindings C-level QAR API
-├── qar.pas              # Helper cao cấp cho QAR (build/inspect/run)
-├── main.pas             # Chương trình chính với tất cả tính năng
+├── std/qar/qar.pas              # QAR format + build/inspect/rebuild (Pascal)
+├── std/qar/qar_helpers.pas      # QAR registry + JS bindings + loader wrapper
+├── app/qjsp.pas                 # Host runtime (REPL + run-script)
+├── app/qar_tool.pas             # CLI: build/inspect/rebuild/code
 ├── QuickJSPascal.lpr    # File project Lazarus
 └── README.md            # File này
 ```
@@ -60,24 +63,24 @@ Trước tiên, bạn cần tạo QAR file từ JavaScript files:
 
 ```bash
 # Tạo QAR file từ một file
-qjar -o mylib.qar math.js
+qar_tool build mylib.qar math.js
 
 # Tạo QAR file từ nhiều files
-qjar -o mylib.qar math.js utils.js
+qar_tool build mylib.qar math.js utils.js
 
 # Tạo QAR file từ thư mục
-qjar -o mylib.qar src/
+qar_tool build mylib.qar src/
 ```
 
 ### 3. Sử dụng QAR trong JavaScript:
 
 ```javascript
 // Load QAR file
-LoadLibrary('mylib.qar');
+LoadLibrary('mylib.qar', 'mylib:');
 
 // Import modules từ QAR
-import { add, multiply } from './math.js';
-import { greet } from './utils.js';
+import { add, multiply } from 'mylib:math.js';
+import { greet } from 'mylib:utils.js';
 
 console.log(add(2, 3));
 console.log(greet("World"));
@@ -157,22 +160,11 @@ begin
 end;
 ```
 
-### Ví dụ 3: Đăng ký và sử dụng QAR
+### Ví dụ 3: Đăng ký và sử dụng QAR (Pascal runtime)
 
-```pascal
-var
-  ctx: ^JSContext;
-  ret: cint;
-  script: string;
-begin
-  // Đăng ký QAR file
-  ret := js_register_qar_file(ctx, 'mylib.qar', nil);
-  
-  // Thực thi JavaScript import từ QAR
-  script := 'import * as math from ''./math.js''; console.log(math.add(2, 3));';
-  JS_Eval(ctx, PChar(script), Length(script), 'test.js', JS_EVAL_TYPE_MODULE);
-end;
-```
+**VI:** Đăng ký QAR trong runtime được thực hiện qua helper JS `LoadLibrary()` (được `qjsp` cung cấp).
+
+**EN:** QAR registration at runtime is done via the JS helper `LoadLibrary()` (provided by `qjsp`).
 
 ## API Reference
 
@@ -180,32 +172,15 @@ end;
 
 Xem `quickjs_core.pas` (các hàm) và `quickjs_types.pas` (kiểu/const) để biết đầy đủ QuickJS API khi link với `libqjs.dll`.
 
-### QAR API
-
-- `qar_open(filename: PChar): PQarFile` - Mở QAR file
-- `qar_close(qar: PQarFile)` - Đóng QAR file
-- `qar_get_entry_count(qar: PQarFile): cint` - Lấy số lượng entries
-- `qar_get_entry(qar: PQarFile; index: cint): PQarEntry` - Lấy entry theo index
-- `qar_find_entry(qar: PQarFile; path: PChar): PQarEntry` - Tìm entry theo path
-- `qar_entry_get_path(entry: PQarEntry): PChar` - Lấy path của entry
-- `qar_entry_get_type(entry: PQarEntry): cint` - Lấy type (1=module, 0=script)
-- `qar_entry_get_bytecode(entry: PQarEntry; len: ^csize_t): ^cuint8` - Lấy bytecode
-- `qar_entry_get_source(entry: PQarEntry; len: ^csize_t): ^cuint8` - Lấy source code
-- `qar_entry_load_data(qar: PQarFile; entry: PQarEntry): cint` - Load entry data
-- `qar_get_manifest(qar: PQarFile; len: ^csize_t): PChar` - Lấy manifest JSON
-- `qar_get_quickjs_version(qar: PQarFile): PChar` - Lấy QuickJS version
-
 ### QuickJS libc API
 
-- `js_register_qar_file(ctx: ^JSContext; qar_filename: PChar; prefix: PChar): cint` - Đăng ký QAR file
-- `js_unregister_all_qar_files(rt: ^JSRuntime)` - Xóa tất cả QAR files đã đăng ký
 - `js_std_add_helpers(ctx: ^JSContext; argc: cint; argv: PPChar)` - Thêm helper functions (console, print, etc.)
 - `js_std_dump_error(ctx: ^JSContext)` - In error ra console
 
 ## Ghi chú
 
-- Đảm bảo `libqjs.dll` được build với QAR support
-- QAR files phải được tạo bằng công cụ `qjar`
+- **VI:** QAR files được tạo bằng `qar_tool` (Pascal) và được load bằng `LoadLibrary()` trong `qjsp`.
+- **EN:** QAR files are built with `qar_tool` (Pascal) and loaded via `LoadLibrary()` in `qjsp`.
 - Bytecode format phụ thuộc vào phiên bản QuickJS
 - Nếu bytecode không tương thích, hệ thống sẽ tự động compile lại từ source code
 

@@ -1,4 +1,6 @@
 # QAR File - Câu hỏi thường gặp
+ 
+ **VI/EN (important):** Trong repo này, QAR được implement bằng **Pascal**. Các ví dụ/tooling kiểu C (`qjar`, `qar.c/qar.h`, `js_register_qar_file`) là **legacy / không dùng** trong luồng hiện tại.
 
 ## 1. QAR file có chứa mã nguồn (source code) không?
 
@@ -49,42 +51,32 @@
 - ❌ Windows Explorer (như ZIP file)
 
 ### Công cụ có thể đọc QAR:
-- ✅ `qjar` - Công cụ tạo QAR
-- ✅ `qar` API trong QuickJS - Đọc QAR programmatically
-- ✅ Custom tools sử dụng QAR API
+- ✅ `qar_tool` - CLI tool Pascal (build/inspect/rebuild/code)
+- ✅ `qjsp` + helpers (`GetQarInfo`, `ExecuteQarEntry`, `GetQarAsset`) để đọc/inspect trong runtime
+- ✅ Custom tools dùng Pascal units `pascal/std/qar/qar.pas` và `pascal/std/qar/qar_helpers.pas`
 
 ## 5. Làm sao để xem nội dung QAR file?
 
-Sử dụng QAR API trong C:
+**VI:** Dùng `qar_tool inspect` hoặc helper trong `qjsp`.
 
-```c
-#include "qar.h"
+**EN:** Use `qar_tool inspect` or the `qjsp` helpers.
 
-QarFile *qar = qar_open("mylib.qar");
+### Cách 1: CLI (khuyến nghị) / CLI (recommended)
 
-// Liệt kê tất cả entries
-int count = qar_get_entry_count(qar);
-for (int i = 0; i < count; i++) {
-    const QarEntry *entry = qar_get_entry(qar, i);
-    printf("Entry: %s\n", qar_entry_get_path(entry));
-    int t = qar_entry_get_type(entry); // 0=script, 1=module, 2=asset
-    printf("Type: %s\n", (t==2) ? "asset" : (t ? "module" : "script"));
-}
+```bash
+qar_tool inspect mylib.qar
+qar_tool code mylib.qar assets/logo.png
+```
 
-// Đọc manifest
-size_t manifest_len;
-const char *manifest = qar_get_manifest(qar, &manifest_len);
-printf("Manifest:\n%s\n", manifest);
+### Cách 2: Trong `qjsp` / Inside `qjsp`
 
-// Đọc payload của một entry
-const QarEntry *entry = qar_find_entry(qar, "assets/logo.png");
-qar_entry_load_data(qar, entry);
-size_t data_len;
-const uint8_t *data = qar_entry_get_source(entry, &data_len); // asset ở source slot
-// Với JS bytecode, dùng qar_entry_get_bytecode; với asset, bytecode có thể null
-printf("Data size: %zu\n", data_len);
+```javascript
+// Prints a JSON string with entries + manifest + quickjsVersion
+print(GetQarInfo('mylib.qar'));
 
-qar_close(qar);
+// Read asset payload as ArrayBuffer
+const buf = GetQarAsset('mylib.qar', 'assets/logo.png');
+print(buf.byteLength);
 ```
 
 ## 6. So sánh QAR với các format khác
@@ -107,24 +99,9 @@ qar_close(qar);
 
 ## 8. Có thể convert QAR sang ZIP không?
 
-Có thể extract source code từ QAR và tạo ZIP:
+**VI:** Có thể extract source/payload từ QAR rồi zip lại. Với repo này, dùng `qar_tool code` để lấy source entry.
 
-```c
-// Extract source code từ QAR
-QarFile *qar = qar_open("mylib.qar");
-const QarEntry *entry = qar_find_entry(qar, "math.js");
-qar_entry_load_data(qar, entry);
-
-size_t source_len;
-const uint8_t *source = qar_entry_get_source(entry, &source_len);
-
-// Ghi vào file
-FILE *f = fopen("math.js", "wb");
-fwrite(source, 1, source_len, f);
-fclose(f);
-
-qar_close(qar);
-```
+**EN:** Yes. You can extract source/payload from QAR and then zip them. In this repo, use `qar_tool code` to print an entry's source.
 
 Sau đó có thể zip các file đã extract.
 
@@ -133,7 +110,7 @@ Sau đó có thể zip các file đã extract.
 Có thể edit bằng cách:
 1. Extract source code từ QAR
 2. Edit source code
-3. Tạo lại QAR file bằng `qjar`
+3. Tạo lại QAR file bằng `qar_tool build` (hoặc `qar_tool rebuild`)
 
 **Không thể** edit trực tiếp QAR file như text editor vì là binary format.
 
@@ -159,4 +136,3 @@ Có thể, nhưng hiện tại không có compression để:
 Nếu cần compression, có thể:
 - Compress QAR file bằng gzip sau khi tạo
 - Hoặc implement compression trong QAR format (future enhancement)
-

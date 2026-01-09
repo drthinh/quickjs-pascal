@@ -1,44 +1,49 @@
 # Hướng dẫn sử dụng QAR - Không cần hardcode trong C!
 
+**VI/EN (important):** Trong repo này, QAR được implement bằng **Pascal**. Các ví dụ/tooling kiểu C (`qjar`, `qar.c/qar.h`, `js_register_qar_file`) là **legacy / không dùng** trong luồng hiện tại.
+
 ## Cách đơn giản nhất
 
 ### 1. Tạo QAR file
 ```bash
-qjar -o qar_test.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
+qar_tool build qar_test.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
 ```
 
 ### 2. Viết JavaScript code
 ```javascript
 // File: app.js
 
-// Đăng ký QAR file (tự động có sẵn!)
-LoadLibrary('qar_test.qar');
+// Đăng ký QAR file (prefix recommended)
+LoadLibrary('qar_test.qar', 'qar:');
 
-// Import và sử dụng modules
-import * as math from './qar_test_lib/math.js';
-import { greet } from './qar_test_lib/utils.js';
+// Import và sử dụng modules (prefix notation)
+import * as math from 'qar:math.js';
+import { greet } from 'qar:utils.js';
 
 console.log(math.add(2, 3));
 console.log(greet("QuickJS"));
 ```
 
-### 3. Chạy với qjs
+### 3. Chạy với qjsp
 ```bash
-qjs --module app.js
+qjsp app.js
 ```
 
-**Không cần hardcode gì trong C code!** Chỉ cần đảm bảo `js_std_add_helpers()` được gọi.
+**VI:** Không cần hardcode gì trong C. Chạy bằng `qjsp` là đủ.
+
+**EN:** No C hardcoding is required. Running with `qjsp` is enough.
 
 ## Load nhiều QAR files
 
 ```javascript
 // Load nhiều QAR files
-LoadLibrary('mathlib.qar');
-LoadLibrary('utilslib.qar');
+LoadLibrary('mathlib.qar', 'math:');
+LoadLibrary('utilslib.qar', 'utils:');
 
-// Module loader sẽ tìm trong tất cả QAR files
-import * as math from './lib/math.js';
-import { greet } from './lib/utils.js';
+// Module loader sẽ tìm trong tất cả QAR files (first match wins)
+// Prefer prefixes to avoid conflicts.
+import * as math from 'math:math.js';
+import { greet } from 'utils:utils.js';
 ```
 
 ## Load với prefix
