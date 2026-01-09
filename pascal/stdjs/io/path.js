@@ -18,7 +18,15 @@ export function normalize(p) {
   const out = [];
   const abs = isAbsolute(p);
 
-  for (const part of parts) {
+  let drive = "";
+  let start = 0;
+  if (abs && _isAbsWin(p) && /^[A-Za-z]:/.test(p)) {
+    drive = p.slice(0, 2);
+    if (/^[A-Za-z]:$/.test(parts[0])) start = 1;
+  }
+
+  for (let i = start; i < parts.length; i++) {
+    const part = parts[i];
     if (!part || part === ".") continue;
     if (part === "..") {
       if (out.length && out[out.length - 1] !== "..") out.pop();
@@ -30,8 +38,7 @@ export function normalize(p) {
 
   let res = out.join(sep);
   if (abs) {
-    if (_isAbsWin(p) && /^[A-Za-z]:/.test(p)) {
-      const drive = p.slice(0, 2);
+    if (drive) {
       res = drive + sep + res;
     } else if (/^\\\\/.test(p)) {
       res = "\\\\" + res;
