@@ -354,6 +354,7 @@ set(qjs_sources
     miniz/miniz.c
     miniz/miniz_tinfl.c
     miniz/miniz_tdef.c
+    miniz/miniz_zip.c
 )
 
 if(QJS_BUILD_LIBC)
@@ -404,6 +405,7 @@ if(NOT MSVC)
         miniz/miniz.c
         miniz/miniz_tinfl.c
         miniz/miniz_tdef.c
+        miniz/miniz_zip.c
         PROPERTIES COMPILE_FLAGS "-Wno-unused-function -Wno-type-limits"
     )
 endif()

@@ -18,6 +18,7 @@ const
 // QuickJS libc bindings (quickjs-libc.h)
 function js_init_module_std(ctx: PJSContext; module_name: PChar): PJSModuleDef; cdecl; external libqjs;
 function js_init_module_os(ctx: PJSContext; module_name: PChar): PJSModuleDef; cdecl; external libqjs;
+function js_init_module_zip(ctx: PJSContext; module_name: PChar): PJSModuleDef; cdecl; external libqjs;
 function js_init_module_bjson(ctx: PJSContext; module_name: PChar): PJSModuleDef; cdecl; external libqjs;
 procedure js_std_add_helpers(ctx: PJSContext; argc: cint; argv: PPChar); cdecl; external libqjs;
 function js_std_loop(ctx: PJSContext): cint; cdecl; external libqjs;

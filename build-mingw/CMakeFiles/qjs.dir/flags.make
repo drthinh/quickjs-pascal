@@ -14,3 +14,5 @@ C_FLAGS = -O3 -DNDEBUG -std=gnu11 -fvisibility=default -Wall -Werror -Wextra -Wf
 
 # Custom flags: CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj_FLAGS = -Wno-unused-function -Wno-type-limits
 
+# Custom flags: CMakeFiles/qjs.dir/miniz/miniz_zip.c.obj_FLAGS = -Wno-unused-function -Wno-type-limits
+

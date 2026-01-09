@@ -89,6 +89,16 @@ extern char **environ;
 #include "list.h"
 #include "quickjs-libc.h"
 
+/* Disable unused-function warnings for miniz header */
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+#include "miniz/miniz.h"
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+
 #if JS_HAVE_THREADS && defined(QJS_LIBC_ENABLE_WORKER)
 #include "quickjs-c-atomics.h"
 #define USE_WORKER // enable os.Worker
@@ -4398,6 +4408,476 @@ static JSValue js_bjson_write(JSContext *ctx, JSValueConst this_val,
     array = JS_NewArrayBufferCopy(ctx, buf, len);
     js_free(ctx, buf);
     return array;
+}
+
+/**********************************************************/
+/* 'zip' object */
+
+typedef struct {
+    mz_zip_archive zip;
+    uint8_t *mem_buf;
+    size_t mem_size;
+    int is_open;
+} JSZipArchive;
+
+static JSClassID js_zip_archive_class_id;
+
+static void js_zip_archive_close(JSRuntime *rt, JSZipArchive *s)
+{
+    (void)rt;
+    if (!s)
+        return;
+    if (s->is_open) {
+        mz_zip_reader_end(&s->zip);
+        s->is_open = 0;
+    }
+    if (s->mem_buf) {
+        free(s->mem_buf);
+        s->mem_buf = NULL;
+        s->mem_size = 0;
+    }
+}
+
+static void js_zip_archive_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSZipArchive *s = JS_GetOpaque(val, js_zip_archive_class_id);
+    if (!s)
+        return;
+    js_zip_archive_close(rt, s);
+    js_free_rt(rt, s);
+}
+
+static JSZipArchive *js_zip_archive_get(JSContext *ctx, JSValueConst obj)
+{
+    return JS_GetOpaque2(ctx, obj, js_zip_archive_class_id);
+}
+
+static JSValue js_zip_throw_last_error(JSContext *ctx, mz_zip_archive *zip, const char *prefix)
+{
+    mz_zip_error err = MZ_ZIP_UNDEFINED_ERROR;
+    const char *err_str = NULL;
+    if (zip) {
+        err = mz_zip_get_last_error(zip);
+        err_str = mz_zip_get_error_string(err);
+    }
+    if (!err_str)
+        err_str = "unknown";
+    return JS_ThrowInternalError(ctx, "%s: %s (%d)", prefix, err_str, (int)err);
+}
+
+static JSValue js_zip_open_file(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    const char *filename;
+    JSZipArchive *s;
+    JSValue obj;
+
+    (void)this_val;
+
+    filename = JS_ToCString(ctx, argv[0]);
+    if (!filename)
+        return JS_EXCEPTION;
+
+    s = js_mallocz(ctx, sizeof(*s));
+    if (!s) {
+        JS_FreeCString(ctx, filename);
+        return JS_EXCEPTION;
+    }
+    mz_zip_zero_struct(&s->zip);
+    if (!mz_zip_reader_init_file(&s->zip, filename, 0)) {
+        JS_FreeCString(ctx, filename);
+        js_free(ctx, s);
+        return js_zip_throw_last_error(ctx, &s->zip, "zip.openFile failed");
+    }
+    JS_FreeCString(ctx, filename);
+    s->is_open = 1;
+
+    obj = JS_NewObjectClass(ctx, js_zip_archive_class_id);
+    if (JS_IsException(obj)) {
+        js_zip_archive_close(JS_GetRuntime(ctx), s);
+        js_free(ctx, s);
+        return obj;
+    }
+    JS_SetOpaque(obj, s);
+    return obj;
+}
+
+static JSValue js_zip_open(JSContext *ctx, JSValueConst this_val,
+                           int argc, JSValueConst *argv)
+{
+    JSZipArchive *s;
+    JSValue obj;
+    uint8_t *buf;
+    size_t size;
+
+    (void)this_val;
+
+    buf = JS_GetArrayBuffer(ctx, &size, argv[0]);
+    if (!buf)
+        return JS_EXCEPTION;
+
+    s = js_mallocz(ctx, sizeof(*s));
+    if (!s)
+        return JS_EXCEPTION;
+    mz_zip_zero_struct(&s->zip);
+
+    s->mem_buf = malloc(size);
+    if (!s->mem_buf) {
+        js_free(ctx, s);
+        return JS_EXCEPTION;
+    }
+    memcpy(s->mem_buf, buf, size);
+    s->mem_size = size;
+
+    if (!mz_zip_reader_init_mem(&s->zip, s->mem_buf, s->mem_size, 0)) {
+        js_zip_archive_close(JS_GetRuntime(ctx), s);
+        js_free(ctx, s);
+        return js_zip_throw_last_error(ctx, &s->zip, "zip.open failed");
+    }
+    s->is_open = 1;
+
+    obj = JS_NewObjectClass(ctx, js_zip_archive_class_id);
+    if (JS_IsException(obj)) {
+        js_zip_archive_close(JS_GetRuntime(ctx), s);
+        js_free(ctx, s);
+        return obj;
+    }
+    JS_SetOpaque(obj, s);
+    return obj;
+}
+
+static int js_zip_get_file_index(JSContext *ctx, mz_zip_archive *zip, JSValueConst arg, mz_uint32 *out_index)
+{
+    int32_t idx;
+    const char *name;
+    int file_index;
+
+    if (JS_IsNumber(arg)) {
+        if (JS_ToInt32(ctx, &idx, arg))
+            return -1;
+        if (idx < 0) {
+            JS_ThrowRangeError(ctx, "file index out of range");
+            return -1;
+        }
+        *out_index = (mz_uint32)idx;
+        return 0;
+    }
+
+    name = JS_ToCString(ctx, arg);
+    if (!name)
+        return -1;
+    file_index = mz_zip_reader_locate_file(zip, name, NULL, 0);
+    JS_FreeCString(ctx, name);
+    if (file_index < 0) {
+        JS_ThrowRangeError(ctx, "file not found");
+        return -1;
+    }
+    *out_index = (mz_uint32)file_index;
+    return 0;
+}
+
+static JSValue js_zip_num_files(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    JSZipArchive *s = js_zip_archive_get(ctx, this_val);
+    (void)argc;
+    (void)argv;
+    if (!s)
+        return JS_EXCEPTION;
+    if (!s->is_open)
+        return JS_ThrowTypeError(ctx, "zip archive is closed");
+    return JS_NewUint32(ctx, mz_zip_reader_get_num_files(&s->zip));
+}
+
+static JSValue js_zip_close(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst *argv)
+{
+    JSZipArchive *s = js_zip_archive_get(ctx, this_val);
+    (void)argc;
+    (void)argv;
+    if (!s)
+        return JS_EXCEPTION;
+    js_zip_archive_close(JS_GetRuntime(ctx), s);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_zip_file_stat_to_obj(JSContext *ctx, mz_zip_archive_file_stat *st)
+{
+    JSValue obj = JS_NewObject(ctx);
+    if (JS_IsException(obj))
+        return obj;
+
+    JS_DefinePropertyValueStr(ctx, obj, "index", JS_NewUint32(ctx, st->m_file_index), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, obj, "name", JS_NewString(ctx, st->m_filename), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, obj, "isDirectory", JS_NewBool(ctx, st->m_is_directory), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, obj, "isEncrypted", JS_NewBool(ctx, st->m_is_encrypted), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, obj, "isSupported", JS_NewBool(ctx, st->m_is_supported), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, obj, "method", JS_NewUint32(ctx, st->m_method), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, obj, "crc32", JS_NewUint32(ctx, st->m_crc32), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, obj, "compressedSize", JS_NewInt64(ctx, (int64_t)st->m_comp_size), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, obj, "uncompressedSize", JS_NewInt64(ctx, (int64_t)st->m_uncomp_size), JS_PROP_C_W_E);
+    return obj;
+}
+
+static JSValue js_zip_stat(JSContext *ctx, JSValueConst this_val,
+                           int argc, JSValueConst *argv)
+{
+    JSZipArchive *s = js_zip_archive_get(ctx, this_val);
+    mz_zip_archive_file_stat st;
+    mz_uint32 index;
+
+    if (!s)
+        return JS_EXCEPTION;
+    if (!s->is_open)
+        return JS_ThrowTypeError(ctx, "zip archive is closed");
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "expected index or name");
+    if (js_zip_get_file_index(ctx, &s->zip, argv[0], &index) < 0)
+        return JS_EXCEPTION;
+
+    memset(&st, 0, sizeof(st));
+    if (!mz_zip_reader_file_stat(&s->zip, index, &st))
+        return js_zip_throw_last_error(ctx, &s->zip, "zip.stat failed");
+
+    return js_zip_file_stat_to_obj(ctx, &st);
+}
+
+static JSValue js_zip_list(JSContext *ctx, JSValueConst this_val,
+                           int argc, JSValueConst *argv)
+{
+    JSZipArchive *s = js_zip_archive_get(ctx, this_val);
+    mz_uint num, i;
+    JSValue arr;
+
+    (void)argc;
+    (void)argv;
+
+    if (!s)
+        return JS_EXCEPTION;
+    if (!s->is_open)
+        return JS_ThrowTypeError(ctx, "zip archive is closed");
+
+    num = mz_zip_reader_get_num_files(&s->zip);
+    arr = JS_NewArray(ctx);
+    if (JS_IsException(arr))
+        return arr;
+
+    for (i = 0; i < num; i++) {
+        mz_zip_archive_file_stat st;
+        JSValue entry;
+        memset(&st, 0, sizeof(st));
+        if (!mz_zip_reader_file_stat(&s->zip, i, &st)) {
+            JS_FreeValue(ctx, arr);
+            return js_zip_throw_last_error(ctx, &s->zip, "zip.list failed");
+        }
+        entry = js_zip_file_stat_to_obj(ctx, &st);
+        if (JS_IsException(entry)) {
+            JS_FreeValue(ctx, arr);
+            return entry;
+        }
+        JS_SetPropertyUint32(ctx, arr, i, entry);
+    }
+
+    return arr;
+}
+
+static JSValue js_zip_read(JSContext *ctx, JSValueConst this_val,
+                           int argc, JSValueConst *argv)
+{
+    JSZipArchive *s = js_zip_archive_get(ctx, this_val);
+    mz_uint32 index;
+    size_t out_size = 0;
+    void *out_buf;
+    JSValue result;
+
+    if (!s)
+        return JS_EXCEPTION;
+    if (!s->is_open)
+        return JS_ThrowTypeError(ctx, "zip archive is closed");
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "expected index or name");
+    if (js_zip_get_file_index(ctx, &s->zip, argv[0], &index) < 0)
+        return JS_EXCEPTION;
+
+    out_buf = mz_zip_reader_extract_to_heap(&s->zip, index, &out_size, 0);
+    if (!out_buf)
+        return js_zip_throw_last_error(ctx, &s->zip, "zip.read failed");
+
+    result = JS_NewArrayBufferCopy(ctx, out_buf, out_size);
+    mz_free(out_buf);
+    return result;
+}
+
+static JSValue js_zip_create(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv)
+{
+    JSValueConst entries;
+    uint32_t len, i;
+    int32_t level = MZ_DEFAULT_LEVEL;
+    mz_zip_archive zip;
+    void *out_buf = NULL;
+    size_t out_size = 0;
+    JSValue result;
+    JSValue len_val;
+    uint64_t len64;
+
+    (void)this_val;
+
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "expected entries array");
+    entries = argv[0];
+    if (!JS_IsArray(entries))
+        return JS_ThrowTypeError(ctx, "entries must be an array");
+    if (argc >= 2) {
+        if (JS_ToInt32(ctx, &level, argv[1]))
+            return JS_EXCEPTION;
+    }
+
+    mz_zip_zero_struct(&zip);
+    if (!mz_zip_writer_init_heap_v2(&zip, 0, 0, 0))
+        return js_zip_throw_last_error(ctx, &zip, "zip.create failed");
+
+    len_val = JS_GetPropertyStr(ctx, entries, "length");
+    if (JS_IsException(len_val)) {
+        mz_zip_writer_end(&zip);
+        return JS_EXCEPTION;
+    }
+    if (JS_ToIndex(ctx, &len64, len_val)) {
+        JS_FreeValue(ctx, len_val);
+        mz_zip_writer_end(&zip);
+        return JS_EXCEPTION;
+    }
+    JS_FreeValue(ctx, len_val);
+    if (len64 > UINT32_MAX) {
+        mz_zip_writer_end(&zip);
+        return JS_ThrowRangeError(ctx, "entries array too large");
+    }
+    len = (uint32_t)len64;
+
+    for (i = 0; i < len; i++) {
+        JSValue entry = JS_GetPropertyUint32(ctx, entries, i);
+        JSValue name_val, data_val;
+        const char *name;
+        uint8_t *abuf;
+        size_t asize;
+        const char *sbuf;
+        size_t slen;
+        mz_bool ok;
+
+        if (JS_IsException(entry)) {
+            mz_zip_writer_end(&zip);
+            return JS_EXCEPTION;
+        }
+        if (!JS_IsObject(entry)) {
+            JS_FreeValue(ctx, entry);
+            mz_zip_writer_end(&zip);
+            return JS_ThrowTypeError(ctx, "entry must be an object");
+        }
+
+        name_val = JS_GetPropertyStr(ctx, entry, "name");
+        data_val = JS_GetPropertyStr(ctx, entry, "data");
+        JS_FreeValue(ctx, entry);
+        if (JS_IsException(name_val) || JS_IsException(data_val)) {
+            JS_FreeValue(ctx, name_val);
+            JS_FreeValue(ctx, data_val);
+            mz_zip_writer_end(&zip);
+            return JS_EXCEPTION;
+        }
+
+        name = JS_ToCString(ctx, name_val);
+        JS_FreeValue(ctx, name_val);
+        if (!name) {
+            JS_FreeValue(ctx, data_val);
+            mz_zip_writer_end(&zip);
+            return JS_EXCEPTION;
+        }
+
+        ok = MZ_FALSE;
+        if (JS_IsArrayBuffer(data_val)) {
+            abuf = JS_GetArrayBuffer(ctx, &asize, data_val);
+            if (!abuf) {
+                JS_FreeCString(ctx, name);
+                JS_FreeValue(ctx, data_val);
+                mz_zip_writer_end(&zip);
+                return JS_EXCEPTION;
+            }
+            ok = mz_zip_writer_add_mem(&zip, name, abuf, asize, (mz_uint)level);
+        } else {
+            sbuf = JS_ToCStringLen(ctx, &slen, data_val);
+            if (!sbuf) {
+                JS_FreeCString(ctx, name);
+                JS_FreeValue(ctx, data_val);
+                mz_zip_writer_end(&zip);
+                return JS_EXCEPTION;
+            }
+            ok = mz_zip_writer_add_mem(&zip, name, sbuf, slen, (mz_uint)level);
+            JS_FreeCString(ctx, sbuf);
+        }
+        JS_FreeValue(ctx, data_val);
+        JS_FreeCString(ctx, name);
+
+        if (!ok) {
+            mz_zip_writer_end(&zip);
+            return js_zip_throw_last_error(ctx, &zip, "zip.create failed");
+        }
+    }
+
+    if (!mz_zip_writer_finalize_heap_archive(&zip, &out_buf, &out_size)) {
+        mz_zip_writer_end(&zip);
+        return js_zip_throw_last_error(ctx, &zip, "zip.create failed");
+    }
+
+    result = JS_NewArrayBufferCopy(ctx, out_buf, out_size);
+    mz_free(out_buf);
+    mz_zip_writer_end(&zip);
+    return result;
+}
+
+static const JSCFunctionListEntry js_zip_archive_proto_funcs[] = {
+    JS_CFUNC_DEF("numFiles", 0, js_zip_num_files),
+    JS_CFUNC_DEF("close", 0, js_zip_close),
+    JS_CFUNC_DEF("list", 0, js_zip_list),
+    JS_CFUNC_DEF("stat", 1, js_zip_stat),
+    JS_CFUNC_DEF("read", 1, js_zip_read),
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "ZipArchive", JS_PROP_CONFIGURABLE),
+};
+
+static const JSCFunctionListEntry js_zip_funcs[] = {
+    JS_CFUNC_DEF("openFile", 1, js_zip_open_file),
+    JS_CFUNC_DEF("open", 1, js_zip_open),
+    JS_CFUNC_DEF("create", 2, js_zip_create),
+};
+
+static JSClassDef js_zip_archive_class = {
+    "ZipArchive",
+    .finalizer = js_zip_archive_finalizer,
+};
+
+static int js_zip_init(JSContext *ctx, JSModuleDef *m)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSValue proto;
+
+    if (!js_zip_archive_class_id) {
+        JS_NewClassID(rt, &js_zip_archive_class_id);
+        JS_NewClass(rt, js_zip_archive_class_id, &js_zip_archive_class);
+    }
+    proto = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, proto, js_zip_archive_proto_funcs,
+                               countof(js_zip_archive_proto_funcs));
+    JS_SetClassProto(ctx, js_zip_archive_class_id, proto);
+
+    return JS_SetModuleExportList(ctx, m, js_zip_funcs, countof(js_zip_funcs));
+}
+
+JSModuleDef *js_init_module_zip(JSContext *ctx, const char *module_name)
+{
+    JSModuleDef *m;
+    m = JS_NewCModule(ctx, module_name, js_zip_init);
+    if (!m)
+        return NULL;
+    JS_AddModuleExportList(ctx, m, js_zip_funcs, countof(js_zip_funcs));
+    return m;
 }
 
 

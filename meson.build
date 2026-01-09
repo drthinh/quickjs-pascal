@@ -138,6 +138,10 @@ qjs_srcs = files(
   'libregexp.c',
   'libunicode.c',
   'quickjs.c',
+  'miniz/miniz.c',
+  'miniz/miniz_tinfl.c',
+  'miniz/miniz_tdef.c',
+  'miniz/miniz_zip.c',
 )
 qjs_hdrs = files(
   'quickjs.h',

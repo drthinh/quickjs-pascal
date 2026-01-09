@@ -13,6 +13,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/qjs.dir/miniz/miniz_tdef.c.obj.d"
   "CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj"
   "CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.obj.d"
+  "CMakeFiles/qjs.dir/miniz/miniz_zip.c.obj"
+  "CMakeFiles/qjs.dir/miniz/miniz_zip.c.obj.d"
   "CMakeFiles/qjs.dir/quickjs-libc.c.obj"
   "CMakeFiles/qjs.dir/quickjs-libc.c.obj.d"
   "CMakeFiles/qjs.dir/quickjs.c.obj"

@@ -48,6 +48,8 @@ JS_EXTERN JSModuleDef *js_init_module_std(JSContext *ctx,
                                           const char *module_name);
 JS_EXTERN JSModuleDef *js_init_module_os(JSContext *ctx,
                                          const char *module_name);
+JS_EXTERN JSModuleDef *js_init_module_zip(JSContext *ctx,
+                                         const char *module_name);
 JS_EXTERN JSModuleDef *js_init_module_bjson(JSContext *ctx,
                                             const char *module_name);
 JS_EXTERN void js_std_add_helpers(JSContext *ctx, int argc, char **argv);

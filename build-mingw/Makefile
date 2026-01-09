@@ -546,6 +546,30 @@ miniz/miniz_tinfl.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_tinfl.c.s
 .PHONY : miniz/miniz_tinfl.c.s
 
+miniz/miniz_zip.obj: miniz/miniz_zip.c.obj
+.PHONY : miniz/miniz_zip.obj
+
+# target to build an object file
+miniz/miniz_zip.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_zip.c.obj
+.PHONY : miniz/miniz_zip.c.obj
+
+miniz/miniz_zip.i: miniz/miniz_zip.c.i
+.PHONY : miniz/miniz_zip.i
+
+# target to preprocess a source file
+miniz/miniz_zip.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_zip.c.i
+.PHONY : miniz/miniz_zip.c.i
+
+miniz/miniz_zip.s: miniz/miniz_zip.c.s
+.PHONY : miniz/miniz_zip.s
+
+# target to generate assembly for a file
+miniz/miniz_zip.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\qjs.dir\build.make CMakeFiles/qjs.dir/miniz/miniz_zip.c.s
+.PHONY : miniz/miniz_zip.c.s
+
 qjar.obj: qjar.c.obj
 .PHONY : qjar.obj
 
@@ -767,6 +791,9 @@ help:
 	@echo ... miniz/miniz_tinfl.obj
 	@echo ... miniz/miniz_tinfl.i
 	@echo ... miniz/miniz_tinfl.s
+	@echo ... miniz/miniz_zip.obj
+	@echo ... miniz/miniz_zip.i
+	@echo ... miniz/miniz_zip.s
 	@echo ... qjar.obj
 	@echo ... qjar.i
 	@echo ... qjar.s

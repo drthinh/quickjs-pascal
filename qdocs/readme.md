@@ -7,3 +7,5 @@ tôi muốn thiết kế chương trình quickjs có các tính năng sau:
 - thêm các test tương ứng
 - thiết lập cmake để biên dịch GCC cho tùy chọn file nhỏ nhất nhưng không phụ thuộc DLL khác
 - xuất bổ sung các hàm mới trong quickjs.dll
+
+- module built-in `qjs:zip` để đọc/ghi ZIP trên JavaScript: xem `ZIP_MODULE.md`

@@ -1442,6 +1442,8 @@ begin
     js_init_module_std(ctx, 'qjs:std');
     js_init_module_os(ctx, 'os');
     js_init_module_os(ctx, 'qjs:os');
+    js_init_module_zip(ctx, 'zip');
+    js_init_module_zip(ctx, 'qjs:zip');
     js_init_module_bjson(ctx, 'bjson');
     js_init_module_bjson(ctx, 'qjs:bjson');
     

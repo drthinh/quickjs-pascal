@@ -822,10 +822,44 @@ function js_module_loader_wrapper(ctx: PJSContext; module_name: PChar; opaque: p
 var
   m: PJSModuleDef;
   module_name_str: string;
+  mapped_name: string;
+  exe_dir: string;
+  abs_path: string;
+  base_dir: string;
   basename: string;
   last_slash: integer;
 begin
   module_name_str := string(module_name);
+
+  if DebugLevel > 1 then
+  begin
+    WriteLn('[DEBUG] module_loader: request "', module_name_str, '"');
+    Flush(Output);
+  end;
+
+  if Pos('qjsp:', module_name_str) = 1 then
+  begin
+    exe_dir := ExtractFilePath(ExpandFileName(ParamStr(0)));
+    mapped_name := Copy(module_name_str, Length('qjsp:') + 1, Length(module_name_str));
+    if (mapped_name <> '') and ((mapped_name[1] = '/') or (mapped_name[1] = '\')) then
+      mapped_name := Copy(mapped_name, 2, Length(mapped_name));
+    mapped_name := StringReplace(mapped_name, '/', PathDelim, [rfReplaceAll]);
+    mapped_name := StringReplace(mapped_name, '\', PathDelim, [rfReplaceAll]);
+    abs_path := IncludeTrailingPathDelimiter(exe_dir) + 'stdjs' + PathDelim + mapped_name;
+    base_dir := IncludeTrailingPathDelimiter(GetCurrentDir);
+    mapped_name := ExtractRelativePath(base_dir, abs_path);
+    mapped_name := StringReplace(mapped_name, PathDelim, '/', [rfReplaceAll]);
+    if DebugLevel > 0 then
+    begin
+      WriteLn('[DEBUG] qjsp: map "', module_name_str, '" -> "', mapped_name, '" (base="', base_dir, '")');
+      Flush(Output);
+    end;
+    m := js_module_loader(ctx, PChar(mapped_name), opaque);
+    if m <> nil then
+      Exit(m);
+    Result := nil;
+    Exit;
+  end;
 
   // First try registered QARs (both prefixed and non-prefixed module names)
   m := TryLoadModuleFromRegisteredQars(ctx, module_name_str);
@@ -848,47 +882,7 @@ begin
     Exit;
   end;
   
-  // NOTE: Code below is a workaround for path mismatch issues.
-  // It handles specific test paths that may not match QAR entry paths.
-  // 
-  // WHY THIS EXISTS:
-  // - When JS code imports 'qar_test_lib/math.js' but QAR stores 'math.js',
-  //   the import fails. This code tries removing the prefix as a fallback.
-  // 
-  // WHEN TO REMOVE:
-  // - If all QAR files are built with correct paths matching import statements,
-  //   this code is NOT necessary and can be removed.
-  // - This is a temporary workaround, not a permanent solution.
-  // - Better solution: Build QAR files with paths that match import statements.
-  //
-  // Try removing common path prefixes first (more specific)
-  // TODO: Consider removing this if QAR files are built with correct paths
 
-//   if Pos('qar_test_lib/', module_name_str) > 0 then
-//   begin
-//     basename := StringReplace(module_name_str, 'qar_test_lib/', '', []);
-//     WriteLn('[DEBUG] Module not found with path "', module_name_str, '", trying without "qar_test_lib/" prefix: "', basename, '"');
-//     Flush(Output);
-//     m := js_module_loader(ctx, PChar(basename), opaque);
-//     if m <> nil then
-//     begin
-//       Result := m;
-//       Exit;
-//     end;
-//   end;
-  
-//   if Pos('tests/qar_test_lib/', module_name_str) > 0 then
-//   begin
-//     basename := StringReplace(module_name_str, 'tests/qar_test_lib/', '', []);
-//     WriteLn('[DEBUG] Trying without "tests/qar_test_lib/" prefix: "', basename, '"');
-//     Flush(Output);
-//     m := js_module_loader(ctx, PChar(basename), opaque);
-//     if m <> nil then
-//     begin
-//       Result := m;
-//       Exit;
-//     end;
-//   end;
   
   // Last resort: try extracting basename (filename only)
   last_slash := LastDelimiter('/\', module_name_str);

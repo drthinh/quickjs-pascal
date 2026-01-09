@@ -243,4 +243,10 @@ CMakeFiles/qjs.dir/quickjs-libc.c.obj: \
  D:/codeblocks-25.03mingw-nosetup/MinGW/x86_64-w64-mingw32/include/sys/utime.h \
  D:\Projects\quickjs\quickjs-master\cutils.h \
  D:\Projects\quickjs\quickjs-master\list.h \
- D:\Projects\quickjs\quickjs-master\quickjs-libc.h
+ D:\Projects\quickjs\quickjs-master\quickjs-libc.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_export.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_common.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_tdef.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_tinfl.h \
+ D:\Projects\quickjs\quickjs-master\miniz/miniz_zip.h

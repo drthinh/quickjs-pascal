@@ -5,7 +5,7 @@ program qjsp;
 uses
   {$IFDEF WINDOWS}Windows,{$ENDIF}
   SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_intrinsics, quickjs_memdebug,
-  quickjs_std, quickjs_qar, quickjs_miniz, quickjs_debug, quickjslibc, qar, Classes,
+  quickjs_std, quickjs_qar, quickjs_miniz, quickjs_debug, qar, Classes,
   fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers;
 
@@ -692,6 +692,8 @@ begin
   js_init_module_std(ctx, 'qjs:std');
   js_init_module_os(ctx, 'os');
   js_init_module_os(ctx, 'qjs:os');
+  js_init_module_zip(ctx, 'zip');
+  js_init_module_zip(ctx, 'qjs:zip');
   js_init_module_bjson(ctx, 'bjson');
   js_init_module_bjson(ctx, 'qjs:bjson');
 
@@ -701,18 +703,37 @@ begin
   ApplyDebugSettings(rt);
 
   // Set up module loader
-  // - Script mode: default loader (filesystem + built-ins)
-  // - Interactive/QAR mode: wrapper to support QAR lookups
-  if run_script_mode then
-    JS_SetModuleLoaderFunc(rt, nil, @js_module_loader, nil)
-  else
-    JS_SetModuleLoaderFunc(rt, nil, @qar_helpers.js_module_loader_wrapper, nil);
+  // Use wrapper loader in all modes so qjsp: namespace works and QAR fallback is available
+  JS_SetModuleLoaderFunc(rt, nil, @qar_helpers.js_module_loader_wrapper, nil);
 
   // Add standard helpers (console, print, etc.) and scriptArgs
   if (run_script_mode) and (script_argc > 0) then
     js_std_add_helpers(ctx, script_argc, @script_args[0])
   else
     js_std_add_helpers(ctx, 0, nil);
+
+  file_content :=
+    'import ''qjsp:runtime/globals.js'';' + LineEnding;
+
+  result_val := JS_Eval(ctx,
+    PChar(file_content),
+    QWord(Length(file_content)),
+    PChar('<init_stdjs_runtime>'),
+    JS_EVAL_TYPE_MODULE);
+
+  if JS_IsException(result_val) <> 0 then
+  begin
+    js_std_dump_error(ctx);
+    JS_FreeValue(ctx, result_val);
+  end
+  else
+  begin
+    JS_FreeValue(ctx, result_val);
+    pending_ctx := nil;
+    while JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx) > 0 do
+    begin
+    end;
+  end;
 
   // Preload std/os/bjson and set globals (interactive mode only)
   if not run_script_mode then
