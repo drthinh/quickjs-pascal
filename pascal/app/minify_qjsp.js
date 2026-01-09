@@ -585,11 +585,271 @@ function toHex(str) {
   return out;
 }
 
+function injectDecoderAfterImports(code) {
+  // Inject decoder after top-level import statements (keeps ESM valid)
+  const decoder =
+    "const _d=h=>{let r='';for(let i=0;i<h.length;i+=2){r+=String.fromCharCode(parseInt(h.slice(i,i+2),16));}return r;};";
+  let injectPos = 0;
+  while (injectPos < code.length) {
+    while (
+      injectPos < code.length &&
+      (code[injectPos] === ' ' ||
+        code[injectPos] === '\n' ||
+        code[injectPos] === '\r' ||
+        code[injectPos] === '\t')
+    ) {
+      injectPos++;
+    }
+    if (code.slice(injectPos, injectPos + 6) !== 'import') break;
+    while (injectPos < code.length && code[injectPos] !== ';' && code[injectPos] !== '\n')
+      injectPos++;
+    if (injectPos < code.length && code[injectPos] === ';') injectPos++;
+  }
+  return code.slice(0, injectPos) + decoder + code.slice(injectPos);
+}
+
 function wrapHexEval(code) {
   const hex = toHex(code);
   const decoder =
     "const _d=h=>{let r='';for(let i=0;i<h.length;i+=2){r+=String.fromCharCode(parseInt(h.slice(i,i+2),16));}return r;};";
   return `(function(){${decoder}eval(_d('${hex}'));})();`;
+}
+
+function toHexBytes(s) {
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code > 0xff) return null;
+    out += code.toString(16).padStart(2, '0');
+  }
+  return out;
+}
+
+function isProtocolStringLike(s) {
+  return /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//.test(s);
+}
+
+// Conservative string literal encoder.
+// - Only encodes plain single/double-quoted literals with no backslashes (no escapes).
+// - Skips module specifiers in import/from.
+// - Skips LoadLibrary/LoadDynamicLibrary first-arg strings.
+// - Skips JSON object keys by context: a string literal followed by optional whitespace and ':'.
+// - Skips protocol strings (scheme://...) to preserve debug/protocol readability.
+// - Emits _d('hex') calls and injects a single _d decoder after top-level imports.
+function encodeStringLiterals(source, opts = {}) {
+  const keepProtocolStrings = opts.keepProtocolStrings !== false;
+  let out = '';
+  let i = 0;
+
+  let usedDecoder = false;
+
+  let expectImportSpecifier = false;
+  let expectLoadLibString = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  function isJsonKeyContext(endIndex) {
+    // endIndex points to char right after closing quote
+    let k = endIndex;
+    while (k < source.length) {
+      const c = source[k];
+      if (c === ' ' || c === '\t' || c === '\r' || c === '\n') {
+        k++;
+        continue;
+      }
+      return c === ':';
+    }
+    return false;
+  }
+
+  function isIdentStart(ch) {
+    if (!ch) return false;
+    const code = ch.charCodeAt(0);
+    return (
+      (code >= 97 && code <= 122) ||
+      (code >= 65 && code <= 90) ||
+      ch === '_' ||
+      ch === '$'
+    );
+  }
+  function isIdentPart(ch) {
+    if (!ch) return false;
+    const code = ch.charCodeAt(0);
+    return (
+      (code >= 97 && code <= 122) ||
+      (code >= 65 && code <= 90) ||
+      (code >= 48 && code <= 57) ||
+      ch === '_' ||
+      ch === '$'
+    );
+  }
+
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+
+    if (inLineComment) {
+      out += ch;
+      i++;
+      if (ch === '\n') inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      out += ch;
+      i++;
+      if (ch === '*' && next === '/') {
+        out += next;
+        i++;
+        inBlockComment = false;
+      }
+      continue;
+    }
+
+    if (ch === '/' && next === '/') {
+      out += ch + next;
+      i += 2;
+      inLineComment = true;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      out += ch + next;
+      i += 2;
+      inBlockComment = true;
+      continue;
+    }
+
+    // Strings
+    if (ch === '\'' || ch === '"') {
+      const quote = ch;
+      let j = i + 1;
+      let raw = '';
+      let hasEscape = false;
+      while (j < source.length) {
+        const c = source[j];
+        if (c === '\\') {
+          hasEscape = true;
+          // keep scanning to find end, but mark as escaped so we skip encoding
+          j += 2;
+          continue;
+        }
+        if (c === quote) break;
+        raw += c;
+        j++;
+      }
+      if (j >= source.length) {
+        // unterminated, just emit rest
+        out += source.slice(i);
+        break;
+      }
+
+      const literal = source.slice(i, j + 1);
+      const jsonKeyCtx = isJsonKeyContext(j + 1);
+      const hex = !hasEscape ? toHexBytes(raw) : null;
+      const shouldSkip =
+        hasEscape ||
+        expectImportSpecifier ||
+        expectLoadLibString ||
+        (keepProtocolStrings && isProtocolStringLike(raw)) ||
+        jsonKeyCtx ||
+        hex === null;
+
+      if (shouldSkip) {
+        out += literal;
+      } else {
+        usedDecoder = true;
+        out += `_d('${hex}')`;
+      }
+
+      // consume
+      i = j + 1;
+      // After consuming a possible specifier, clear expectations
+      expectImportSpecifier = false;
+      expectLoadLibString = false;
+      continue;
+    }
+
+    // Template strings: leave as-is (risky to encode)
+    if (ch === '`') {
+      // naive template skip
+      out += ch;
+      i++;
+      while (i < source.length) {
+        const c = source[i];
+        out += c;
+        i++;
+        if (c === '\\' && i < source.length) {
+          out += source[i];
+          i++;
+          continue;
+        }
+        if (c === '`') break;
+      }
+      continue;
+    }
+
+    // Identifiers / keywords
+    if (isIdentStart(ch)) {
+      let j = i + 1;
+      while (j < source.length && isIdentPart(source[j])) j++;
+      const ident = source.slice(i, j);
+      out += ident;
+      if (ident === 'import' || ident === 'from') {
+        // next string literal token is a module specifier
+        expectImportSpecifier = true;
+      }
+      // recognize LoadLibrary call
+      if (ident === 'LoadLibrary' || ident === 'LoadDynamicLibrary') {
+        // expect '(' then string
+        // We'll set a flag and confirm on '(' below
+        expectLoadLibString = 'pending';
+      }
+      i = j;
+      continue;
+    }
+
+    // Punctuation: track LoadLibrary(
+    if (ch === '(') {
+      if (expectLoadLibString === 'pending') {
+        expectLoadLibString = true;
+      }
+      out += ch;
+      i++;
+      continue;
+    }
+    if (ch !== ' ' && ch !== '\t' && ch !== '\r' && ch !== '\n') {
+      if (expectLoadLibString === 'pending') expectLoadLibString = false;
+    }
+
+    out += ch;
+    i++;
+  }
+  if (!usedDecoder) return out;
+  return injectDecoderAfterImports(out);
+}
+
+function safeRenameIdentifiers(source) {
+  const reserved = new Set([...RESERVED_KEYWORDS, ...RESERVED_GLOBALS]);
+  const mapping = new Map();
+  const nextName = createNameAllocator(reserved);
+  const renameFn = (id, ctx) => {
+    // keep anything in reserved, any member access, object keys, import/export context
+    const skip =
+      reserved.has(id) ||
+      ctx.prev === '.' ||
+      ctx.next === ':' ||
+      ctx.inImport ||
+      ctx.inExport ||
+      ctx.prev === '#' ||
+      ctx.next === '.';
+    if (skip) return id;
+    let renamed = mapping.get(id);
+    if (!renamed) {
+      renamed = nextName();
+      mapping.set(id, renamed);
+    }
+    return renamed;
+  };
+  return renameIdentifiers(source, { reserved, mapping, renameFn });
 }
 
 function isLikelyModule(src) {
@@ -615,34 +875,29 @@ function obfuscate(source, opts = {}) {
 function usage() {
   std.err.puts(
     'Usage: qjsp pascal/minify_qjsp.js <input.js> [output.js|-] [flags]\n' +
-      'Default: obfuscate (rename + hex-encode). Disable with flags below.\n' +
+      'Default: minify-only (safe). Enable extra obfuscation with flags below.\n' +
       'Flags:\n' +
-      '  --no-obf | --plain | --minify-only   Minify only (no rename, no encode)\n' +
-      '  --no-rename                          Keep original identifiers (still encode)\n' +
-      '  --no-encode                          Skip hex wrapping (still rename)\n' +
-      '  --encode-level=N                     Wrap hex/eval N times (default 1 when obf on)\n'
+      '  --minify-only                         Minify only (default)\n' +
+      '  --safe-rename                         Rename user identifiers conservatively (skip import/export, members, object keys)\n' +
+      "  --encode-strings                      Encode string literals as _d('hex'), with safe exclusions\n" +
+      '  --no-encode-strings                   Disable string encoding\n'
   );
   os.exit(1);
 }
 
 function main(args) {
-  let obf = true; // default obfuscation on
-  let rename = true;
-  let encode = true;
-  let encodeLevel = null;
+  let doSafeRename = false;
+  let doEncodeStrings = false;
   const files = [];
   for (const a of args) {
-    if (a === '--no-obf' || a === '--plain' || a === '--minify-only') {
-      obf = false;
-      rename = false;
-      encode = false;
-    } else if (a === '--no-rename') {
-      rename = false;
-    } else if (a === '--no-encode') {
-      encode = false;
-    } else if (a.startsWith('--encode-level=')) {
-      const v = Number(a.slice('--encode-level='.length));
-      if (!Number.isNaN(v) && v >= 0) encodeLevel = v;
+    if (a === '--minify-only' || a === '--plain') {
+      // default; keep flags off
+    } else if (a === '--safe-rename') {
+      doSafeRename = true;
+    } else if (a === '--encode-strings') {
+      doEncodeStrings = true;
+    } else if (a === '--no-encode-strings') {
+      doEncodeStrings = false;
     } else {
       files.push(a);
     }
@@ -658,14 +913,14 @@ function main(args) {
   }
   let result;
   try {
-    if (obf) {
-      result = obfuscate(source, {
-        rename,
-        encode,
-        encodeLevel: encodeLevel !== null ? encodeLevel : undefined,
+    result = minify(source);
+    if (doSafeRename) {
+      result = safeRenameIdentifiers(result);
+    }
+    if (doEncodeStrings) {
+      result = encodeStringLiterals(result, {
+        keepProtocolStrings: true,
       });
-    } else {
-      result = minify(source);
     }
   } catch (e) {
     std.err.puts(`Minify error: ${e.message}\n`);

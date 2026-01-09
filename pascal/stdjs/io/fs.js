@@ -27,14 +27,62 @@ export function readFile(path) {
   return toU8(v);
 }
 
-export function writeTextFile(path, text) {
+export function writeTextFile(filePath, text) {
   const u8 = new TextEncoder().encode(String(text));
-  std.writeFile(String(path), u8);
+  let p = String(filePath);
+  if (system.platform === "win32") {
+    p = p.replace(/\//g, "\\");
+    p = path.resolve(p);
+    p = p.replace(/\//g, "\\");
+  }
+  try {
+    mkdirp(path.dirname(p));
+  } catch (e) {
+  }
+  for (let i = 0; ; i++) {
+    try {
+      std.writeFile(p, u8);
+      return;
+    } catch (e) {
+      if (system.platform === "win32" && i < 30) {
+        try {
+          os.sleep(10);
+        } catch (e2) {
+        }
+        continue;
+      }
+      throw e;
+    }
+  }
 }
 
-export function writeFile(path, data) {
+export function writeFile(filePath, data) {
   const u8 = toU8(data);
-  std.writeFile(String(path), u8);
+  let p = String(filePath);
+  if (system.platform === "win32") {
+    p = p.replace(/\//g, "\\");
+    p = path.resolve(p);
+    p = p.replace(/\//g, "\\");
+  }
+  try {
+    mkdirp(path.dirname(p));
+  } catch (e) {
+  }
+  for (let i = 0; ; i++) {
+    try {
+      std.writeFile(p, u8);
+      return;
+    } catch (e) {
+      if (system.platform === "win32" && i < 30) {
+        try {
+          os.sleep(10);
+        } catch (e2) {
+        }
+        continue;
+      }
+      throw e;
+    }
+  }
 }
 
 export function mkdir(path, mode) {
@@ -349,6 +397,9 @@ export function watch(dir, cb, opts) {
   if (typeof cb !== "function") throw new TypeError("watch: cb must be a function");
   const o = opts && typeof opts === "object" ? opts : {};
   const recursive = o.recursive !== void 0 ? !!o.recursive : true;
+
+  dir = path.resolve(dir);
+  if (system.platform === "win32") dir = dir.replace(/\//g, "\\");
 
   if (typeof globalThis.WatchDir !== "function" || typeof globalThis.CloseWatch !== "function") {
     throw new Error("watch: native watcher not available");

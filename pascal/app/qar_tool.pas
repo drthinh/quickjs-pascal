@@ -41,6 +41,7 @@ var
   init_default_lib: boolean = False;
   do_minify: boolean = False;
   keep_temp: boolean = False;
+  minify_safe: boolean = False;
   minify_script: string = '';
   minify_flags: array of string;
   temp_stage_dir: string = '';
@@ -314,7 +315,9 @@ begin
   WriteLn('Options:');
   WriteLn('  --init-lib              - Khởi tạo thư viện QuickJS mặc định khi hiển thị info');
   WriteLn('  --minify                - Minify JS sources via qjsp + minify script before building QAR');
-  WriteLn('  --minify-script <file>  - Chỉ định script minify (mặc định: minify_qjsp.js)');
+  WriteLn('  --minify-safe           - Shortcut: --minify + --safe-rename + --encode-strings');
+  WriteLn('  --minify-script <file>  - Chỉ định script minify (mặc định: minify_qjsp.js).');
+  WriteLn('                           Lưu ý: các flag nâng cao (safe-rename/encode-strings) nằm trong minify_qjsp.js');
   WriteLn('  --minify-flag <arg>     - Truyền thêm flag cho script minify (có thể lặp lại)');
   WriteLn('  --keep-temp             - Giữ thư mục staging tạm (hữu ích để debug minify)');
   WriteLn;
@@ -324,7 +327,9 @@ begin
   WriteLn('  qar_tool build output.qar file1.js file2.js');
   WriteLn('  qar_tool build output.qar src/');
   WriteLn('  qar_tool --minify build output.qar src/');
-  WriteLn('  qar_tool --minify --minify-script minify.js --minify-flag --minify-only build out.qar src/');
+  WriteLn('  qar_tool --minify build out.qar src/ --minify-flag --minify-only');
+  WriteLn('  qar_tool --minify-safe build out.qar src/');
+  WriteLn('  qar_tool --minify build out.qar src/ --minify-flag --safe-rename --minify-flag --encode-strings');
   WriteLn('  qar_tool inspect file.qar');
   WriteLn('  qar_tool rebuild old.qar new.qar');
   WriteLn('  qar_tool code mylib.qar my_module.js');
@@ -569,6 +574,9 @@ begin
   input_file := '';
   SetLength(input_files, 0);
   SetLength(minify_flags, 0);
+
+  // If --minify-safe is set, we add flags before running commands.
+  // Implemented by toggling minify_safe here, and expanding after parsing.
   
   // Parse options and command
   while i <= ParamCount do
@@ -581,6 +589,12 @@ begin
     else if (ParamStr(i) = '--minify') then
     begin
       do_minify := True;
+      Inc(i);
+    end
+    else if (ParamStr(i) = '--minify-safe') then
+    begin
+      do_minify := True;
+      minify_safe := True;
       Inc(i);
     end
     else if (ParamStr(i) = '--keep-temp') then
@@ -636,6 +650,13 @@ begin
       if (ParamStr(i) = '--minify') then
       begin
         do_minify := True;
+        Inc(i);
+        Continue;
+      end
+      else if (ParamStr(i) = '--minify-safe') then
+      begin
+        do_minify := True;
+        minify_safe := True;
         Inc(i);
         Continue;
       end
@@ -708,7 +729,16 @@ begin
       Inc(i);
     end;
   end;
-  
+
+  if minify_safe then
+  begin
+    // Expand shorthand only if user did not explicitly specify these flags already.
+    // (We don't try to dedupe: duplicates are harmless.)
+    SetLength(minify_flags, Length(minify_flags) + 2);
+    minify_flags[Length(minify_flags) - 2] := '--safe-rename';
+    minify_flags[Length(minify_flags) - 1] := '--encode-strings';
+  end;
+
   // Execute command
   if cmd = 'info' then
   begin
