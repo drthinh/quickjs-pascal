@@ -12,7 +12,7 @@ function qjsp_module_loader(ctx: PJSContext; module_name: PChar; opaque: pointer
 implementation
 
 uses
-  qar_helpers, qjs_log;
+  qar_helpers, qjs_log, StrUtils;
 
 var
   g_module_load_stack: TStringList;
@@ -23,6 +23,9 @@ var
   mapped_name_fs: string;
   mapped_name_qjs: string;
   mapped_rel: string;
+  mapped_rel_nojava: string;
+  mapped_name_fs_java: string;
+  mapped_name_qjs_java: string;
   mapped_name_alt: string;
   exe_dir: string;
   pascal_root: string;
@@ -65,9 +68,9 @@ begin
     exe_dir := ExtractFilePath(ExpandFileName(ParamStr(0)));
     pascal_root := ExpandFileName(IncludeTrailingPathDelimiter(exe_dir) + '..');
     mapped_rel := Copy(module_name_str, Length('qjsp:') + 1, Length(module_name_str));
-    if (mapped_rel <> '') and ((mapped_rel[1] = '/') or (mapped_rel[1] = '\\')) then
+    if (mapped_rel <> '') and ((mapped_rel[1] = '/') or (mapped_rel[1] = '\')) then
       mapped_rel := Copy(mapped_rel, 2, Length(mapped_rel));
-    mapped_rel := StringReplace(mapped_rel, '\\', '/', [rfReplaceAll]);
+    mapped_rel := StringReplace(mapped_rel, '\', '/', [rfReplaceAll]);
 
     // Normalize: allow both explicit files and package dirs.
     if (Length(mapped_rel) >= 3) and (LowerCase(Copy(mapped_rel, Length(mapped_rel) - 2, 3)) = '.js') then
@@ -88,6 +91,19 @@ begin
     // Relative POSIX path for QuickJS loader (avoid Windows drive-letter ':' in module specifiers).
     mapped_name_qjs := 'stdjs/' + mapped_rel;
 
+    // Optional secondary package: allow qjsp:java/* to be resolved from a separate folder.
+    // This enables programs to include java facades as an optional addon without bundling all stdjs.
+    mapped_name_fs_java := '';
+    mapped_name_qjs_java := '';
+    mapped_rel_nojava := '';
+    if Pos('java/', mapped_rel) = 1 then
+    begin
+      mapped_rel_nojava := Copy(mapped_rel, Length('java/') + 1, Length(mapped_rel));
+      mapped_name_fs_java := StringReplace(mapped_rel_nojava, '/', PathDelim, [rfReplaceAll]);
+      mapped_name_fs_java := IncludeTrailingPathDelimiter(pascal_root) + 'java' + PathDelim + mapped_name_fs_java;
+      mapped_name_qjs_java := 'java/' + mapped_rel_nojava;
+    end;
+
     qjs_log.DebugMsg(0, 'qjsp: map "' + module_name_str + '" -> "' + mapped_name_fs + '"');
 
     // Ensure stdjs/ relative paths resolve regardless of caller's current directory.
@@ -100,6 +116,11 @@ begin
       end;
 
       // Prefer explicit file if it exists.
+      if (mapped_name_fs_java <> '') and FileExists(mapped_name_fs_java + '.js') then
+      begin
+        Result := js_module_loader(ctx, PChar(mapped_name_qjs_java + '.js'), opaque);
+        Exit;
+      end;
       if FileExists(mapped_name_fs + '.js') then
       begin
         Result := js_module_loader(ctx, PChar(mapped_name_qjs + '.js'), opaque);
@@ -107,6 +128,11 @@ begin
       end;
 
       // If a directory exists, try its index.js.
+      if (mapped_name_fs_java <> '') and DirectoryExists(mapped_name_fs_java) then
+      begin
+        Result := js_module_loader(ctx, PChar(mapped_name_qjs_java + '/index.js'), opaque);
+        Exit;
+      end;
       if DirectoryExists(mapped_name_fs) then
       begin
         Result := js_module_loader(ctx, PChar(mapped_name_qjs + '/index.js'), opaque);
@@ -114,20 +140,49 @@ begin
       end;
 
       // Fallback: let QuickJS loader attempt its own resolution.
-      Result := js_module_loader(ctx, PChar(mapped_name_qjs), opaque);
+      if mapped_name_qjs_java <> '' then
+        Result := js_module_loader(ctx, PChar(mapped_name_qjs_java), opaque)
+      else
+        Result := nil;
       if Result = nil then
       begin
         ex := JS_GetException(ctx);
         JS_FreeValue(ctx, ex);
-        mapped_name_alt := mapped_name_qjs + '.js';
-        Result := js_module_loader(ctx, PChar(mapped_name_alt), opaque);
+        Result := js_module_loader(ctx, PChar(mapped_name_qjs), opaque);
       end;
       if Result = nil then
       begin
         ex := JS_GetException(ctx);
         JS_FreeValue(ctx, ex);
-        mapped_name_alt := mapped_name_qjs + '/index.js';
-        Result := js_module_loader(ctx, PChar(mapped_name_alt), opaque);
+        if mapped_name_qjs_java <> '' then
+        begin
+          mapped_name_alt := mapped_name_qjs_java + '.js';
+          Result := js_module_loader(ctx, PChar(mapped_name_alt), opaque);
+        end;
+        if Result = nil then
+        begin
+          ex := JS_GetException(ctx);
+          JS_FreeValue(ctx, ex);
+          mapped_name_alt := mapped_name_qjs + '.js';
+          Result := js_module_loader(ctx, PChar(mapped_name_alt), opaque);
+        end;
+      end;
+      if Result = nil then
+      begin
+        ex := JS_GetException(ctx);
+        JS_FreeValue(ctx, ex);
+        if mapped_name_qjs_java <> '' then
+        begin
+          mapped_name_alt := mapped_name_qjs_java + '/index.js';
+          Result := js_module_loader(ctx, PChar(mapped_name_alt), opaque);
+        end;
+        if Result = nil then
+        begin
+          ex := JS_GetException(ctx);
+          JS_FreeValue(ctx, ex);
+          mapped_name_alt := mapped_name_qjs + '/index.js';
+          Result := js_module_loader(ctx, PChar(mapped_name_alt), opaque);
+        end;
       end;
 
       if Result = nil then
@@ -137,6 +192,7 @@ begin
 
         tried_msg :=
           'tried:' + LineEnding +
+          (ifthen(mapped_name_qjs_java <> '', '  - ' + mapped_name_qjs_java + '.js' + LineEnding + '  - ' + mapped_name_qjs_java + '/index.js' + LineEnding, '')) +
           '  - ' + mapped_name_qjs + '.js' + LineEnding +
           '  - ' + mapped_name_qjs + '/index.js';
 
