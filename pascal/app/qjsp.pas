@@ -14,6 +14,30 @@ uses
   file_utils,
   qjsp_module_loader, http_helpers, fs_watch_helpers;
 
+const
+  APP_AUTHOR = 'Nguyen Duc Thinh - dr.nguyenducthinh@gmail.com';
+  APP_VERSION = '1.0.0';
+  APP_BUILD_DATE = {$I %DATE%};
+  APP_BUILD_TIME = {$I %TIME%};
+
+function GetAppVersion: string;
+begin
+  if APP_VERSION <> '' then
+    Result := APP_VERSION
+  else
+    Result := JS_GetVersion;
+end;
+
+function GetAppBuildDateTime: string;
+begin
+  Result := APP_BUILD_DATE + ' ' + APP_BUILD_TIME;
+end;
+
+function GetAppIntroLine: string;
+begin
+  Result := 'QuickJS Pascal ' + GetAppVersion + ' (build ' + GetAppBuildDateTime + ')';
+end;
+
 procedure ApplyDebugSettings(rt: PJSRuntime);
 begin
   if qjs_log.DebugLevel > 1 then
@@ -242,6 +266,8 @@ begin
   Result := True;
 end;
 
+// shell parsing is handled by qjsp:sh (see sh.repl)
+
 function ExtractManifestEntryPointMain(const manifest_json: UTF8String): UTF8String;
 var
   keyPos, p: SizeInt;
@@ -413,6 +439,8 @@ var
   ctx: PJSContext;
   ReplGuardMode: TReplGuardMode;
   GuardExplicit: boolean;
+  ReplShellMode: boolean;
+  ReplShellImported: boolean;
   script: string;
   result_val: JSValue;
   run_script_mode: boolean;
@@ -520,6 +548,7 @@ var
   guardArg: string;
   eval_mode: boolean;
   eval_code: string;
+  shellJs: string;
 
 // Run a JS file (non-interactive mode)
 function RunScriptFile(ctx: PJSContext; const filename: string): boolean;
@@ -732,6 +761,8 @@ begin
   eval_code := '';
   ReplGuardMode := rgFriendly;
   GuardExplicit := False;
+  ReplShellMode := False;
+  ReplShellImported := False;
   
   // Parse command line arguments
   i := 1;
@@ -798,7 +829,9 @@ begin
     else if (ParamStr(i) = '-h') or (ParamStr(i) = '--help') then
     begin
       WriteLn('QuickJS Pascal');
-      WriteLn('==================');
+      WriteLn('Author: ', APP_AUTHOR);
+      WriteLn('Version: ', GetAppVersion);
+      WriteLn('Build: ', GetAppBuildDateTime);
       WriteLn;
       WriteLn('Usage:');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' [options] [script.js [args...]]');
@@ -841,6 +874,13 @@ begin
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -d 2                  (interactive mode with verbose debug)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' --guard friendly      (interactive mode, no hard crash on AV)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), '                        (interactive mode)');
+      Halt(0);
+    end
+    else if (ParamStr(i) = '--version') or (ParamStr(i) = '-version') then
+    begin
+      WriteLn(GetAppIntroLine);
+      WriteLn('QuickJS Engine: ', JS_GetVersion);
+      WriteLn('Author: ', APP_AUTHOR);
       Halt(0);
     end
     else if (ParamStr(i) = '--cat') then
@@ -1500,8 +1540,9 @@ begin
   
   if not run_script_mode then
   begin
-    WriteLn('QuickJS Pascal');
-    WriteLn('==================');
+    WriteLn(GetAppIntroLine);
+    WriteLn('QuickJS Engine: ', JS_GetVersion);
+    WriteLn('Author: ', APP_AUTHOR);
     WriteLn;
   end;
 
@@ -1659,29 +1700,28 @@ begin
   begin
     // Load examples configuration
     LoadExamplesConfigFromFile(ExampleConfigs, ExamplesConfigFile, qjs_log.DebugLevel);
-
-    WriteLn('QuickJS version: ', JS_GetVersion);
     if qjs_log.DebugLevel > 0 then
       WriteLn('Debug level: ', qjs_log.DebugLevel);
-    WriteLn;
-
-    WriteLn('Interactive JavaScript REPL');
-    WriteLn('Type JavaScript code. Type "exit"/"quit" to leave.');
     WriteLn('Commands:');
     WriteLn('  .help | help                - Detailed help');
     WriteLn('  .load <file.js>             - Load & run a JS file');
+    WriteLn('  .import <module> [name]     - Import ESM module and bind to global');
     WriteLn('  .build <out.qar> <inputs..> - Build QAR from JS files/folder');
     WriteLn('  .qar / .tool / .verify      - QAR tooling commands');
     WriteLn('  .example ...                - Run/manage example tests');
     WriteLn('  .debug [on|off|0|1|2]       - Toggle debug');
     WriteLn('  .guard [strict|friendly]    - REPL crash guard mode');
+    WriteLn('  .sh on|off                  - Toggle shell mode (sh> prompt)');
     WriteLn('  .mem                        - Runtime memory usage');
-    WriteLn;
+    WriteLn('  .exit/.quit (exit/quit)     - Leave program');
 
     // Simple interactive loop
     while True do
     begin
-      Write('js> ');
+      if ReplShellMode then
+        Write('sh> ')
+      else
+        Write('js> ');
       script := ReadLnUtf8;
       if (script = 'exit') or (script = 'quit') or (script = '.exit') or (script = '.quit') then
         Break;
@@ -1705,6 +1745,16 @@ begin
           WriteLn;
           WriteLn('  .load <file.js>');
           WriteLn('    Load and execute a JavaScript file.');
+          WriteLn;
+          WriteLn('  .import <module> [name]');
+          WriteLn('    Import an ES module in MODULE mode and bind it to globalThis.');
+          WriteLn('    Example: .import qjsp:sh sh');
+          WriteLn('             sh.ls(".")');
+          WriteLn;
+          WriteLn('  .sh on|off');
+          WriteLn('    Toggle shell mode. When ON, prompt becomes "sh>" and commands like');
+          WriteLn('    "pwd", "ls", "cd <dir>", "which <cmd>" are mapped to qjsp:sh helpers.');
+          WriteLn('    Type ".js" (or "js") to return to JS prompt.');
           WriteLn;
           WriteLn('  .build <out.qar> <file1.js> [file2.js ...]');
           WriteLn('  .build <out.qar> <directory/>');
@@ -1761,6 +1811,72 @@ begin
           WriteLn;
           Flush(Output);
           Continue;
+        end;
+
+        if (Copy(script, 1, 4) = '.sh ') or (script = '.sh') then
+        begin
+          cmdLine := '';
+          if Length(script) > 4 then
+            cmdLine := Trim(Copy(script, 5, Length(script)));
+
+          if cmdLine = '' then
+          begin
+            if ReplShellMode then
+              WriteLn('Shell mode: on')
+            else
+              WriteLn('Shell mode: off');
+            WriteLn('Usage: .sh on | off');
+            Flush(Output);
+            Continue;
+          end;
+
+          cmdLine := LowerCase(cmdLine);
+          if cmdLine = 'on' then
+          begin
+            ReplShellMode := True;
+            WriteLn('Shell mode enabled (type ".js" to return)');
+          end
+          else if cmdLine = 'off' then
+          begin
+            ReplShellMode := False;
+            WriteLn('Shell mode disabled');
+          end
+          else
+          begin
+            WriteLn('Warning: Invalid .sh value, must be on or off');
+          end;
+
+          Flush(Output);
+          Continue;
+        end;
+
+        if ReplShellMode and ((script = '.js') or (script = 'js')) then
+        begin
+          ReplShellMode := False;
+          Flush(Output);
+          Continue;
+        end;
+
+        if ReplShellMode then
+        begin
+          if not ReplShellImported then
+          begin
+            file_content :=
+              'import * as sh from "qjsp:sh";' + LineEnding +
+              'globalThis["sh"] = sh;' + LineEnding;
+
+            if RunEvalCode(ctx, '<repl_sh_import>', file_content) then
+              ReplShellImported := True
+            else
+            begin
+              WriteLn('Error: failed to import qjsp:sh');
+              Flush(Output);
+              Continue;
+            end;
+          end;
+
+          shellJs := 'sh.repl(' + QuotedStr(script) + ')';
+          script := shellJs;
         end;
 
         if (Copy(script, 1, 7) = '.guard ') or (script = '.guard') then
@@ -2839,6 +2955,94 @@ begin
           cmdArgs.Free;
         end;
         Continue; // Đã xử lý lệnh .qar/.tool/.verify
+      end;
+
+      // .import <module> [name]
+      // REPL input is evaluated in GLOBAL mode for expression results, so ESM syntax
+      // like "import ... from" cannot be typed directly. This command loads the module
+      // in MODULE mode and exposes it on globalThis.
+      if (Copy(script, 1, 8) = '.import ') or (script = '.import') then
+      begin
+        cmdLine := '';
+        if Length(script) > 8 then
+          cmdLine := Trim(Copy(script, 9, Length(script)));
+
+        if cmdLine = '' then
+        begin
+          WriteLn('Usage: .import <module> [name]');
+          WriteLn('Example: .import qjsp:sh sh');
+          Flush(Output);
+          Continue;
+        end;
+
+        // Parse: first token = module, second (optional) = name
+        cmdArgs := TStringList.Create;
+        try
+          cmdArgs.Delimiter := ' ';
+          cmdArgs.StrictDelimiter := False;
+          cmdArgs.DelimitedText := cmdLine;
+
+          if cmdArgs.Count < 1 then
+          begin
+            WriteLn('Usage: .import <module> [name]');
+            Flush(Output);
+            Continue;
+          end;
+
+          script_path := Trim(cmdArgs[0]);
+          if script_path = '' then
+          begin
+            WriteLn('Usage: .import <module> [name]');
+            Flush(Output);
+            Continue;
+          end;
+
+          // Determine binding name
+          if cmdArgs.Count >= 2 then
+            line := Trim(cmdArgs[1])
+          else
+          begin
+            // Derive from module specifier
+            line := script_path;
+            i := LastDelimiter('/\\', line);
+            if i > 0 then
+              line := Copy(line, i + 1, Length(line));
+            i := Pos('.', line);
+            if i > 0 then
+              line := Copy(line, 1, i - 1);
+            if line = '' then
+              line := 'mod';
+          end;
+
+          // Make a safe JS identifier (very conservative)
+          for i := 1 to Length(line) do
+          begin
+            if not (line[i] in ['A'..'Z', 'a'..'z', '0'..'9', '_', '$']) then
+              line[i] := '_';
+          end;
+          if (Length(line) = 0) or not (line[1] in ['A'..'Z', 'a'..'z', '_', '$']) then
+            line := '_' + line;
+
+          // Build module code
+          file_content :=
+            'import * as ' + line + ' from ' + QuotedStr(script_path) + ';' + LineEnding +
+            'globalThis[' + QuotedStr(line) + '] = ' + line + ';' + LineEnding;
+
+          if RunEvalCode(ctx, '<repl_import>', file_content) then
+          begin
+            WriteLn('Imported ', script_path, ' as globalThis.', line);
+            Flush(Output);
+          end
+          else
+          begin
+            WriteLn('Error: import failed: ', script_path);
+            Flush(Output);
+          end;
+        finally
+          cmdArgs.Free;
+        end;
+
+        Continue;
       end;
       
       // REPL nên luôn chạy ở GLOBAL để trả về giá trị biểu thức (giống qjs REPL)

@@ -20,3 +20,5 @@ export * as net from "qjsp:net/index.js";
 export * as events from "qjsp:events/index.js";
 
 export * as os from "qjsp:os/index.js";
+
+export * as sh from "qjsp:sh/index.js";
