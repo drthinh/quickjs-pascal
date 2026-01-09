@@ -505,6 +505,7 @@ var
   ResultQueue: array of PAsyncResult;
   QueueCS: TRTLCriticalSection;
   HasWorkEvent: TEvent;
+  QueueInit: Boolean = False;
   PoolStarted: Boolean = False;
   PoolSize: Integer = 4;
   PoolThreads: array of TThread;
@@ -518,7 +519,8 @@ begin
   finally
     LeaveCriticalSection(QueueCS);
   end;
-  HasWorkEvent.SetEvent;
+  if HasWorkEvent <> nil then
+    HasWorkEvent.SetEvent;
 end;
 
 function TaskQueuePop: PAsyncTask;
@@ -598,17 +600,34 @@ var
   res: THttpResult;
   r: PAsyncResult;
   i: Integer;
+  errMsg: string;
 begin
   while not Terminated do
   begin
     t := TaskQueuePop;
     if t = nil then
     begin
-      HasWorkEvent.WaitFor(100);
+      if HasWorkEvent <> nil then
+        HasWorkEvent.WaitFor(100)
+      else
+        Sleep(100);
       Continue;
     end;
 
-    res := DoHttpRequest(t^.Method, t^.Url, t^.Headers, t^.Body, t^.TimeoutMs, t^.FollowRedirects, t^.ResponseType);
+    errMsg := '';
+    try
+      res := DoHttpRequest(t^.Method, t^.Url, t^.Headers, t^.Body, t^.TimeoutMs, t^.FollowRedirects, t^.ResponseType);
+    except
+      on E: Exception do
+      begin
+        res.Ok := False;
+        res.ErrorMsg := 'net:http_async_helpers:Worker: ' + E.Message;
+        res.Status := 0;
+        res.Headers := nil;
+        res.Body := '';
+        res.BodyText := '';
+      end;
+    end;
 
     New(r);
     FillChar(r^, SizeOf(TAsyncResult), 0);
@@ -638,6 +657,13 @@ procedure EnsurePoolStarted;
 var
   i: Integer;
 begin
+  if not QueueInit then
+  begin
+    InitCriticalSection(QueueCS);
+    HasWorkEvent := TEvent.Create(nil, False, False, '');
+    QueueInit := True;
+  end;
+
   if PoolStarted then
     Exit;
   PoolStarted := True;
@@ -671,10 +697,11 @@ var
   headerListVal: JSValueConst;
   t: PAsyncTask;
 begin
-  if argc < 2 then
-    Exit(JS_ThrowTypeError(ctx, PChar('HttpRequestAsync(method, url, headers?, body?, options?)')));
+  try
+    if argc < 2 then
+      Exit(JS_ThrowTypeError(ctx, PChar('HttpRequestAsync(method, url, headers?, body?, options?)')));
 
-  EnsurePoolStarted;
+    EnsurePoolStarted;
 
   method := JsValueToString(ctx, argv[0]);
   url := JsValueToString(ctx, argv[1]);
@@ -770,7 +797,11 @@ begin
   JS_FreeValue(ctx, resolving_funcs[0]);
   JS_FreeValue(ctx, resolving_funcs[1]);
 
-  Result := promise;
+    Result := promise;
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('net:http_async_helpers:HttpRequestAsync: ' + E.Message));
+  end;
 end;
 
 function js_pump_http_requests(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
@@ -787,13 +818,14 @@ var
   errCtor: JSValue;
   errArgs: array[0..0] of JSValue;
 begin
-  lst := ResultQueueDrain;
   try
-    for i := 0 to lst.Count - 1 do
-    begin
-      r := PAsyncResult(lst[i]);
-      if r = nil then
-        Continue;
+    lst := ResultQueueDrain;
+    try
+      for i := 0 to lst.Count - 1 do
+      begin
+        r := PAsyncResult(lst[i]);
+        if r = nil then
+          Continue;
 
       if r^.Ok then
       begin
@@ -853,20 +885,25 @@ begin
       Dispose(r);
     end;
   finally
-    lst.Free;
-  end;
+      lst.Free;
+    end;
 
-  Result := JS_UNDEFINED;
+    Result := JS_UNDEFINED;
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('net:http_async_helpers:PumpHttpRequests: ' + E.Message));
+  end;
 end;
 
 procedure RegisterHttpAsyncHelpers(ctx: PJSContext);
 var
   global_obj: JSValue;
 begin
-  if not PoolStarted then
+  if not QueueInit then
   begin
     InitCriticalSection(QueueCS);
     HasWorkEvent := TEvent.Create(nil, False, False, '');
+    QueueInit := True;
   end;
 
   global_obj := JS_GetGlobalObject(ctx);

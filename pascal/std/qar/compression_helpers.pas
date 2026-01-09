@@ -5,7 +5,7 @@ unit compression_helpers;
 interface
 
 uses
-  ctypes, quickjs_types, quickjs_core, quickjs_miniz;
+  ctypes, SysUtils, quickjs_types, quickjs_core, quickjs_miniz;
 
 // JavaScript bindings for compression functions
 function js_compress(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
@@ -27,68 +27,77 @@ var
   level: cint;
   ret: cint;
 begin
-  if argc < 1 then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('compress expects at least 1 argument: data'));
-    Exit;
-  end;
+  try
+    output_buf := nil;
+    try
+      if argc < 1 then
+      begin
+        Result := JS_ThrowTypeError(ctx, PChar('compress expects at least 1 argument: data'));
+        Exit;
+      end;
 
-  // Get input buffer - support both ArrayBuffer and Uint8Array
-  if JS_IsArrayBuffer(argv[0]) <> 0 then
-  begin
-    input_buf := JS_GetArrayBuffer(ctx, @input_size, argv[0]);
-    if input_buf = nil then
-    begin
-      Result := JS_EXCEPTION;
-      Exit;
+      // Get input buffer - support both ArrayBuffer and Uint8Array
+      if JS_IsArrayBuffer(argv[0]) <> 0 then
+      begin
+        input_buf := JS_GetArrayBuffer(ctx, @input_size, argv[0]);
+        if input_buf = nil then
+        begin
+          Result := JS_EXCEPTION;
+          Exit;
+        end;
+      end
+      else
+      begin
+        // Try to get as Uint8Array
+        input_buf := JS_GetUint8Array(ctx, @input_size, argv[0]);
+        if input_buf = nil then
+        begin
+          Result := JS_ThrowTypeError(ctx, PChar('compress expects ArrayBuffer or Uint8Array'));
+          Exit;
+        end;
+      end;
+
+      // Get compression level (optional, default to MZ_DEFAULT_LEVEL)
+      level := MZ_DEFAULT_LEVEL;
+      if argc >= 2 then
+      begin
+        if JS_ToInt32(ctx, @level, argv[1]) < 0 then
+        begin
+          Result := JS_EXCEPTION;
+          Exit;
+        end;
+        // Clamp level to valid range (0-9)
+        if level < 0 then level := 0;
+        if level > 9 then level := 9;
+      end;
+
+      // Calculate output buffer size
+      output_size := mz_compressBound(mz_ulong(input_size));
+      output_buf := GetMem(output_size);
+      if output_buf = nil then
+      begin
+        Result := JS_ThrowTypeError(ctx, PChar('compress: out of memory'));
+        Exit;
+      end;
+
+      // Compress
+      ret := mz_compress2(output_buf, @output_size, input_buf, mz_ulong(input_size), level);
+      if ret <> MZ_OK then
+      begin
+        Result := JS_ThrowTypeError(ctx, PChar('compress: compression failed'));
+        Exit;
+      end;
+
+      // Create ArrayBuffer with compressed data
+      Result := JS_NewArrayBufferCopy(ctx, output_buf, csize_t(output_size));
+    finally
+      if output_buf <> nil then
+        FreeMem(output_buf);
     end;
-  end
-  else
-  begin
-    // Try to get as Uint8Array
-    input_buf := JS_GetUint8Array(ctx, @input_size, argv[0]);
-    if input_buf = nil then
-    begin
-      Result := JS_ThrowTypeError(ctx, PChar('compress expects ArrayBuffer or Uint8Array'));
-      Exit;
-    end;
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('compress: ' + E.Message));
   end;
-
-  // Get compression level (optional, default to MZ_DEFAULT_LEVEL)
-  level := MZ_DEFAULT_LEVEL;
-  if argc >= 2 then
-  begin
-    if JS_ToInt32(ctx, @level, argv[1]) < 0 then
-    begin
-      Result := JS_EXCEPTION;
-      Exit;
-    end;
-    // Clamp level to valid range (0-9)
-    if level < 0 then level := 0;
-    if level > 9 then level := 9;
-  end;
-
-  // Calculate output buffer size
-  output_size := mz_compressBound(mz_ulong(input_size));
-  output_buf := GetMem(output_size);
-  if output_buf = nil then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('compress: out of memory'));
-    Exit;
-  end;
-
-  // Compress
-  ret := mz_compress2(output_buf, @output_size, input_buf, mz_ulong(input_size), level);
-  if ret <> MZ_OK then
-  begin
-    FreeMem(output_buf);
-    Result := JS_ThrowTypeError(ctx, PChar('compress: compression failed'));
-    Exit;
-  end;
-
-  // Create ArrayBuffer with compressed data
-  Result := JS_NewArrayBufferCopy(ctx, output_buf, csize_t(output_size));
-  FreeMem(output_buf);
 end;
 
 // Uncompress data: uncompress(data: ArrayBuffer|Uint8Array, uncompressed_size?: number): ArrayBuffer
@@ -101,87 +110,101 @@ var
   uncompressed_size: cint64;
   ret: cint;
 begin
-  if argc < 1 then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('uncompress expects at least 1 argument: data'));
-    Exit;
-  end;
-
-  // Get input buffer - support both ArrayBuffer and Uint8Array
-  if JS_IsArrayBuffer(argv[0]) <> 0 then
-  begin
-    input_buf := JS_GetArrayBuffer(ctx, @input_size, argv[0]);
-    if input_buf = nil then
-    begin
-      Result := JS_EXCEPTION;
-      Exit;
-    end;
-  end
-  else
-  begin
-    // Try to get as Uint8Array
-    input_buf := JS_GetUint8Array(ctx, @input_size, argv[0]);
-    if input_buf = nil then
-    begin
-      Result := JS_ThrowTypeError(ctx, PChar('uncompress expects ArrayBuffer or Uint8Array'));
-      Exit;
-    end;
-  end;
-
-  // Get uncompressed size (optional, but recommended for efficiency)
-  if argc >= 2 then
-  begin
-    if JS_ToInt64(ctx, @uncompressed_size, argv[1]) < 0 then
-    begin
-      Result := JS_EXCEPTION;
-      Exit;
-    end;
-    output_size := mz_ulong(uncompressed_size);
-  end
-  else
-  begin
-    // Estimate: compressed data is usually smaller, so start with input_size * 2
-    // This is a heuristic and may need adjustment
-    output_size := mz_ulong(input_size) * 2;
-  end;
-
-  // Allocate output buffer
-  output_buf := GetMem(output_size);
-  if output_buf = nil then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('uncompress: out of memory'));
-    Exit;
-  end;
-
-  // Uncompress
-  ret := mz_uncompress(output_buf, @output_size, input_buf, mz_ulong(input_size));
-  if ret <> MZ_OK then
-  begin
-    FreeMem(output_buf);
-    // Try with larger buffer if size was not provided
-    if argc < 2 then
-    begin
-      output_size := mz_ulong(input_size) * 4;
-      output_buf := GetMem(output_size);
-      if output_buf <> nil then
+  try
+    output_buf := nil;
+    try
+      if argc < 1 then
       begin
-        ret := mz_uncompress(output_buf, @output_size, input_buf, mz_ulong(input_size));
-        if ret = MZ_OK then
+        Result := JS_ThrowTypeError(ctx, PChar('uncompress expects at least 1 argument: data'));
+        Exit;
+      end;
+
+      // Get input buffer - support both ArrayBuffer and Uint8Array
+      if JS_IsArrayBuffer(argv[0]) <> 0 then
+      begin
+        input_buf := JS_GetArrayBuffer(ctx, @input_size, argv[0]);
+        if input_buf = nil then
         begin
-          Result := JS_NewArrayBufferCopy(ctx, output_buf, csize_t(output_size));
-          FreeMem(output_buf);
+          Result := JS_EXCEPTION;
           Exit;
         end;
-        FreeMem(output_buf);
+      end
+      else
+      begin
+        // Try to get as Uint8Array
+        input_buf := JS_GetUint8Array(ctx, @input_size, argv[0]);
+        if input_buf = nil then
+        begin
+          Result := JS_ThrowTypeError(ctx, PChar('uncompress expects ArrayBuffer or Uint8Array'));
+          Exit;
+        end;
       end;
-    end;
-    Result := JS_ThrowTypeError(ctx, PChar('uncompress: decompression failed'));
-    Exit;
-  end;
 
-  // Create ArrayBuffer with uncompressed data
-  Result := JS_NewArrayBufferCopy(ctx, output_buf, csize_t(output_size));
-  FreeMem(output_buf);
+      // Get uncompressed size (optional, but recommended for efficiency)
+      if argc >= 2 then
+      begin
+        if JS_ToInt64(ctx, @uncompressed_size, argv[1]) < 0 then
+        begin
+          Result := JS_EXCEPTION;
+          Exit;
+        end;
+        output_size := mz_ulong(uncompressed_size);
+      end
+      else
+      begin
+        // Estimate: compressed data is usually smaller, so start with input_size * 2
+        // This is a heuristic and may need adjustment
+        output_size := mz_ulong(input_size) * 2;
+      end;
+
+      // Allocate output buffer
+      output_buf := GetMem(output_size);
+      if output_buf = nil then
+      begin
+        Result := JS_ThrowTypeError(ctx, PChar('uncompress: out of memory'));
+        Exit;
+      end;
+
+      // Uncompress
+      ret := mz_uncompress(output_buf, @output_size, input_buf, mz_ulong(input_size));
+      if ret <> MZ_OK then
+      begin
+        // Try with larger buffer if size was not provided
+        if argc < 2 then
+        begin
+          FreeMem(output_buf);
+          output_buf := nil;
+          output_size := mz_ulong(input_size) * 4;
+          output_buf := GetMem(output_size);
+          if output_buf = nil then
+          begin
+            Result := JS_ThrowTypeError(ctx, PChar('uncompress: out of memory'));
+            Exit;
+          end;
+          ret := mz_uncompress(output_buf, @output_size, input_buf, mz_ulong(input_size));
+          if ret <> MZ_OK then
+          begin
+            Result := JS_ThrowTypeError(ctx, PChar('uncompress: decompression failed'));
+            Exit;
+          end;
+        end
+        else
+        begin
+          Result := JS_ThrowTypeError(ctx, PChar('uncompress: decompression failed'));
+          Exit;
+        end;
+      end;
+
+      // Create ArrayBuffer with uncompressed data
+      Result := JS_NewArrayBufferCopy(ctx, output_buf, csize_t(output_size));
+    finally
+      if output_buf <> nil then
+        FreeMem(output_buf);
+    end;
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('uncompress: ' + E.Message));
+  end;
 end;
 
 // Get compression bound: compressBound(source_size: number): number
@@ -190,26 +213,31 @@ var
   source_size: cint64;
   bound: mz_ulong;
 begin
-  if argc < 1 then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('compressBound expects 1 argument: source_size'));
-    Exit;
-  end;
+  try
+    if argc < 1 then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('compressBound expects 1 argument: source_size'));
+      Exit;
+    end;
 
-  if JS_ToInt64(ctx, @source_size, argv[0]) < 0 then
-  begin
-    Result := JS_EXCEPTION;
-    Exit;
-  end;
+    if JS_ToInt64(ctx, @source_size, argv[0]) < 0 then
+    begin
+      Result := JS_EXCEPTION;
+      Exit;
+    end;
 
-  if source_size < 0 then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('compressBound: source_size must be non-negative'));
-    Exit;
-  end;
+    if source_size < 0 then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('compressBound: source_size must be non-negative'));
+      Exit;
+    end;
 
-  bound := mz_compressBound(mz_ulong(source_size));
-  Result := JS_NewInt64(ctx, cint64(bound));
+    bound := mz_compressBound(mz_ulong(source_size));
+    Result := JS_NewInt64(ctx, cint64(bound));
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('compressBound: ' + E.Message));
+  end;
 end;
 
 // Register compression helper functions to JavaScript global object

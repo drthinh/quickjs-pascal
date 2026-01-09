@@ -277,13 +277,14 @@ var
   tmpBuf: array[0..8191] of Byte;
   hdrList: TStringList;
 begin
-  Result := JS_EXCEPTION;
+  try
+    Result := JS_EXCEPTION;
 
-  if argc < 2 then
-  begin
-    JS_ThrowTypeError(ctx, PChar('HttpRequest(method, url, headers?, body?, options?)'));
-    Exit;
-  end;
+    if argc < 2 then
+    begin
+      JS_ThrowTypeError(ctx, PChar('HttpRequest(method, url, headers?, body?, options?)'));
+      Exit;
+    end;
 
   method := JsValueToString(ctx, argv[0]);
   url := JsValueToString(ctx, argv[1]);
@@ -336,9 +337,9 @@ begin
   request := nil;
   rawHeadersBuf := nil;
   hdrList := nil;
-  ms := TMemoryStream.Create;
-  try
-    fullUrlW := UTF8Decode(url);
+    ms := TMemoryStream.Create;
+    try
+      fullUrlW := UTF8Decode(url);
     FillChar(uc, SizeOf(uc), 0);
     uc.dwStructSize := SizeOf(uc);
     uc.lpszHostName := nil;
@@ -558,17 +559,23 @@ begin
         JS_DefinePropertyValueStr(ctx, obj, PChar('bodyText'), JS_NewString(ctx, PChar('')), JS_PROP_C_W_E);
     end;
 
-    Result := obj;
-  finally
-    if hdrList <> nil then
-      hdrList.Free;
-    ms.Free;
-    if request <> nil then
-      WinHttpCloseHandle(request);
-    if connect <> nil then
-      WinHttpCloseHandle(connect);
-    if session <> nil then
-      WinHttpCloseHandle(session);
+      Result := obj;
+    finally
+      if hdrList <> nil then
+        hdrList.Free;
+      ms.Free;
+      if request <> nil then
+        WinHttpCloseHandle(request);
+      if connect <> nil then
+        WinHttpCloseHandle(connect);
+      if session <> nil then
+        WinHttpCloseHandle(session);
+    end;
+  except
+    on E: Exception do
+    begin
+      Result := JS_ThrowPlainError(ctx, PChar('net:http_helpers:HttpRequest: ' + E.Message));
+    end;
   end;
 end;
 

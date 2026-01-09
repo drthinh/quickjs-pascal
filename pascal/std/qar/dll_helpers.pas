@@ -122,52 +122,60 @@ var
   lib_handle: {$IFDEF WINDOWS}THandle{$ELSE}Pointer{$ENDIF};
   lib_info: PDynamicLibraryHandle;
 begin
-  if argc < 1 then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('LoadDLL expects 1 argument: library_filename'));
-    Exit;
-  end;
+  try
+    if argc < 1 then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('LoadDLL expects 1 argument: library_filename'));
+      Exit;
+    end;
 
-  lib_filename := JS_ToCString(ctx, argv[0]);
-  if lib_filename = nil then
-  begin
-    Result := JS_EXCEPTION;
-    Exit;
-  end;
+    if LoadedDynamicLibraries = nil then
+      LoadedDynamicLibraries := TStringList.Create;
 
-  lib_filename_str := string(lib_filename);
-  JS_FreeCString(ctx, lib_filename);
+    lib_filename := JS_ToCString(ctx, argv[0]);
+    if lib_filename = nil then
+    begin
+      Result := JS_EXCEPTION;
+      Exit;
+    end;
 
-  // Check if already loaded
-  if LoadedDynamicLibraries.IndexOf(lib_filename_str) >= 0 then
-  begin
-    Result := JS_NewString(ctx, PChar(lib_filename_str));
-    Exit;
-  end;
+    lib_filename_str := string(lib_filename);
+    JS_FreeCString(ctx, lib_filename);
 
-  // Load dynamic library
-  lib_handle := LoadDLL(lib_filename_str);
-  {$IFDEF WINDOWS}
-  if lib_handle = 0 then
-  {$ELSE}
-  if lib_handle = nil then
-  {$ENDIF}
-  begin
+    // Check if already loaded
+    if LoadedDynamicLibraries.IndexOf(lib_filename_str) >= 0 then
+    begin
+      Result := JS_NewString(ctx, PChar(lib_filename_str));
+      Exit;
+    end;
+
+    // Load dynamic library
+    lib_handle := LoadDLL(lib_filename_str);
     {$IFDEF WINDOWS}
-    Result := JS_ThrowTypeError(ctx, PChar('Failed to load library: ' + lib_filename_str + ' (Error: ' + IntToStr(GetLastError) + ')'));
+    if lib_handle = 0 then
     {$ELSE}
-    Result := JS_ThrowTypeError(ctx, PChar('Failed to load library: ' + lib_filename_str + ' (Error: ' + string(dlerror) + ')'));
+    if lib_handle = nil then
     {$ENDIF}
-    Exit;
+    begin
+      {$IFDEF WINDOWS}
+      Result := JS_ThrowTypeError(ctx, PChar('Failed to load library: ' + lib_filename_str + ' (Error: ' + IntToStr(GetLastError) + ')'));
+      {$ELSE}
+      Result := JS_ThrowTypeError(ctx, PChar('Failed to load library: ' + lib_filename_str + ' (Error: ' + string(dlerror) + ')'));
+      {$ENDIF}
+      Exit;
+    end;
+
+    // Store handle
+    New(lib_info);
+    lib_info^.handle := lib_handle;
+    lib_info^.filename := lib_filename_str;
+    LoadedDynamicLibraries.AddObject(lib_filename_str, TObject(lib_info));
+
+    Result := JS_NewString(ctx, PChar(lib_filename_str));
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:dll:LoadDLL: ' + E.Message));
   end;
-
-  // Store handle
-  New(lib_info);
-  lib_info^.handle := lib_handle;
-  lib_info^.filename := lib_filename_str;
-  LoadedDynamicLibraries.AddObject(lib_filename_str, TObject(lib_info));
-
-  Result := JS_NewString(ctx, PChar(lib_filename_str));
 end;
 
 function js_load_library_auto(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
@@ -180,24 +188,25 @@ var
   i: integer;
   candidates: array of string;
 begin
-  if argc < 1 then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('LoadLib expects at least 1 argument: filename (.qar/.dll/.so/.dylib)'));
-    Exit;
-  end;
+  try
+    if argc < 1 then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('LoadLib expects at least 1 argument: filename (.qar/.dll/.so/.dylib)'));
+      Exit;
+    end;
 
-  filename := JS_ToCString(ctx, argv[0]);
-  if filename = nil then
-  begin
-    Result := JS_EXCEPTION;
-    Exit;
-  end;
+    filename := JS_ToCString(ctx, argv[0]);
+    if filename = nil then
+    begin
+      Result := JS_EXCEPTION;
+      Exit;
+    end;
 
-  filename_str := string(filename);
-  JS_FreeCString(ctx, filename);
+    filename_str := string(filename);
+    JS_FreeCString(ctx, filename);
 
-  has_prefix := argc >= 2;
-  ext := LowerCase(ExtractFileExt(filename_str));
+    has_prefix := argc >= 2;
+    ext := LowerCase(ExtractFileExt(filename_str));
 
   // Build candidate list (try given name first, then inferred extensions when missing)
   SetLength(candidates, 0);
@@ -269,7 +278,11 @@ begin
   end;
 
   // Fallback: if original had known extension but failed, return last error
-  Result := JS_ThrowTypeError(ctx, PChar('LoadLib: failed to load as QAR or dynamic library: ' + filename_str));
+    Result := JS_ThrowTypeError(ctx, PChar('LoadLib: failed to load as QAR or dynamic library: ' + filename_str));
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:dll:LoadLib: ' + E.Message));
+  end;
 end;
 
 // Get function address from dynamic library
@@ -277,57 +290,67 @@ function js_get_proc_address(ctx: PJSContext; this_val: JSValueConst; argc: cint
 var
   lib_id, func_name: PChar;
   lib_id_str: string;
+  func_name_str: string;
   lib_info: PDynamicLibraryHandle;
   proc_addr: pointer;
   proc_addr_int: int64;
 begin
-  if argc < 2 then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('GetProcAddress expects 2 arguments: library_id, function_name'));
-    Exit;
-  end;
+  try
+    if argc < 2 then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('GetProcAddress expects 2 arguments: library_id, function_name'));
+      Exit;
+    end;
 
-  lib_id := JS_ToCString(ctx, argv[0]);
-  if lib_id = nil then
-  begin
-    Result := JS_EXCEPTION;
-    Exit;
-  end;
+    if LoadedDynamicLibraries = nil then
+      LoadedDynamicLibraries := TStringList.Create;
 
-  func_name := JS_ToCString(ctx, argv[1]);
-  if func_name = nil then
-  begin
+    lib_id := JS_ToCString(ctx, argv[0]);
+    if lib_id = nil then
+    begin
+      Result := JS_EXCEPTION;
+      Exit;
+    end;
+
+    func_name := JS_ToCString(ctx, argv[1]);
+    if func_name = nil then
+    begin
+      JS_FreeCString(ctx, lib_id);
+      Result := JS_EXCEPTION;
+      Exit;
+    end;
+
+    lib_id_str := string(lib_id);
+    func_name_str := string(func_name);
     JS_FreeCString(ctx, lib_id);
-    Result := JS_EXCEPTION;
-    Exit;
-  end;
 
-  lib_id_str := string(lib_id);
-  JS_FreeCString(ctx, lib_id);
+    // Find library handle
+    if LoadedDynamicLibraries.IndexOf(lib_id_str) < 0 then
+    begin
+      JS_FreeCString(ctx, func_name);
+      Result := JS_ThrowTypeError(ctx, PChar('Library not loaded: ' + lib_id_str));
+      Exit;
+    end;
 
-  // Find library handle
-  if LoadedDynamicLibraries.IndexOf(lib_id_str) < 0 then
-  begin
+    lib_info := PDynamicLibraryHandle(LoadedDynamicLibraries.Objects[LoadedDynamicLibraries.IndexOf(lib_id_str)]);
+
+    // Get function address
+    proc_addr := GetDynamicLibraryProcAddress(lib_info^.handle, func_name);
     JS_FreeCString(ctx, func_name);
-    Result := JS_ThrowTypeError(ctx, PChar('Library not loaded: ' + lib_id_str));
-    Exit;
+
+    if proc_addr = nil then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('Function not found in library: ' + func_name_str));
+      Exit;
+    end;
+
+    // Return address as number (can be used for calling)
+    proc_addr_int := int64(proc_addr);
+    Result := JS_NewInt64(ctx, proc_addr_int);
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:dll:GetProcAddress: ' + E.Message));
   end;
-
-  lib_info := PDynamicLibraryHandle(LoadedDynamicLibraries.Objects[LoadedDynamicLibraries.IndexOf(lib_id_str)]);
-
-  // Get function address
-  proc_addr := GetDynamicLibraryProcAddress(lib_info^.handle, func_name);
-  JS_FreeCString(ctx, func_name);
-
-  if proc_addr = nil then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('Function not found in library: ' + string(func_name)));
-    Exit;
-  end;
-
-  // Return address as number (can be used for calling)
-  proc_addr_int := int64(proc_addr);
-  Result := JS_NewInt64(ctx, proc_addr_int);
 end;
 
 // Call DLL function (supports basic scalar and pointer/string parameters)
@@ -783,35 +806,43 @@ var
   lib_info: PDynamicLibraryHandle;
   idx: integer;
 begin
-  if argc < 1 then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('FreeDLL expects 1 argument: library_id'));
-    Exit;
+  try
+    if argc < 1 then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('FreeDLL expects 1 argument: library_id'));
+      Exit;
+    end;
+
+    if LoadedDynamicLibraries = nil then
+      LoadedDynamicLibraries := TStringList.Create;
+
+    lib_id := JS_ToCString(ctx, argv[0]);
+    if lib_id = nil then
+    begin
+      Result := JS_EXCEPTION;
+      Exit;
+    end;
+
+    lib_id_str := string(lib_id);
+    JS_FreeCString(ctx, lib_id);
+
+    idx := LoadedDynamicLibraries.IndexOf(lib_id_str);
+    if idx < 0 then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('Library not loaded: ' + lib_id_str));
+      Exit;
+    end;
+
+    lib_info := PDynamicLibraryHandle(LoadedDynamicLibraries.Objects[idx]);
+    FreeDLL(lib_info^.handle);
+    Dispose(lib_info);
+    LoadedDynamicLibraries.Delete(idx);
+
+    Result := JS_UNDEFINED;
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:dll:FreeDLL: ' + E.Message));
   end;
-
-  lib_id := JS_ToCString(ctx, argv[0]);
-  if lib_id = nil then
-  begin
-    Result := JS_EXCEPTION;
-    Exit;
-  end;
-
-  lib_id_str := string(lib_id);
-  JS_FreeCString(ctx, lib_id);
-
-  idx := LoadedDynamicLibraries.IndexOf(lib_id_str);
-  if idx < 0 then
-  begin
-    Result := JS_ThrowTypeError(ctx, PChar('Library not loaded: ' + lib_id_str));
-    Exit;
-  end;
-
-  lib_info := PDynamicLibraryHandle(LoadedDynamicLibraries.Objects[idx]);
-  FreeDLL(lib_info^.handle);
-  Dispose(lib_info);
-  LoadedDynamicLibraries.Delete(idx);
-
-  Result := JS_UNDEFINED;
 end;
 
 // Register DLL helper functions to JavaScript global object

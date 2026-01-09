@@ -3217,6 +3217,35 @@ begin
   if qjs_log.DebugLevel > 1 then
     DumpRuntimeMemoryUsageToConsole(rt);
 
+  try
+    file_content :=
+      'import * as rt from ''qjsp:runtime/index.js'';' + LineEnding +
+      'if (rt && typeof rt.shutdown === ''function'') rt.shutdown();' + LineEnding;
+
+    result_val := JS_Eval(ctx,
+      PChar(file_content),
+      QWord(Length(file_content)),
+      PChar('<stdjs_shutdown>'),
+      JS_EVAL_TYPE_MODULE);
+
+    if JS_IsException(result_val) <> 0 then
+    begin
+      if qjs_log.DebugLevel > 0 then
+        js_std_dump_error(ctx);
+      JS_FreeValue(ctx, result_val);
+    end
+    else
+    begin
+      JS_FreeValue(ctx, result_val);
+      pending_ctx := nil;
+      while JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx) > 0 do
+      begin
+      end;
+    end;
+  except
+    // ignore
+  end;
+
   js_std_free_handlers(rt);
   JS_FreeContext(ctx);
   JS_FreeRuntime(rt);

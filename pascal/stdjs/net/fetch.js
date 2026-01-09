@@ -1,10 +1,11 @@
 import { toU8 } from "qjsp:util/bytes.js";
 import { URL } from "qjsp:url/url.js";
+import { acquirePump, releasePump } from "qjsp:runtime/pump.js";
 
 function _normalizeHeaders(h) {
   if (h === void 0 || h === null) return void 0;
   if (Array.isArray(h)) return h;
-  if (typeof h !== "object") throw new TypeError("headers must be object or array");
+  if (typeof h !== "object") throw new TypeError("net:fetch.fetch: headers must be object or array");
   return Object.entries(h);
 }
 
@@ -37,33 +38,6 @@ export class Response {
   }
 }
 
-let _httpPumpTimer = null;
-let _httpPending = 0;
-
-function _ensureHttpPump() {
-  if (_httpPumpTimer != null) return;
-  if (typeof globalThis.PumpHttpRequests !== "function") return;
-  if (typeof globalThis.setInterval !== "function") return;
-
-  _httpPumpTimer = setInterval(() => {
-    try {
-      globalThis.PumpHttpRequests();
-    } catch (e) {
-    }
-  }, 10);
-}
-
-function _releaseHttpPump() {
-  if (_httpPending > 0) return;
-  if (_httpPumpTimer == null) return;
-  if (typeof globalThis.clearInterval !== "function") return;
-  try {
-    clearInterval(_httpPumpTimer);
-  } catch (e) {
-  }
-  _httpPumpTimer = null;
-}
-
 export function fetch(input, init) {
   const u = (input instanceof URL) ? input.toString() : String(input);
   const method = init && init.method ? String(init.method) : "GET";
@@ -78,8 +52,14 @@ export function fetch(input, init) {
 
   // Prefer real async primitive when available
   if (typeof globalThis.HttpRequestAsync === "function") {
-    _ensureHttpPump();
-    _httpPending++;
+    acquirePump("net:http", () => {
+      if (typeof globalThis.PumpHttpRequests !== "function") return;
+      try {
+        globalThis.PumpHttpRequests();
+      } catch (e) {
+      }
+    }, 10);
+
     return globalThis.HttpRequestAsync(method, u, headers, body, nativeOpts)
       .then(
         (r) => {
@@ -92,13 +72,11 @@ export function fetch(input, init) {
       )
       .then(
         (v) => {
-          _httpPending--;
-          _releaseHttpPump();
+          releasePump("net:http");
           return v;
         },
         (e) => {
-          _httpPending--;
-          _releaseHttpPump();
+          releasePump("net:http");
           throw e;
         }
       );
@@ -106,7 +84,7 @@ export function fetch(input, init) {
 
   // Sync fallback
   if (typeof globalThis.HttpRequest !== "function") {
-    return Promise.reject(new Error("HttpRequest/HttpRequestAsync is not available (http_helpers not registered)"));
+    return Promise.reject(new Error("net:fetch.fetch: HttpRequest/HttpRequestAsync is not available (http_helpers not registered)"));
   }
 
   const r = globalThis.HttpRequest(method, u, headers, body, nativeOpts);

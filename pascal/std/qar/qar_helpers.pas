@@ -95,9 +95,10 @@ var
   eval_flags: cint;
   m: PJSModuleDef;
 begin
-  Result := nil;
-  if module_name = '' then
-    Exit;
+  try
+    Result := nil;
+    if module_name = '' then
+      Exit;
 
   requestedPrefix := '';
   nameNoPrefix := module_name;
@@ -145,6 +146,14 @@ begin
     JS_FreeValue(ctx, obj);
     Result := m;
     Exit;
+  end;
+  except
+    on E: Exception do
+    begin
+      JS_ThrowReferenceError(ctx, PChar('qar:TryLoadModule: ' + E.Message));
+      Result := nil;
+      Exit;
+    end;
   end;
 end;
 
@@ -220,6 +229,7 @@ var
   search_paths: string;
   prefix_str: string;
 begin
+  try
   // Debug: function được gọi
   if qjs_log.DebugLevel > 0 then
   begin
@@ -348,6 +358,10 @@ begin
     Result := JS_ThrowTypeError(ctx, PChar('Failed to register QAR file'))
   else
     Result := JS_UNDEFINED;
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:LoadLibrary: ' + E.Message));
+  end;
 end;
 
 // Helper function to get QAR info from JavaScript
@@ -366,6 +380,7 @@ var
   manifest: PChar;
   version: PChar;
 begin
+  try
   if argc < 1 then
   begin
     Result := JS_ThrowTypeError(ctx, PChar('GetQarInfo expects 1 argument'));
@@ -472,6 +487,10 @@ begin
       Result := JS_NewString(ctx, PChar('[object Object]'));
     end;
   end;
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:GetQarInfo: ' + E.Message));
+  end;
 end;
 
 // Helper function to execute QAR entry from JavaScript
@@ -486,6 +505,7 @@ var
   obj: JSValue;
   eval_flags: cint;
 begin
+  try
   if argc < 2 then
   begin
     Result := JS_ThrowTypeError(ctx, PChar('ExecuteQarEntry expects 2 arguments: filename and entryPath'));
@@ -594,6 +614,10 @@ begin
   end;
 
   qar_close(qar);
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:ExecuteQarEntry: ' + E.Message));
+  end;
 end;
 
 // Helper function to get asset payload as ArrayBuffer
@@ -606,6 +630,7 @@ var
   source_len: csize_t;
   source: Pcuint8;
 begin
+  try
   if argc < 2 then
   begin
     Result := JS_ThrowTypeError(ctx, PChar('GetQarAsset expects 2 arguments: filename and entryPath'));
@@ -670,6 +695,10 @@ begin
 
   Result := JS_NewArrayBufferCopy(ctx, source, csize_t(source_len));
   qar_close(qar);
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:GetQarAsset: ' + E.Message));
+  end;
 end;
 
 // Helper function to build QAR from JavaScript
@@ -685,6 +714,7 @@ var
   item_str: PChar;
   ret: cint;
 begin
+  try
   if argc < 2 then
   begin
     Result := JS_ThrowTypeError(ctx, PChar('BuildQar expects 2 arguments: outputFile and inputFiles (string or array)'));
@@ -809,6 +839,10 @@ begin
   begin
     Result := JS_NewBool(ctx, 1);
   end;
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:BuildQar: ' + E.Message));
+  end;
 end;
 
 // Custom module loader with fallback path resolution
@@ -824,6 +858,7 @@ var
   basename: string;
   last_slash: integer;
 begin
+  try
   module_name_str := string(module_name);
 
   if qjs_log.DebugLevel > 1 then
@@ -879,6 +914,13 @@ begin
   
   // Not found with any variation
   Result := nil;
+  except
+    on E: Exception do
+    begin
+      JS_ThrowReferenceError(ctx, PChar('qar:module_loader: ' + E.Message));
+      Result := nil;
+    end;
+  end;
 end;
 
 // Register QAR helper functions to JavaScript global object

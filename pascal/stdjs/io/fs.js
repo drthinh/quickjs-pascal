@@ -3,6 +3,7 @@ import * as os from "qjs:os";
 import { toU8 } from "qjsp:util/bytes.js";
 import * as path from "qjsp:io/path.js";
 import * as system from "qjsp:os/system.js";
+import { acquirePump, releasePump } from "qjsp:runtime/pump.js";
 
 export function exists(path) {
   const [st, err] = os.stat(String(path));
@@ -365,15 +366,14 @@ export async function withTempDir(fn, opts) {
     }
   }
 }
-
-let _watchPumpTimer = null;
 const _watchCallbacks = new Map();
+let _watchPumpAcquired = false;
 
 function _ensureWatchPump() {
-  if (_watchPumpTimer != null) return;
+  if (_watchPumpAcquired) return;
   if (typeof globalThis.PumpWatchEvents !== "function") return;
 
-  _watchPumpTimer = setInterval(() => {
+  acquirePump("io:watch", () => {
     let events;
     try {
       events = globalThis.PumpWatchEvents();
@@ -390,6 +390,8 @@ function _ensureWatchPump() {
       }
     }
   }, 50);
+
+  _watchPumpAcquired = true;
 }
 
 export function watch(dir, cb, opts) {
@@ -416,6 +418,11 @@ export function watch(dir, cb, opts) {
       try {
         globalThis.CloseWatch(id);
       } catch (e) {
+      }
+
+      if (_watchCallbacks.size === 0) {
+        releasePump("io:watch");
+        _watchPumpAcquired = false;
       }
     },
   };

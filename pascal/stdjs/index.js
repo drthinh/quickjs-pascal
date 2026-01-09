@@ -1,5 +1,11 @@
 export { installTextEncoding } from "qjsp:polyfills/text_encoding.js";
 export { installRuntimeGlobals } from "qjsp:runtime/globals.js";
+export * as runtime from "qjsp:runtime/index.js";
+
+export { Files } from "qjsp:io/Files.js";
+export { Paths } from "qjsp:io/Paths.js";
+export { URL, URLSearchParams } from "qjsp:url/url.js";
+export { Http } from "qjsp:net/HttpFacade.js";
 
 export * as util from "qjsp:util/index.js";
 

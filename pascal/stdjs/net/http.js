@@ -3,13 +3,13 @@ import { toU8 } from "qjsp:util/bytes.js";
 function headersToPairs(headers) {
   if (headers === void 0 || headers === null) return void 0;
   if (Array.isArray(headers)) return headers;
-  if (typeof headers !== "object") throw new TypeError("headers must be object or array");
+  if (typeof headers !== "object") throw new TypeError("net:http.request: headers must be object or array");
   return Object.entries(headers);
 }
 
 function normalizeOptions(options) {
   if (options === void 0 || options === null) return void 0;
-  if (typeof options !== "object") throw new TypeError("options must be object");
+  if (typeof options !== "object") throw new TypeError("net:http.request: options must be object");
   return options;
 }
 
@@ -23,7 +23,7 @@ export function request(method, url, options) {
 
   // Global function injected by Pascal binding
   if (typeof globalThis.HttpRequest !== "function") {
-    throw new Error("HttpRequest is not available (http_helpers not registered)");
+    throw new Error("net:http.request: HttpRequest is not available (http_helpers not registered)");
   }
 
   const respType = options && options.responseType;
@@ -39,8 +39,11 @@ export function request(method, url, options) {
   const u8 = toU8(bodyAb);
   const res = {
     status: r.status,
+    ok: r.status >= 200 && r.status < 300,
+    url,
     headers: r.headers || {},
     body: u8,
+    arrayBuffer: () => Promise.resolve(u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)),
     text: () => {
       if (r.bodyText !== void 0) return String(r.bodyText);
       return new TextDecoder().decode(u8);

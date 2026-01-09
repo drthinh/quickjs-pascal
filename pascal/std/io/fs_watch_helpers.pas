@@ -236,8 +236,9 @@ var
   h: THandle;
   wptr: PWatch;
 begin
-  if argc < 1 then
-    Exit(JS_ThrowTypeError(ctx, PChar('WatchDir expects 1 argument: dir')));
+  try
+    if argc < 1 then
+      Exit(JS_ThrowTypeError(ctx, PChar('WatchDir expects 1 argument: dir')));
 
   dirC := JS_ToCString(ctx, argv[0]);
   if dirC = nil then
@@ -276,7 +277,13 @@ begin
     Watches := TList.Create;
   Watches.Add(wptr);
 
-  Result := JS_NewInt32(ctx, wptr^.id);
+    Result := JS_NewInt32(ctx, wptr^.id);
+  except
+    on E: Exception do
+    begin
+      Result := JS_ThrowPlainError(ctx, PChar('fs_watch:WatchDir: ' + E.Message));
+    end;
+  end;
 end;
 
 function js_close_watch(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
@@ -284,8 +291,9 @@ var
   id: cint;
   w: PWatch;
 begin
-  if argc < 1 then
-    Exit(JS_ThrowTypeError(ctx, PChar('CloseWatch expects 1 argument: id')));
+  try
+    if argc < 1 then
+      Exit(JS_ThrowTypeError(ctx, PChar('CloseWatch expects 1 argument: id')));
 
   if JS_ToInt32(ctx, @id, argv[0]) <> 0 then
     Exit(JS_EXCEPTION);
@@ -298,7 +306,13 @@ begin
   RemoveWatch(w);
   Dispose(w);
 
-  Result := JS_UNDEFINED;
+    Result := JS_UNDEFINED;
+  except
+    on E: Exception do
+    begin
+      Result := JS_ThrowPlainError(ctx, PChar('fs_watch:CloseWatch: ' + E.Message));
+    end;
+  end;
 end;
 
 function js_pump_watch_events(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
@@ -309,8 +323,9 @@ var
   o: JSValue;
   actionStr: PChar;
 begin
-  evs := QueueDrain;
-  arr := JS_NewArray(ctx);
+  try
+    evs := QueueDrain;
+    arr := JS_NewArray(ctx);
 
   for i := 0 to High(evs) do
   begin
@@ -332,7 +347,13 @@ begin
     JS_SetPropertyUint32(ctx, arr, cuint32(i), o);
   end;
 
-  Result := arr;
+    Result := arr;
+  except
+    on E: Exception do
+    begin
+      Result := JS_ThrowPlainError(ctx, PChar('fs_watch:PumpWatchEvents: ' + E.Message));
+    end;
+  end;
 end;
 
 procedure RegisterFsWatchHelpers(ctx: PJSContext);
