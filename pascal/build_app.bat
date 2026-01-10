@@ -2,7 +2,7 @@
 setlocal
 
 set "FPC_COMMON=-B -Mobjfpc -Scghi -O2 -Xs -XX -l -vewnhibq"
-set "FPC_UNITS=-Fu.\std -Fu.\std\qar -Fu.\std\platform -Fu.\std\config -Fu.\std\io -Fu.\std\log -Fu.\std\net -Fu.\app"
+set "FPC_UNITS=-Fu.\std -Fu.\std\qar -Fu.\std\crypto -Fu.\std\platform -Fu.\std\config -Fu.\std\io -Fu.\std\log -Fu.\std\net -Fu.\app"
 set "FPC_OUT=-FE.\app"
 
 set "TARGET=%~1"

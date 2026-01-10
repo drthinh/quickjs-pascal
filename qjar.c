@@ -1,4 +1,5 @@
 /*
+ * Deprecated => removed from project
  * QuickJS Archive (QAR) Packager
  * 
  * Creates QAR files containing compiled bytecode, source code, and manifest

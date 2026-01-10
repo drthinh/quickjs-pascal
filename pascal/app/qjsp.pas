@@ -6,6 +6,8 @@ uses
   SysUtils, Classes, ctypes, process,
   quickjs_types, quickjs_core, quickjs_std,
   qjs_log,
+  qcrypto_base64,
+  qcrypto_ed25519_sign,
   qar, qjsp_qar_tooling, quickjs_miniz, quickjs_debug, quickjs_memdebug,
   fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers,
@@ -663,6 +665,9 @@ var
   config_file_override: string;
   lib_add_specs: TStringList;
   lib_rm_prefixes: TStringList;
+  qar_meta: TStringList;
+  qar_created_by: string;
+  qar_tool: string;
   lib_ls_mode: boolean;
   lib_changed: boolean;
   eq_pos: SizeInt;
@@ -753,6 +758,7 @@ var
   keep_temp: boolean;
   minify_safe: boolean;
   minify_script: string;
+  qar_sign_key_file: string;
   minify_flags: array of string;
   temp_stage_dir: string;
   staged: array of string;
@@ -782,6 +788,181 @@ var
   eval_mode: boolean;
   eval_code: string;
   shellJs: string;
+  // QAR keygen
+  keygen_seed: TEd25519Seed;
+  keygen_pk: TEd25519PublicKey;
+
+{$IFDEF WINDOWS}
+type
+  NTSTATUS = LongInt;
+  ULONG = Cardinal;
+
+function BCryptGenRandom(hAlgorithm: pointer; pbBuffer: PByte; cbBuffer: ULONG; dwFlags: ULONG): NTSTATUS; stdcall; external 'bcrypt.dll';
+
+const
+  BCRYPT_USE_SYSTEM_PREFERRED_RNG = ULONG($00000002);
+{$ENDIF}
+
+function QjspGetRandomBytes(out buf: TBytes; len: Integer): boolean;
+{$IFDEF WINDOWS}
+var
+  st: NTSTATUS;
+{$ENDIF}
+begin
+  Result := False;
+  SetLength(buf, 0);
+  if len <= 0 then
+    Exit(True);
+  SetLength(buf, len);
+{$IFDEF WINDOWS}
+  st := BCryptGenRandom(nil, @buf[0], ULONG(len), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+  Result := st = 0;
+{$ELSE}
+  // Fallback (non-Windows): not implemented
+  Result := False;
+{$ENDIF}
+end;
+
+function WriteAllBytesToFile(const filename: string; const bytes: TBytes; out err: string): boolean;
+var
+  fs: TFileStream;
+begin
+  Result := False;
+  err := '';
+  try
+    fs := TFileStream.Create(filename, fmCreate);
+    try
+      if Length(bytes) > 0 then
+        fs.WriteBuffer(bytes[0], Length(bytes));
+      Result := True;
+    finally
+      fs.Free;
+    end;
+  except
+    on E: Exception do
+      err := E.Message;
+  end;
+end;
+
+function WriteAllTextToFile(const filename: string; const text: string; out err: string): boolean;
+var
+  fs: TFileStream;
+  b: TBytes;
+begin
+  Result := False;
+  err := '';
+  try
+    fs := TFileStream.Create(filename, fmCreate);
+    try
+      if text <> '' then
+      begin
+        b := BytesOf(AnsiString(text));
+        if Length(b) > 0 then
+          fs.WriteBuffer(b[0], Length(b));
+      end;
+      Result := True;
+    finally
+      fs.Free;
+    end;
+  except
+    on E: Exception do
+      err := E.Message;
+  end;
+end;
+
+procedure AppendDerLen(var outb: TBytes; len: Integer);
+var
+  n: Integer;
+  tmp: array[0..3] of Byte;
+begin
+  if len < 128 then
+  begin
+    SetLength(outb, Length(outb) + 1);
+    outb[High(outb)] := Byte(len);
+    Exit;
+  end;
+  n := 0;
+  while (len > 0) and (n < 4) do
+  begin
+    tmp[3 - n] := Byte(len and $FF);
+    len := len shr 8;
+    Inc(n);
+  end;
+  SetLength(outb, Length(outb) + 1 + n);
+  outb[Length(outb) - (1 + n)] := Byte($80 or n);
+  Move(tmp[4 - n], outb[Length(outb) - n], n);
+end;
+
+function BuildPkcs8Ed25519Pem(const seed32: TBytes): string;
+// RFC 8410 PrivateKeyInfo:
+// SEQUENCE { INTEGER 0, SEQUENCE { OID 1.3.101.112 }, OCTET STRING (OCTET STRING seed32) }
+const
+  OID_ED25519: array[0..4] of Byte = ($06, $03, $2B, $65, $70);
+var
+  der: TBytes;
+  inner: TBytes;
+  alg: TBytes;
+  pk: TBytes;
+  pkInner: TBytes;
+  total: Integer;
+  b64: string;
+  i: Integer;
+begin
+  // AlgorithmIdentifier = SEQUENCE(OID)
+  SetLength(alg, 0);
+  SetLength(alg, Length(alg) + 1);
+  alg[High(alg)] := $30;
+  AppendDerLen(alg, Length(OID_ED25519));
+  SetLength(alg, Length(alg) + Length(OID_ED25519));
+  Move(OID_ED25519[0], alg[Length(alg) - Length(OID_ED25519)], Length(OID_ED25519));
+
+  // privateKey = OCTET STRING( OCTET STRING(seed32) )
+  SetLength(pkInner, 0);
+  SetLength(pkInner, 1);
+  pkInner[0] := $04;
+  AppendDerLen(pkInner, 32);
+  SetLength(pkInner, Length(pkInner) + 32);
+  Move(seed32[0], pkInner[Length(pkInner) - 32], 32);
+
+  SetLength(pk, 0);
+  SetLength(pk, 1);
+  pk[0] := $04;
+  AppendDerLen(pk, Length(pkInner));
+  SetLength(pk, Length(pk) + Length(pkInner));
+  Move(pkInner[0], pk[Length(pk) - Length(pkInner)], Length(pkInner));
+
+  // inner = version + alg + pk
+  SetLength(inner, 0);
+  // version INTEGER 0
+  SetLength(inner, 3);
+  inner[0] := $02; inner[1] := $01; inner[2] := $00;
+  // append alg
+  total := Length(inner);
+  SetLength(inner, total + Length(alg));
+  Move(alg[0], inner[total], Length(alg));
+  // append pk
+  total := Length(inner);
+  SetLength(inner, total + Length(pk));
+  Move(pk[0], inner[total], Length(pk));
+
+  // outer SEQUENCE
+  SetLength(der, 0);
+  SetLength(der, 1);
+  der[0] := $30;
+  AppendDerLen(der, Length(inner));
+  SetLength(der, Length(der) + Length(inner));
+  Move(inner[0], der[Length(der) - Length(inner)], Length(inner));
+
+  b64 := Base64Encode(der);
+  Result := '-----BEGIN PRIVATE KEY-----' + LineEnding;
+  i := 1;
+  while i <= Length(b64) do
+  begin
+    Result := Result + Copy(b64, i, 64) + LineEnding;
+    Inc(i, 64);
+  end;
+  Result := Result + '-----END PRIVATE KEY-----' + LineEnding;
+end;
 
 // Run a JS file (non-interactive mode)
 function RunScriptFile(ctx: PJSContext; const filename: string): boolean;
@@ -959,6 +1140,11 @@ begin
   config_file_override := '';
   lib_add_specs := TStringList.Create;
   lib_rm_prefixes := TStringList.Create;
+  qar_meta := TStringList.Create;
+  qar_meta.NameValueSeparator := '=';
+  qar_meta.CaseSensitive := False;
+  qar_created_by := '';
+  qar_tool := '';
   lib_ls_mode := False;
   lib_changed := False;
 
@@ -1057,6 +1243,46 @@ begin
     begin
       build_mode := True;
     end
+    else if (ParamStr(i) = '--created-by') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing value for --created-by');
+        Halt(1);
+      end;
+      qar_created_by := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--tool') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing value for --tool');
+        Halt(1);
+      end;
+      qar_tool := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--meta') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing value for --meta (expected K=V)');
+        Halt(1);
+      end;
+      qar_meta.Add(ParamStr(i));
+    end
+    else if (ParamStr(i) = '--verify') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing value for --verify (off|warn|strict)');
+        Halt(1);
+      end;
+      qar_helpers.SetQarVerifyModeFromString(ParamStr(i));
+    end
     else if (ParamStr(i) = '-d') or (ParamStr(i) = '--debug') then
     begin
       Inc(i);
@@ -1119,6 +1345,10 @@ begin
       WriteLn('  --lib-rm PFX         Remove a library mount');
       WriteLn('  -o, --output FILE    Build QAR file from JavaScript files/directories');
       WriteLn('  -b, --build-qar      Build QAR file (same as -o)');
+      WriteLn('  --created-by STR     QAR manifest metadata: created_by');
+      WriteLn('  --tool STR           QAR manifest metadata: tool');
+      WriteLn('  --meta K=V           QAR manifest metadata: add key/value (repeatable)');
+      WriteLn('  --verify MODE        QAR verification mode: off | warn | strict (default: warn)');
       WriteLn('  -d, --debug [LEVEL]  Enable debug output (0=off, 1=basic, 2=verbose, default=1)');
       WriteLn('  -e CODE              Evaluate JavaScript CODE');
       WriteLn('  --guard MODE         REPL crash guard: strict | friendly');
@@ -1407,6 +1637,15 @@ begin
   lib_rm_prefixes.Free;
   lib_rm_prefixes := nil;
 
+  if qar_meta <> nil then
+  begin
+    // Fallback defaults for manifest metadata (only used when building QAR)
+    if qar_created_by = '' then
+      qar_created_by := GetEnvironmentVariable('USERNAME') + '@' + GetEnvironmentVariable('COMPUTERNAME');
+    if qar_tool = '' then
+      qar_tool := ExtractFileName(ParamStr(0)) + ' ' + GetAppVersion + ' (build ' + GetAppBuildDateTime + ')';
+  end;
+
   // If cat mode, print file contents and exit (before any runtime init)
   if cat_mode then
   begin
@@ -1619,12 +1858,12 @@ begin
           WriteLn('Error: Failed to prepare minified inputs');
           Halt(1);
         end;
-        if qar.BuildQar(qar_tmp_out, staged) < 0 then
+        if qar.BuildQar(qar_tmp_out, staged, '', '', qar_created_by, qar_tool, qar_meta) < 0 then
           Halt(1);
       end
       else
       begin
-        if qar.BuildQar(qar_tmp_out, [qar_temp_dir]) < 0 then
+        if qar.BuildQar(qar_tmp_out, [qar_temp_dir], '', '', qar_created_by, qar_tool, qar_meta) < 0 then
           Halt(1);
       end;
 
@@ -1824,7 +2063,7 @@ begin
           Halt(1);
         end;
         build_inputs_stage := staged;
-        if qar.BuildQar(output_file, build_inputs_stage) < 0 then
+        if qar.BuildQar(output_file, build_inputs_stage, '', '', qar_created_by, qar_tool, qar_meta) < 0 then
           Halt(1)
         else
           Halt(0);
@@ -1841,7 +2080,7 @@ begin
     end
     else
     begin
-      if qar.BuildQar(output_file, input_files) < 0 then
+      if qar.BuildQar(output_file, input_files, '', '', qar_created_by, qar_tool, qar_meta) < 0 then
         Halt(1)
       else
         Halt(0);
@@ -2057,10 +2296,20 @@ begin
           WriteLn('  .help | help');
           WriteLn('    Show this help.');
           WriteLn;
+          WriteLn('QAR security flags (CLI):');
+          WriteLn('  --verify off|warn|strict');
+          WriteLn('    Control QAR signature/hash verification when loading .qar.');
+          WriteLn('  --created-by STR / --tool STR / --meta K=V');
+          WriteLn('    Add build metadata into QAR manifest when using -o/--build-qar.');
+          WriteLn;
           WriteLn('  .load <file.js>');
           WriteLn('    Load and execute a JavaScript file.');
-          WriteLn;
           WriteLn('  .import <module> [name]');
+          WriteLn('Library management:');
+          WriteLn('  .lib ls');
+          WriteLn('    List registered libraries (mounts).');
+          WriteLn('  .lib add PFX=DIR');
+          WriteLn('    Add/update a library mount (relative to pascal_root).');
           WriteLn('    Import an ES module in MODULE mode and bind it to globalThis.');
           WriteLn('    Example: .import qjsp:sh sh');
           WriteLn('             sh.ls(".")');
@@ -2078,16 +2327,24 @@ begin
           WriteLn('  .tool [subcommand] ...      (alias of .qar)');
           WriteLn('    QAR tooling:');
           WriteLn('      info [--init-lib]       - QAR/QuickJS info');
-          WriteLn('      build <out.qar> <inputs...>');
+          WriteLn('      build <out.qar> <inputs...> [--sign-key <keyfile>]');
           WriteLn('      ls <file.qar> [prefix]  - List entries (inspect-style output)');
           WriteLn('      inspect <file.qar>      - Inspect QAR details');
           WriteLn('      cat <file.qar/entryPath>');
           WriteLn('      cat <file.qar> <entryPath> - Print embedded source/asset payload');
           WriteLn('      extract <file.qar> <out_dir> - Extract entries to directory');
-          WriteLn('      rebuild <in.qar> <out.qar>');
+          WriteLn('      rebuild <in.qar> <out.qar> [--sign-key <keyfile>]');
+          WriteLn('      keygen [<out>] [--raw64 <file>] [--pem <file>]');
           WriteLn('      code <file.qar> <entryPath> - (legacy) Print embedded source code');
           WriteLn('      version                 - QAR/QuickJS version');
           WriteLn('      help                    - This command list');
+          WriteLn;
+          WriteLn('    QAR signing:');
+          WriteLn('      - Use .qar keygen to create an Ed25519 key (raw64 or PEM PKCS#8).');
+          WriteLn('      - Use --sign-key with .qar build/rebuild to embed signature into manifest.');
+          WriteLn('      Examples:');
+          WriteLn('        .qar keygen --pem mykey.pem');
+          WriteLn('        .qar build out.qar src/ --sign-key mykey.pem');
           WriteLn;
           WriteLn('  .verify <file.qar>');
           WriteLn('    Quick compatibility check (inspect + compatibility message).');
@@ -2127,6 +2384,7 @@ begin
           WriteLn;
           WriteLn('Tips:');
           WriteLn('  - Use ".qar help" to see QAR tooling commands.');
+          WriteLn('  - Use ".qar keygen --pem mykey.pem" then "--sign-key mykey.pem" to sign QAR builds.');
           WriteLn('  - Use ".example list" to see available example test names.');
           WriteLn('  - Use ".lib list" to see registered library mounts.');
           WriteLn;
@@ -2877,7 +3135,7 @@ begin
                       Continue;
                     end;
                     build_inputs_stage := staged;
-                    if qar.BuildQar(build_output, build_inputs_stage) < 0 then
+                    if qar.BuildQar(build_output, build_inputs_stage, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file) < 0 then
                     begin
                       WriteLn('Error: Failed to build QAR file');
                       Flush(Output);
@@ -2900,7 +3158,7 @@ begin
                 end
                 else
                 begin
-                  if qar.BuildQar(build_output, build_inputs) < 0 then
+                  if qar.BuildQar(build_output, build_inputs, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file) < 0 then
                   begin
                     WriteLn('Error: Failed to build QAR file');
                     Flush(Output);
@@ -2993,15 +3251,17 @@ begin
             WriteLn('  build <out.qar> <files...>  - Create QAR from file JS/folder');
             WriteLn('  inspect <file.qar>          - Check detail file QAR');
             WriteLn('  rebuild <in.qar> <out.qar>  - Rebuild QAR');
+            WriteLn('  keygen <out> [--raw64 <file>] [--pem <file>] - Generate Ed25519 key');
             WriteLn('  code <file.qar> <entry>     - Display source code of entry');
             WriteLn('  version                     - QAR/QuickJS version');
             WriteLn('  help                        - Display help');
             WriteLn;
             WriteLn('Examples:');
             WriteLn('  .qar info --init-lib');
-            WriteLn('  .qar build output.qar src/');
+            WriteLn('  .qar keygen mykey');
+            WriteLn('  .qar build output.qar src/ --sign-key mykey.bin');
             WriteLn('  .qar inspect file.qar');
-            WriteLn('  .qar rebuild old.qar new.qar');
+            WriteLn('  .qar rebuild old.qar new.qar --sign-key mykey.pem');
             Flush(Output);
             Continue;
           end;
@@ -3015,9 +3275,131 @@ begin
             WriteLn('  build <out.qar> <files...>  - Create QAR from file JS/folder');
             WriteLn('  inspect <file.qar>          - Check detail file QAR');
             WriteLn('  rebuild <in.qar> <out.qar>  - Rebuild QAR');
+            WriteLn('  keygen <out> [--raw64 <file>] [--pem <file>] - Generate Ed25519 key');
             WriteLn('  code <file.qar> <entry>     - Display source code of entry');
             WriteLn('  version                     - QAR/QuickJS version');
             WriteLn('  help                        - Display help');
+          end
+          else if (subcmd = 'keygen') then
+          begin
+            // .qar keygen <out> [--raw64 <file>] [--pem <file>]
+            // default: <out>.bin and <out>.pem
+            // Supports:
+            // - .qar keygen mykey
+            // - .qar keygen mykey --pem hello.pem --raw64 hello.bin
+            // - .qar keygen --pem hello.pem
+            // - .qar keygen --raw64 hello.bin
+            if cmdArgs.Count < 2 then
+            begin
+              WriteLn('Usage: .qar keygen [<out>] [--raw64 <file>] [--pem <file>]');
+              Flush(Output);
+              Continue;
+            end;
+
+            qar_output := '';
+            out_path := '';
+            qar_input := '';
+
+            // If first arg after keygen is not an option, treat it as <out>
+            if (cmdArgs.Count >= 2) and (cmdArgs[1] <> '') and (Copy(cmdArgs[1], 1, 2) <> '--') then
+            begin
+              qar_output := cmdArgs[1];
+              k_qar := 2;
+            end
+            else
+              k_qar := 1;
+
+            // Parse options starting at k_qar
+            while k_qar <= cmdArgs.Count - 1 do
+            begin
+              if (cmdArgs[k_qar] = '--raw64') and (k_qar + 1 <= cmdArgs.Count - 1) then
+              begin
+                Inc(k_qar);
+                out_path := cmdArgs[k_qar];
+              end
+              else if (cmdArgs[k_qar] = '--pem') and (k_qar + 1 <= cmdArgs.Count - 1) then
+              begin
+                Inc(k_qar);
+                qar_input := cmdArgs[k_qar];
+              end
+              else if (qar_output = '') and (cmdArgs[k_qar] <> '') and (Copy(cmdArgs[k_qar], 1, 2) <> '--') then
+              begin
+                // Allow <out> to appear later (rare, but robust)
+                qar_output := cmdArgs[k_qar];
+              end;
+              Inc(k_qar);
+            end;
+
+            // If <out> not provided, derive from explicit filenames.
+            if qar_output = '' then
+            begin
+              if qar_input <> '' then
+                qar_output := ChangeFileExt(qar_input, '')
+              else if out_path <> '' then
+                qar_output := ChangeFileExt(out_path, '')
+              else
+              begin
+                WriteLn('Error: missing output name. Provide <out> or --pem/--raw64');
+                Flush(Output);
+                Continue;
+              end;
+            end;
+
+            // Defaults
+            if qar_input = '' then
+              qar_input := qar_output + '.pem';
+            if out_path = '' then
+              out_path := qar_output + '.bin';
+
+            // generate seed
+            if not QjspGetRandomBytes(qar_src_bytes, 32) then
+            begin
+              WriteLn('Error: RNG failed');
+              Flush(Output);
+              Continue;
+            end;
+
+            // derive pubkey (seed32 -> Ed25519 public key)
+            for k_qar := 0 to 31 do
+              keygen_seed[k_qar] := qar_src_bytes[k_qar];
+            if not Ed25519PublicKeyFromSeed(keygen_seed, keygen_pk) then
+            begin
+              WriteLn('Error: failed to derive public key');
+              Flush(Output);
+              Continue;
+            end;
+
+            // raw64 = seed||pubkey
+            SetLength(qar_src_bytes, 64);
+            for k_qar := 0 to 31 do
+              qar_src_bytes[k_qar] := keygen_seed[k_qar];
+            for k_qar := 0 to 31 do
+              qar_src_bytes[32 + k_qar] := keygen_pk[k_qar];
+
+            file_content := '';
+            if not WriteAllBytesToFile(out_path, qar_src_bytes, file_content) then
+            begin
+              WriteLn('Error: failed to write raw64 key: ', file_content);
+              Flush(Output);
+              Continue;
+            end;
+
+            // pem (pkcs8)
+            SetLength(qar_src_bytes, 32);
+            for k_qar := 0 to 31 do
+              qar_src_bytes[k_qar] := keygen_seed[k_qar];
+            file_content := BuildPkcs8Ed25519Pem(qar_src_bytes);
+            if not WriteAllTextToFile(qar_input, file_content, guardArg) then
+            begin
+              WriteLn('Error: failed to write PEM key: ', guardArg);
+              Flush(Output);
+              Continue;
+            end;
+
+            WriteLn('Ed25519 key generated:');
+            WriteLn('  raw64: ', out_path);
+            WriteLn('  pem:   ', qar_input);
+            Flush(Output);
           end
           else if (subcmd = 'info') then
           begin
@@ -3050,6 +3432,7 @@ begin
             keep_temp := False;
             minify_safe := False;
             minify_script := '';
+            qar_sign_key_file := '';
             SetLength(minify_flags, 0);
             SetLength(qar_inputs_list, 0);
 
@@ -3075,6 +3458,11 @@ begin
                 Inc(k_qar);
                 SetLength(minify_flags, Length(minify_flags) + 1);
                 minify_flags[Length(minify_flags) - 1] := cmdArgs[k_qar];
+              end
+              else if (cmdArgs[k_qar] = '--sign-key') and (k_qar + 1 <= cmdArgs.Count - 1) then
+              begin
+                Inc(k_qar);
+                qar_sign_key_file := cmdArgs[k_qar];
               end
               else
               begin
@@ -3133,7 +3521,7 @@ begin
                   Continue;
                 end;
                 qar_inputs_stage := staged;
-                qar_ret := qar.BuildQar(qar_output, qar_inputs_stage);
+                qar_ret := qar.BuildQar(qar_output, qar_inputs_stage, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file);
               finally
                 if temp_stage_dir <> '' then
                 begin
@@ -3146,7 +3534,7 @@ begin
               end;
             end
             else
-              qar_ret := qar.BuildQar(qar_output, qar_inputs);
+              qar_ret := qar.BuildQar(qar_output, qar_inputs, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file);
 
             if qar_ret < 0 then
               WriteLn('Error: Failed to build QAR file')
@@ -3241,7 +3629,10 @@ begin
             end;
             qar_input := cmdArgs[1];
             qar_output := cmdArgs[2];
-            qar_ret := qar.RebuildQarFile(qar_input, qar_output);
+            qar_sign_key_file := '';
+            if (cmdArgs.Count >= 5) and (cmdArgs[3] = '--sign-key') then
+              qar_sign_key_file := cmdArgs[4];
+            qar_ret := qar.RebuildQarFile(qar_input, qar_output, '', '', qar_sign_key_file);
             if qar_ret < 0 then
               WriteLn('Error: Failed to rebuild QAR file');
           end

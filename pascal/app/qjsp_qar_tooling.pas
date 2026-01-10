@@ -13,6 +13,136 @@ function QarExtractToDir(const qar_file: string; const out_dir: string; out err:
 
 implementation
 
+uses
+  fpjson, jsonparser, qar_helpers;
+
+procedure PrintVerifyInfo(const qar_file: string);
+var
+  q: PQarFile;
+  mlen: csize_t;
+  mptr: PChar;
+  mstr: UTF8String;
+  jsonData: TJSONData;
+  rootObj: TJSONObject;
+  sigPayload: TJSONData;
+  sigObjData: TJSONData;
+  sigObj: TJSONObject;
+  algData, pkData, sigData: TJSONData;
+  entriesData: TJSONData;
+  entriesArr: TJSONArray;
+  i: Integer;
+  itemObj: TJSONObject;
+  hasShaSrc, hasShaBc: Integer;
+  modeStr: string;
+begin
+  q := nil;
+  jsonData := nil;
+
+  case qar_helpers.QarVerifyMode of
+    qvmOff: modeStr := 'off';
+    qvmStrict: modeStr := 'strict';
+  else
+    modeStr := 'warn';
+  end;
+
+  WriteLn;
+  WriteLn('Verify:');
+  WriteLn('  mode: ', modeStr);
+
+  q := qar_open(PChar(qar_file));
+  if q = nil then
+  begin
+    WriteLn('  manifest: (cannot open)');
+    Exit;
+  end;
+
+  try
+    mlen := 0;
+    mptr := qar_get_manifest(q, @mlen);
+    if (mptr = nil) or (mlen = 0) then
+    begin
+      WriteLn('  manifest: (missing)');
+      Exit;
+    end;
+
+    SetString(mstr, mptr, NativeInt(mlen));
+    try
+      jsonData := GetJSON(mstr);
+    except
+      jsonData := nil;
+    end;
+
+    if (jsonData = nil) or (not (jsonData is TJSONObject)) then
+    begin
+      WriteLn('  manifest: (invalid json)');
+      Exit;
+    end;
+    rootObj := TJSONObject(jsonData);
+
+    sigPayload := rootObj.Find('sig_payload_b64');
+    if (sigPayload <> nil) and (sigPayload.JSONType = jtString) and (sigPayload.AsString <> '') then
+      WriteLn('  sig_payload_b64: present')
+    else
+      WriteLn('  sig_payload_b64: missing');
+
+    sigObjData := rootObj.Find('sig');
+    if (sigObjData <> nil) and (sigObjData is TJSONObject) then
+    begin
+      sigObj := TJSONObject(sigObjData);
+      algData := sigObj.Find('alg');
+      pkData := sigObj.Find('pubkey');
+      sigData := sigObj.Find('sig');
+
+      if (algData <> nil) and (algData.JSONType = jtString) then
+        WriteLn('  sig.alg: ', algData.AsString)
+      else
+        WriteLn('  sig.alg: (missing)');
+
+      if (pkData <> nil) and (pkData.JSONType = jtString) and (pkData.AsString <> '') then
+        WriteLn('  sig.pubkey: present')
+      else
+        WriteLn('  sig.pubkey: missing');
+
+      if (sigData <> nil) and (sigData.JSONType = jtString) and (sigData.AsString <> '') then
+        WriteLn('  sig.sig: present')
+      else
+        WriteLn('  sig.sig: missing');
+    end
+    else
+    begin
+      WriteLn('  sig: missing');
+    end;
+
+    hasShaSrc := 0;
+    hasShaBc := 0;
+    entriesData := rootObj.Find('entries');
+    if (entriesData <> nil) and (entriesData is TJSONArray) then
+    begin
+      entriesArr := TJSONArray(entriesData);
+      for i := 0 to entriesArr.Count - 1 do
+      begin
+        if not (entriesArr.Items[i] is TJSONObject) then
+          Continue;
+        itemObj := TJSONObject(entriesArr.Items[i]);
+        if (itemObj.Find('sha256_source') <> nil) and (itemObj.Get('sha256_source', '') <> '') then
+          Inc(hasShaSrc);
+        if (itemObj.Find('sha256_bytecode') <> nil) and (itemObj.Get('sha256_bytecode', '') <> '') then
+          Inc(hasShaBc);
+      end;
+      WriteLn('  entry.sha256_source: ', hasShaSrc, '/', entriesArr.Count);
+      WriteLn('  entry.sha256_bytecode: ', hasShaBc, '/', entriesArr.Count);
+    end
+    else
+    begin
+      WriteLn('  entries: (missing)');
+    end;
+  finally
+    if jsonData <> nil then
+      jsonData.Free;
+    qar_close(q);
+  end;
+end;
+
 function EnsureDirExists(const dir: string): boolean;
 begin
   if dir = '' then
@@ -87,6 +217,8 @@ begin
   inspection := qar.InspectQarFile(qar_file);
   try
     qar.PrintQarInspectionFiltered(inspection, prefix);
+    if prefix = '' then
+      PrintVerifyInfo(qar_file);
     Result := True;
   finally
     inspection.dependencies.Free;

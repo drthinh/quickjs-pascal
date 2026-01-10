@@ -14,21 +14,40 @@
  
 **VI/EN (important):** Trong repo này, QAR được implement bằng **Pascal** (`pascal/std/qar/qar.pas`, `pascal/std/qar/qar_helpers.pas`). Các ví dụ/tooling kiểu C (`qjar`, `qar.c/qar.h`, `js_register_qar_file`) là **legacy / không dùng** trong luồng hiện tại.
 
+**VI/EN (important):** `qar_tool` đã **deprecated**. Hãy dùng `qjsp` REPL với lệnh `.qar ...`.
+
 ## Tạo QAR file
  
-**VI:** Dùng CLI tool Pascal `qar_tool` để tạo QAR file.
+**VI:** Dùng `qjsp` (REPL) với lệnh `.qar build` để tạo QAR file.
  
-**EN:** Use the Pascal CLI tool `qar_tool` to build QAR files.
+**EN:** Use `qjsp` (REPL) and `.qar build` to create QAR files.
  
 ```bash
 # Single file
-qar_tool build mylib.qar src/math.js
+qjsp
+js> .qar build mylib.qar src/math.js
  
 # Multiple files
-qar_tool build mylib.qar src/math.js src/utils.js
+qjsp
+js> .qar build mylib.qar src/math.js src/utils.js
  
 # Whole directory
-qar_tool build mylib.qar src/
+qjsp
+js> .qar build mylib.qar src/
+```
+
+## Signing (Ed25519)
+
+QAR có thể nhúng chữ ký Ed25519 vào manifest, hỗ trợ key dạng:
+
+- raw64: `seed32||pubkey32` (binary)
+- PEM PKCS#8 (Ed25519)
+
+```bash
+qjsp
+js> .qar keygen mykey
+js> .qar build out.qar src/ --sign-key mykey.pem
+js> .qar inspect out.qar
 ```
 
 ## Cấu trúc QAR file
@@ -84,5 +103,5 @@ Xem `tests/test_qar.js` và `tests/qar_test_lib/` để biết ví dụ sử d�
 
 ## Notes
  
-- **VI:** Bytecode phụ thuộc phiên bản QuickJS. Dùng `qar_tool inspect` để xem version/compatibility và `qar_tool rebuild` để rebuild.
-- **EN:** Bytecode depends on the QuickJS version. Use `qar_tool inspect` to view version/compatibility and `qar_tool rebuild` to rebuild.
+- **VI:** Bytecode phụ thuộc phiên bản QuickJS. Dùng `.qar inspect` để xem version/compatibility và `.qar rebuild` để rebuild.
+- **EN:** Bytecode depends on the QuickJS version. Use `.qar inspect` to view version/compatibility and `.qar rebuild` to rebuild.

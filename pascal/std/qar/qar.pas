@@ -41,7 +41,8 @@ unit qar;
 interface
 
 uses
-  ctypes, SysUtils, Classes, quickjs_types, quickjs_core, quickjs_std, fpjson, quickjs_miniz;
+  ctypes, SysUtils, Classes, quickjs_types, quickjs_core, quickjs_std, fpjson, quickjs_miniz,
+  qcrypto_sha256, qcrypto_base64, qcrypto_ed25519_sign, qcrypto_ed25519_keyload;
 
 const
   {$IFDEF WINDOWS}
@@ -98,6 +99,8 @@ type
     bytecode_len: csize_t;
     source: Pcuint8;
     source_len: csize_t;
+    sha256_bytecode: string;
+    sha256_source: string;
     is_module: cint;     // 1 if ES module, 0 if script
     is_asset: cint;      // 1 if non-JS asset (stored in source)
     bytecode_compressed: Pcuint8;  // Compressed bytecode
@@ -139,7 +142,10 @@ function qar_get_quickjs_version(qar: PQarFile): PChar; cdecl;
 // entry_main / entry_init cho phép chỉ định entry points giống "main"/"init" trong manifest.
 // Có giá trị rỗng nếu không dùng.
 function BuildQar(const output_file: string; const input_files: array of string;
-  const entry_main: string = ''; const entry_init: string = ''): cint;
+  const entry_main: string = ''; const entry_init: string = '';
+  const created_by: string = ''; const tool: string = ''; const meta: TStrings = nil;
+  const sig_pubkey_b64: string = ''; const sig_b64: string = '';
+  const sign_key_file: string = ''): cint;
 
 // Version and information functions
 function GetQarVersion: string;
@@ -176,7 +182,8 @@ procedure PrintQarInspection(const result: TQarInspectionResult);
 procedure PrintQarInspectionFiltered(const result: TQarInspectionResult; const prefix: string);
 // entry_main / entry_init cho phép override entry_points khi rebuild (có thể rỗng để giữ nguyên).
 function RebuildQarFile(const input_qar: string; const output_qar: string;
-  const entry_main: string = ''; const entry_init: string = ''): cint;
+  const entry_main: string = ''; const entry_init: string = '';
+  const sign_key_file: string = ''): cint;
 
 implementation
 
@@ -559,6 +566,8 @@ end;
 
 procedure TQarEntryList.Add(const path, filepath: string; bytecode: Pcuint8; bytecode_len: csize_t;
                             source: Pcuint8; source_len: csize_t; is_module: cint; is_asset: cint);
+var
+  entry: PQarBuildEntry;
 begin
   if FCount >= Length(FEntries) then
     SetLength(FEntries, Length(FEntries) + 10);
@@ -569,6 +578,8 @@ begin
   FEntries[FCount].bytecode_len := bytecode_len;
   FEntries[FCount].source := source;
   FEntries[FCount].source_len := source_len;
+  FEntries[FCount].sha256_bytecode := '';
+  FEntries[FCount].sha256_source := '';
   FEntries[FCount].is_module := is_module;
   FEntries[FCount].is_asset := is_asset;
   FEntries[FCount].bytecode_compressed := nil;
@@ -1008,13 +1019,63 @@ end;
 // Write manifest as JSON
 // entry_main / entry_init dùng để tạo trường "entry_points" trong manifest nếu được thiết lập.
 procedure WriteManifest(var f: File; list: TQarEntryList; const qjs_version: string;
-  const entry_main: string; const entry_init: string);
+  const entry_main: string; const entry_init: string;
+  const created_by: string; const tool: string; const meta: TStrings;
+  const built_at: string;
+  const sig_pubkey_b64: string; const sig_b64: string);
 var
-  root, entryPoints, entryObj: TJSONObject;
+  root, entryPoints, entryObj, metaObj, sigObj: TJSONObject;
   entries: TJSONArray;
   i: integer;
   entry: PQarBuildEntry;
   manifestStr: string;
+  payload: UTF8String;
+  payloadBytes: TBytes;
+  payloadB64: string;
+
+  function EscapeLine(const s: string): string;
+  begin
+    Result := StringReplace(s, #13, '', [rfReplaceAll]);
+    Result := StringReplace(Result, #10, '\n', [rfReplaceAll]);
+  end;
+
+  function BuildSigPayload: UTF8String;
+  var
+    j: Integer;
+    e: PQarBuildEntry;
+    kind: string;
+    sb: UTF8String;
+  begin
+    sb := 'QAR-SIG-PAYLOAD\n';
+    sb := sb + 'format=qar\n';
+    sb := sb + 'manifest_version=2\n';
+    sb := sb + 'quickjs_version=' + EscapeLine(qjs_version) + '\n';
+    sb := sb + 'built_at=' + EscapeLine(built_at) + '\n';
+    sb := sb + 'created_by=' + EscapeLine(created_by) + '\n';
+    sb := sb + 'tool=' + EscapeLine(tool) + '\n';
+    if (meta <> nil) and (meta.Count > 0) then
+    begin
+      for j := 0 to meta.Count - 1 do
+        if meta.Names[j] <> '' then
+          sb := sb + 'meta.' + EscapeLine(meta.Names[j]) + '=' + EscapeLine(meta.ValueFromIndex[j]) + '\n';
+    end;
+    sb := sb + 'entries=' + IntToStr(list.Count) + '\n';
+    for j := 0 to list.Count - 1 do
+    begin
+      e := list.GetEntry(j);
+      sb := sb + 'entry.path=' + EscapeLine(e^.path) + '\n';
+      if e^.is_asset <> 0 then
+        kind := 'asset'
+      else if e^.is_module <> 0 then
+        kind := 'module'
+      else
+        kind := 'script';
+      sb := sb + 'entry.type=' + kind + '\n';
+      sb := sb + 'entry.sha256_source=' + EscapeLine(e^.sha256_source) + '\n';
+      sb := sb + 'entry.sha256_bytecode=' + EscapeLine(e^.sha256_bytecode) + '\n';
+    end;
+    Result := sb;
+  end;
 begin
   root := TJSONObject.Create;
   try
@@ -1023,6 +1084,27 @@ begin
     // Tăng version manifest lên 2 khi có hỗ trợ entry_points
     root.Add('version', 2);
     root.Add('quickjs_version', qjs_version);
+
+    // Optional build metadata
+    if created_by <> '' then
+      root.Add('created_by', created_by);
+    if tool <> '' then
+      root.Add('tool', tool);
+    root.Add('built_at', built_at);
+
+    if (meta <> nil) and (meta.Count > 0) then
+    begin
+      metaObj := TJSONObject.Create;
+      for i := 0 to meta.Count - 1 do
+      begin
+        if meta.Names[i] <> '' then
+          metaObj.Add(meta.Names[i], meta.ValueFromIndex[i]);
+      end;
+      if metaObj.Count > 0 then
+        root.Add('meta', metaObj)
+      else
+        metaObj.Free;
+    end;
 
     // Ghi thêm entry_points nếu có cấu hình
     if (entry_main <> '') or (entry_init <> '') then
@@ -1050,9 +1132,32 @@ begin
         entryObj.Add('type', 'script');
       entryObj.Add('bytecode_size', Int64(entry^.bytecode_len));
       entryObj.Add('source_size', Int64(entry^.source_len));
+      if entry^.sha256_bytecode <> '' then
+        entryObj.Add('sha256_bytecode', entry^.sha256_bytecode);
+      if entry^.sha256_source <> '' then
+        entryObj.Add('sha256_source', entry^.sha256_source);
       entries.Add(entryObj);
     end;
     root.Add('entries', entries);
+
+    // Deterministic payload for signing/verifying (base64)
+    payload := BuildSigPayload;
+    SetLength(payloadBytes, Length(payload));
+    if Length(payloadBytes) > 0 then
+      Move(payload[1], payloadBytes[0], Length(payloadBytes));
+    payloadB64 := Base64Encode(payloadBytes);
+    if payloadB64 <> '' then
+      root.Add('sig_payload_b64', payloadB64);
+
+    // Optional signature block (verify-only in loader)
+    if (sig_pubkey_b64 <> '') and (sig_b64 <> '') then
+    begin
+      sigObj := TJSONObject.Create;
+      sigObj.Add('alg', 'ed25519');
+      sigObj.Add('pubkey', sig_pubkey_b64);
+      sigObj.Add('sig', sig_b64);
+      root.Add('sig', sigObj);
+    end;
 
     // Serialize JSON (pretty format để dễ debug, nhưng parser bên C vẫn đọc bình thường)
     manifestStr := root.FormatJSON([]);
@@ -1065,7 +1170,10 @@ end;
 
 // Create QAR file
 function CreateQar(const output_file: string; list: TQarEntryList; const qjs_version: string;
-  const entry_main: string; const entry_init: string): cint;
+  const entry_main: string; const entry_init: string;
+  const created_by: string; const tool: string; const meta: TStrings;
+  const built_at: string;
+  const sig_pubkey_b64: string; const sig_b64: string): cint;
 var
   f: File;
   magic: array[0..3] of char = ('Q', 'A', 'R', #$01);
@@ -1154,7 +1262,7 @@ begin
     
     // Write manifest (kèm thông tin entry_points nếu có)
     manifest_offset := FilePos(f);
-    WriteManifest(f, list, qjs_version, entry_main, entry_init);
+    WriteManifest(f, list, qjs_version, entry_main, entry_init, created_by, tool, meta, built_at, sig_pubkey_b64, sig_b64);
     manifest_size := FilePos(f) - manifest_offset;
     
     // Update manifest offset and size
@@ -1168,7 +1276,14 @@ begin
   end;
 end;
 
- function TryLoadModuleFromOpaqueQars(ctx: PJSContext; const module_name: string; opaque: pointer): PJSModuleDef; forward;
+function Sha256HexPtr(p: Pcuint8; len: csize_t): string;
+begin
+  if (p = nil) or (len = 0) then
+    Exit('');
+  Result := Sha256DigestHex(p^, NativeUInt(len));
+end;
+
+function TryLoadModuleFromOpaqueQars(ctx: PJSContext; const module_name: string; opaque: pointer): PJSModuleDef; forward;
 
 // Custom module loader wrapper for BuildQar with fallback path resolution
 // Tries multiple path variations to handle QAR files that store only basenames
@@ -1397,7 +1512,10 @@ end;
 // Build QAR from files/directories
 // entry_main / entry_init cho phép ghi thêm entry_points vào manifest (có thể rỗng).
 function BuildQar(const output_file: string; const input_files: array of string;
-  const entry_main: string = ''; const entry_init: string = ''): cint;
+  const entry_main: string = ''; const entry_init: string = '';
+  const created_by: string = ''; const tool: string = ''; const meta: TStrings = nil;
+  const sig_pubkey_b64: string = ''; const sig_b64: string = '';
+  const sign_key_file: string = ''): cint;
 var
   list: TQarEntryList;
   rt: PJSRuntime;
@@ -1409,6 +1527,16 @@ var
   qar_files: TStringList;
   qar_file, found_qar: string;
   opaque: PBuildQarOpaque;
+  built_at: string;
+  signErr: string;
+  km: TEd25519KeyMaterial;
+  sig: TEd25519Signature;
+  payload: UTF8String;
+  payloadBytes: TBytes;
+  payloadB64: string;
+  sigPubB64: string;
+  sigB64: string;
+  sigOk: boolean;
   // Debug variables for QAR entries
   qar_debug: PQarFile;
   entry_count_debug, i_debug: cint;
@@ -1567,13 +1695,89 @@ begin
           WriteLn('Failed to compile ', entry^.filepath);
           Exit;
         end;
+
+        // Compute per-entry hashes (bytecode + source/asset payload)
+        // Assets are stored in source/source_len, with bytecode_len = 0
+        if (entry^.is_asset <> 0) then
+        begin
+          entry^.sha256_source := Sha256HexPtr(entry^.source, entry^.source_len);
+          entry^.sha256_bytecode := '';
+        end
+        else
+        begin
+          entry^.sha256_source := Sha256HexPtr(entry^.source, entry^.source_len);
+          entry^.sha256_bytecode := Sha256HexPtr(entry^.bytecode, entry^.bytecode_len);
+        end;
       end;
       
+      built_at := FormatDateTime('yyyy"-"mm"-"dd"T"hh":"nn":"ss', Now);
+
+      sigPubB64 := sig_pubkey_b64;
+      sigB64 := sig_b64;
+      if (sign_key_file <> '') and (sigPubB64 = '') and (sigB64 = '') then
+      begin
+        signErr := '';
+        if not LoadEd25519KeyFromFile(sign_key_file, km, signErr) then
+        begin
+          WriteLn('Failed to load Ed25519 key: ', signErr);
+          Exit;
+        end;
+
+        // Build the exact same payload as will be embedded in manifest
+        payload := 'QAR-SIG-PAYLOAD\n';
+        payload := payload + 'format=qar\n';
+        payload := payload + 'manifest_version=2\n';
+        payload := payload + 'quickjs_version=' + UTF8String(qjs_version) + '\n';
+        payload := payload + 'built_at=' + UTF8String(built_at) + '\n';
+        payload := payload + 'created_by=' + UTF8String(created_by) + '\n';
+        payload := payload + 'tool=' + UTF8String(tool) + '\n';
+        if (meta <> nil) and (meta.Count > 0) then
+        begin
+          for j := 0 to meta.Count - 1 do
+            if meta.Names[j] <> '' then
+              payload := payload + 'meta.' + UTF8String(meta.Names[j]) + '=' + UTF8String(meta.ValueFromIndex[j]) + '\n';
+        end;
+        payload := payload + 'entries=' + UTF8String(IntToStr(list.Count)) + '\n';
+        for j := 0 to list.Count - 1 do
+        begin
+          entry := list.GetEntry(j);
+          payload := payload + 'entry.path=' + UTF8String(entry^.path) + '\n';
+          if entry^.is_asset <> 0 then
+            payload := payload + 'entry.type=asset\n'
+          else if entry^.is_module <> 0 then
+            payload := payload + 'entry.type=module\n'
+          else
+            payload := payload + 'entry.type=script\n';
+          payload := payload + 'entry.sha256_source=' + UTF8String(entry^.sha256_source) + '\n';
+          payload := payload + 'entry.sha256_bytecode=' + UTF8String(entry^.sha256_bytecode) + '\n';
+        end;
+
+        SetLength(payloadBytes, Length(payload));
+        if Length(payloadBytes) > 0 then
+          Move(payload[1], payloadBytes[0], Length(payloadBytes));
+        payloadB64 := Base64Encode(payloadBytes);
+
+        sigOk := Ed25519Sign(payloadBytes, km.seed, km.pubkey, sig);
+        if not sigOk then
+        begin
+          WriteLn('Failed to sign Ed25519 payload');
+          Exit;
+        end;
+
+        SetLength(payloadBytes, 32);
+        Move(km.pubkey[0], payloadBytes[0], 32);
+        sigPubB64 := Base64Encode(payloadBytes);
+
+        SetLength(payloadBytes, 64);
+        Move(sig[0], payloadBytes[0], 64);
+        sigB64 := Base64Encode(payloadBytes);
+      end;
+
       // Create QAR file
       WriteLn('Creating QAR file: ', output_file);
       qjs_version := string(JS_GetVersion);
       // Truyền thêm entry_main / entry_init vào manifest
-      if CreateQar(output_file, list, qjs_version, entry_main, entry_init) < 0 then
+      if CreateQar(output_file, list, qjs_version, entry_main, entry_init, created_by, tool, meta, built_at, sigPubB64, sigB64) < 0 then
       begin
         WriteLn('Failed to create QAR file');
         Exit;
@@ -2225,7 +2429,8 @@ end;
 // entry_main / entry_init: nếu khác rỗng thì sẽ được ghi vào manifest mới.
 // Nếu rỗng, caller có thể sau này mở rộng để giữ nguyên từ manifest cũ (hiện tại: không đọc lại manifest).
 function RebuildQarFile(const input_qar: string; const output_qar: string;
-  const entry_main: string; const entry_init: string): cint;
+  const entry_main: string; const entry_init: string;
+  const sign_key_file: string): cint;
 var
   inspection: TQarInspectionResult;
   input_files: array of string;
@@ -2309,7 +2514,7 @@ begin
     // Build new QAR with current QuickJS version
     WriteLn('Rebuilding QAR file with current QuickJS version...');
     // Ghi thêm entry_points nếu caller cung cấp
-    Result := BuildQar(output_qar, input_files, entry_main, entry_init);
+    Result := BuildQar(output_qar, input_files, entry_main, entry_init, '', '', nil, '', '', sign_key_file);
     
     if Result = 0 then
       WriteLn('Successfully rebuilt QAR file: ', output_qar)

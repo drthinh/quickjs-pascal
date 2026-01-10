@@ -6,7 +6,16 @@
 
 ### 1. Tạo QAR file
 ```bash
-qar_tool build qar_test.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
+qjsp
+js> .qar build qar_test.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
+```
+
+Nếu cần ký (sign) QAR:
+
+```bash
+qjsp
+js> .qar keygen mykey
+js> .qar build qar_test.qar tests/qar_test_lib/ --sign-key mykey.pem
 ```
 
 ### 2. Viết JavaScript code

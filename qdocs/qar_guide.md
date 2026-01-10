@@ -4,22 +4,57 @@
 
 **VI/EN (important):** Trong repo này, QAR được implement bằng **Pascal** (`pascal/std/qar/qar.pas`, `pascal/std/qar/qar_helpers.pas`). Các ví dụ/tooling kiểu C (`qjar`, `qar.c/qar.h`, `js_register_qar_file`) là **legacy / không dùng** trong luồng hiện tại.
 
+**VI/EN (important):** `qar_tool` đã **deprecated**. Hãy dùng `qjsp` REPL với lệnh `.qar ...`.
+
 ### Tạo QAR file đơn giản
 ```bash
 # Tạo QAR từ một file
-qar_tool build mathlib.qar tests/qar_test_lib/math.js
+qjsp
+js> .qar build mathlib.qar tests/qar_test_lib/math.js
 
 # Tạo QAR từ nhiều files
-qar_tool build mylib.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
+qjsp
+js> .qar build mylib.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
 
 # Tạo QAR từ cả thư mục
-qar_tool build mylib.qar tests/qar_test_lib/
+qjsp
+js> .qar build mylib.qar tests/qar_test_lib/
 ```
 
 ### Kiểm tra QAR file đã tạo
 ```bash
 # Inspect QAR
-qar_tool inspect mathlib.qar
+qjsp
+js> .qar inspect mathlib.qar
+```
+
+## 1.1. Tạo key Ed25519 và ký (sign) QAR
+
+QAR hỗ trợ nhúng chữ ký Ed25519 vào manifest.
+
+### Tạo key (raw64 và PEM)
+
+```bash
+qjsp
+js> .qar keygen mykey
+Ed25519 key generated:
+  raw64: mykey.bin
+  pem:   mykey.pem
+```
+
+Hoặc chỉ định trực tiếp PEM (không cần `<out>`):
+
+```bash
+qjsp
+js> .qar keygen --pem hello.pem
+```
+
+### Ký lúc build/rebuild
+
+```bash
+qjsp
+js> .qar build out.qar src/ --sign-key mykey.pem
+js> .qar rebuild in.qar out2.qar --sign-key mykey.bin
 ```
 
 ## 2. Sử dụng trong `qjsp` (Pascal runtime) / Using in `qjsp` (Pascal runtime)

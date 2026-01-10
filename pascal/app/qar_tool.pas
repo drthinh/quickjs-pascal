@@ -1,6 +1,6 @@
 {******************************************************************************
  * QAR Tool - Standalone QAR Utility
- *
+ * Deprecated => removed
  * Chương trình độc lập để làm việc với file QAR (QuickJS Archive)
  *
  * Sử dụng:
@@ -45,6 +45,7 @@ var
   minify_script: string = '';
   minify_flags: array of string;
   temp_stage_dir: string = '';
+  sign_key_file: string = '';
   i: integer;
   cmd: string;
   output_file: string = '';
@@ -389,7 +390,7 @@ begin
   end;
 
   try
-    ret := BuildQar(output_file, build_inputs, entry_main, entry_init);
+    ret := BuildQar(output_file, build_inputs, entry_main, entry_init, '', '', nil, '', '', sign_key_file);
   finally
     if (do_minify) and (temp_stage_dir <> '') then
     begin
@@ -542,7 +543,7 @@ begin
   end;
 
   try
-    ret := qar.RebuildQarFile(input_file, output_file, entry_main, entry_init);
+    ret := qar.RebuildQarFile(input_file, output_file, entry_main, entry_init, sign_key_file);
   finally
     if (do_minify) and (temp_stage_dir <> '') then
     begin
@@ -613,6 +614,12 @@ begin
       Inc(i);
       SetLength(minify_flags, Length(minify_flags) + 1);
       minify_flags[Length(minify_flags) - 1] := ParamStr(i);
+      Inc(i);
+    end
+    else if (ParamStr(i) = '--sign-key') and (i < ParamCount) then
+    begin
+      Inc(i);
+      sign_key_file := ParamStr(i);
       Inc(i);
     end
     // Thiết lập entry main cho manifest khi build/rebuild
@@ -692,6 +699,14 @@ begin
       begin
         Inc(i);
         entry_init := ParamStr(i);
+        Inc(i);
+        Continue;
+      end;
+
+      if (ParamStr(i) = '--sign-key') and (i < ParamCount) then
+      begin
+        Inc(i);
+        sign_key_file := ParamStr(i);
         Inc(i);
         Continue;
       end;

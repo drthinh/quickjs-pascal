@@ -16,6 +16,14 @@ var
   CurrentScriptDir: string = '';
 
 type
+  TQarVerifyMode = (qvmOff, qvmWarn, qvmStrict);
+
+var
+  QarVerifyMode: TQarVerifyMode = qvmWarn;
+
+procedure SetQarVerifyModeFromString(const s: string);
+
+type
   TRegisteredQar = record
     filename: string;
     prefix: string;
@@ -49,6 +57,19 @@ procedure ExampleReadQarInfo(qar_filename: string);
 procedure ExampleExecuteQarEntry(ctx: PJSContext; qar_filename, entry_path: string);
 
 implementation
+
+procedure SetQarVerifyModeFromString(const s: string);
+var
+  v: string;
+begin
+  v := LowerCase(Trim(s));
+  if v = 'off' then
+    QarVerifyMode := qvmOff
+  else if v = 'strict' then
+    QarVerifyMode := qvmStrict
+  else
+    QarVerifyMode := qvmWarn;
+end;
 
 function QarRebuildBytecodeFromSource(ctx: PJSContext; entry: PQarEntryRead; const entry_name_for_log: string; is_module: boolean; out obj: JSValue): boolean;
 var
