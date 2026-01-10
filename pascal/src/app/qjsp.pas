@@ -660,6 +660,153 @@ end;
 type
   TReplGuardMode = (rgStrict, rgFriendly);
 
+  TReplModeConfig = record
+    Name: string;
+    ModuleName: string;
+    GlobalName: string;
+    ReplFunction: string;
+    Prompt: string;
+  end;
+
+var
+  ReplModes: array of TReplModeConfig;
+  ActiveReplMode: string;
+  ImportedReplModes: TStringList;
+
+function FindReplModeConfig(const ModeName: string; out cfg: TReplModeConfig): boolean;
+var
+  i: integer;
+begin
+  Result := False;
+  for i := 0 to High(ReplModes) do
+  begin
+    if SameText(ReplModes[i].Name, ModeName) then
+    begin
+      cfg := ReplModes[i];
+      Exit(True);
+    end;
+  end;
+end;
+
+procedure LoadReplModesFromFile(const FileName: string; DebugLevel: integer);
+var
+  json_content: string;
+  jsonData, modesData, itemData: TJSONData;
+  rootObj, modesObj, itemObj: TJSONObject;
+  i: integer;
+  key: string;
+  cfg: TReplModeConfig;
+  tmp: TJSONData;
+
+  procedure AddOrReplaceMode(const newCfg: TReplModeConfig);
+  var
+    j: integer;
+  begin
+    for j := 0 to High(ReplModes) do
+      if SameText(ReplModes[j].Name, newCfg.Name) then
+      begin
+        ReplModes[j] := newCfg;
+        Exit;
+      end;
+    SetLength(ReplModes, Length(ReplModes) + 1);
+    ReplModes[High(ReplModes)] := newCfg;
+  end;
+
+begin
+  SetLength(ReplModes, 0);
+
+  if not FileExists(FileName) then
+    Exit;
+
+  if not ReadTextFileToString(FileName, json_content) then
+    Exit;
+
+  if json_content = '' then
+    Exit;
+
+  try
+    jsonData := GetJSON(json_content);
+  except
+    on E: Exception do
+    begin
+      if DebugLevel > 0 then
+        WriteLn('[DEBUG] Failed to parse config JSON (fpjson): ', E.Message);
+      Exit;
+    end;
+  end;
+
+  try
+    if not (jsonData is TJSONObject) then
+      Exit;
+
+    rootObj := TJSONObject(jsonData);
+
+    // Legacy/single shell block -> mode "sh"
+    modesData := rootObj.Find('shell');
+    if (modesData <> nil) and (modesData is TJSONObject) then
+    begin
+      itemObj := TJSONObject(modesData);
+      cfg.Name := 'sh';
+      cfg.ModuleName := 'qjsp:sh';
+      cfg.GlobalName := 'sh';
+      cfg.ReplFunction := 'repl';
+      cfg.Prompt := 'sh> ';
+      tmp := itemObj.Find('module');
+      if (tmp <> nil) and (tmp.JSONType = jtString) then
+        cfg.ModuleName := tmp.AsString;
+      tmp := itemObj.Find('global');
+      if (tmp <> nil) and (tmp.JSONType = jtString) then
+        cfg.GlobalName := tmp.AsString;
+      tmp := itemObj.Find('replFunction');
+      if (tmp <> nil) and (tmp.JSONType = jtString) then
+        cfg.ReplFunction := tmp.AsString;
+      tmp := itemObj.Find('prompt');
+      if (tmp <> nil) and (tmp.JSONType = jtString) then
+        cfg.Prompt := tmp.AsString;
+      AddOrReplaceMode(cfg);
+    end;
+
+    // New multi-mode block
+    modesData := rootObj.Find('repl_modes');
+    if (modesData <> nil) and (modesData is TJSONObject) then
+    begin
+      modesObj := TJSONObject(modesData);
+      for i := 0 to modesObj.Count - 1 do
+      begin
+        key := modesObj.Names[i];
+        itemData := modesObj.Items[i];
+        if (itemData = nil) or not (itemData is TJSONObject) then
+          Continue;
+        itemObj := TJSONObject(itemData);
+
+        cfg.Name := key;
+        cfg.ModuleName := 'lib:' + key;
+        cfg.GlobalName := key;
+        cfg.ReplFunction := 'repl';
+        cfg.Prompt := key + '> ';
+
+        tmp := itemObj.Find('module');
+        if (tmp <> nil) and (tmp.JSONType = jtString) then
+          cfg.ModuleName := tmp.AsString;
+        tmp := itemObj.Find('global');
+        if (tmp <> nil) and (tmp.JSONType = jtString) then
+          cfg.GlobalName := tmp.AsString;
+        tmp := itemObj.Find('replFunction');
+        if (tmp <> nil) and (tmp.JSONType = jtString) then
+          cfg.ReplFunction := tmp.AsString;
+        tmp := itemObj.Find('prompt');
+        if (tmp <> nil) and (tmp.JSONType = jtString) then
+          cfg.Prompt := tmp.AsString;
+
+        AddOrReplaceMode(cfg);
+      end;
+    end;
+
+  finally
+    jsonData.Free;
+  end;
+end;
+
 // Main program
 var
   ExampleConfigs: TExampleConfigs;
@@ -679,8 +826,6 @@ var
   ctx: PJSContext;
   ReplGuardMode: TReplGuardMode;
   GuardExplicit: boolean;
-  ReplShellMode: boolean;
-  ReplShellImported: boolean;
   script: string;
   result_val: JSValue;
   run_script_mode: boolean;
@@ -790,6 +935,10 @@ var
   eval_mode: boolean;
   eval_code: string;
   shellJs: string;
+  replCfg: TReplModeConfig;
+  cmdName: string;
+  modeLine: string;
+  isOn: boolean;
   // QAR keygen
   keygen_seed: TEd25519Seed;
   keygen_pk: TEd25519PublicKey;
@@ -1187,8 +1336,9 @@ begin
   eval_code := '';
   ReplGuardMode := rgFriendly;
   GuardExplicit := False;
-  ReplShellMode := False;
-  ReplShellImported := False;
+  ActiveReplMode := '';
+  ImportedReplModes := TStringList.Create;
+  ImportedReplModes.CaseSensitive := False;
   
   // Parse command line arguments
   i := 1;
@@ -2149,6 +2299,7 @@ begin
   ApplyDebugSettings(rt);
 
   LoadQjspMountsFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
+  LoadReplModesFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
 
   // Set up module loader
   // App policy loader handles qjsp: prefix then falls back to std QAR/filesystem loader
@@ -2266,15 +2417,15 @@ begin
     WriteLn('  .example ...                - Run/manage example tests');
     WriteLn('  .debug [on|off|0|1|2]       - Toggle debug');
     WriteLn('  .guard [strict|friendly]    - REPL crash guard mode');
-    WriteLn('  .sh on|off                  - Toggle shell mode (sh> prompt)');
+    WriteLn('  .mode <name> on|off         - Toggle REPL mode (plugin-driven)');
     WriteLn('  .mem                        - Runtime memory usage');
     WriteLn('  .exit/.quit (exit/quit)     - Leave program');
 
     // Simple interactive loop
     while True do
     begin
-      if ReplShellMode then
-        Write('sh> ')
+      if (ActiveReplMode <> '') and FindReplModeConfig(ActiveReplMode, replCfg) then
+        Write(replCfg.Prompt)
       else
         Write('js> ');
       script := ReadLnUtf8;
@@ -2394,69 +2545,104 @@ begin
           Continue;
         end;
 
-        if (Copy(script, 1, 4) = '.sh ') or (script = '.sh') then
+        if (Copy(script, 1, 6) = '.mode ') or (script = '.mode') then
         begin
           cmdLine := '';
-          if Length(script) > 4 then
-            cmdLine := Trim(Copy(script, 5, Length(script)));
+          if Length(script) > 6 then
+            cmdLine := Trim(Copy(script, 7, Length(script)));
 
           if cmdLine = '' then
           begin
-            if ReplShellMode then
-              WriteLn('Shell mode: on')
+            if ActiveReplMode <> '' then
+              WriteLn('REPL mode: ', ActiveReplMode)
             else
-              WriteLn('Shell mode: off');
-            WriteLn('Usage: .sh on | off');
+              WriteLn('REPL mode: off');
+            WriteLn('Usage: .mode <name> on | off');
             Flush(Output);
             Continue;
           end;
 
-          cmdLine := LowerCase(cmdLine);
-          if cmdLine = 'on' then
-          begin
-            ReplShellMode := True;
-            WriteLn('Shell mode enabled (type ".js" to return)');
-          end
-          else if cmdLine = 'off' then
-          begin
-            ReplShellMode := False;
-            WriteLn('Shell mode disabled');
-          end
-          else
-          begin
-            WriteLn('Warning: Invalid .sh value, must be on or off');
+          cmdArgs := TStringList.Create;
+          try
+            cmdArgs.Delimiter := ' ';
+            cmdArgs.StrictDelimiter := True;
+            cmdArgs.DelimitedText := cmdLine;
+
+            if cmdArgs.Count < 2 then
+            begin
+              WriteLn('Usage: .mode <name> on | off');
+              Flush(Output);
+              Continue;
+            end;
+
+            cmdName := cmdArgs[0];
+            modeLine := LowerCase(cmdArgs[1]);
+            if (modeLine <> 'on') and (modeLine <> 'off') then
+            begin
+              WriteLn('Warning: Invalid .mode value, must be on or off');
+              Flush(Output);
+              Continue;
+            end;
+
+            isOn := modeLine = 'on';
+            if isOn then
+            begin
+              if not FindReplModeConfig(cmdName, replCfg) then
+              begin
+                WriteLn('Error: unknown REPL mode: ', cmdName);
+                Flush(Output);
+                Continue;
+              end;
+              ActiveReplMode := replCfg.Name;
+              WriteLn('REPL mode enabled: ', ActiveReplMode, ' (type ".js" to return)');
+            end
+            else
+            begin
+              ActiveReplMode := '';
+              WriteLn('REPL mode disabled');
+            end;
+          finally
+            cmdArgs.Free;
           end;
 
           Flush(Output);
           Continue;
         end;
 
-        if ReplShellMode and ((script = '.js') or (script = 'js')) then
+        if (ActiveReplMode <> '') and ((script = '.js') or (script = 'js')) then
         begin
-          ReplShellMode := False;
+          ActiveReplMode := '';
           Flush(Output);
           Continue;
         end;
 
-        if ReplShellMode then
+        if ActiveReplMode <> '' then
         begin
-          if not ReplShellImported then
+          if not FindReplModeConfig(ActiveReplMode, replCfg) then
+          begin
+            WriteLn('Error: invalid REPL mode: ', ActiveReplMode);
+            ActiveReplMode := '';
+            Flush(Output);
+            Continue;
+          end;
+
+          if ImportedReplModes.IndexOf(replCfg.Name) < 0 then
           begin
             file_content :=
-              'import * as sh from "qjsp:sh";' + LineEnding +
-              'globalThis["sh"] = sh;' + LineEnding;
+              'import * as ' + replCfg.GlobalName + ' from ' + QuotedStr(replCfg.ModuleName) + ';' + LineEnding +
+              'globalThis[' + QuotedStr(replCfg.GlobalName) + '] = ' + replCfg.GlobalName + ';' + LineEnding;
 
-            if RunEvalCode(ctx, '<repl_sh_import>', file_content) then
-              ReplShellImported := True
+            if RunEvalCode(ctx, '<repl_mode_import>', file_content) then
+              ImportedReplModes.Add(replCfg.Name)
             else
             begin
-              WriteLn('Error: failed to import qjsp:sh');
+              WriteLn('Error: failed to import ', replCfg.ModuleName);
               Flush(Output);
               Continue;
             end;
           end;
 
-          shellJs := 'sh.repl(' + QuotedStr(script) + ')';
+          shellJs := replCfg.GlobalName + '.' + replCfg.ReplFunction + '(' + QuotedStr(script) + ')';
           script := shellJs;
         end;
 

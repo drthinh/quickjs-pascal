@@ -1,6 +1,15 @@
 {
   "libraries" : {
-    "java" : "java"
+    "java" : "js/libs/java",
+    "sh" : "js/libs/sh"
+  },
+  "repl_modes" : {
+    "sh" : {
+      "module" : "lib:sh",
+      "global" : "sh",
+      "replFunction" : "repl",
+      "prompt" : "sh> "
+    }
   },
   "examples" : {
     "../tests/async_test.js" : true

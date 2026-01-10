@@ -68,10 +68,11 @@ begin
   if rel_fs <> '' then
     fs_base := IncludeTrailingPathDelimiter(fs_base) + rel_fs;
 
+  // Important: use mount_folder for the module specifier passed to QuickJS.
+  // The loader resolves paths relative to CWD; mount_prefix is only a logical key.
+  qjs_base := mount_folder;
   if rel_after_prefix <> '' then
-    qjs_base := mount_prefix + '/' + rel_after_prefix
-  else
-    qjs_base := mount_prefix;
+    qjs_base := qjs_base + '/' + rel_after_prefix;
 
   if FileExists(fs_base + '.js') then
   begin
@@ -271,10 +272,10 @@ begin
 
     // Absolute filesystem path used only for existence checks.
     mapped_name_fs := StringReplace(mapped_rel, '/', PathDelim, [rfReplaceAll]);
-    mapped_name_fs := IncludeTrailingPathDelimiter(pascal_root) + 'stdjs' + PathDelim + mapped_name_fs;
+    mapped_name_fs := IncludeTrailingPathDelimiter(pascal_root) + 'js' + PathDelim + 'runtime' + PathDelim + mapped_name_fs;
 
     // Relative POSIX path for QuickJS loader (avoid Windows drive-letter ':' in module specifiers).
-    mapped_name_qjs := 'stdjs/' + mapped_rel;
+    mapped_name_qjs := 'js/runtime/' + mapped_rel;
 
     qjs_log.DebugMsg(0, 'qjsp: map "' + module_name_str + '" -> "' + mapped_name_fs + '"');
 
@@ -285,29 +286,6 @@ begin
         SetCurrentDir(pascal_root);
       except
         // ignore
-      end;
-
-      if (g_qjsp_mounts <> nil) then
-      begin
-        slash_pos := Pos('/', mapped_rel);
-        if slash_pos > 0 then
-        begin
-          mount_prefix := Copy(mapped_rel, 1, slash_pos - 1);
-          rel_after_prefix := Copy(mapped_rel, slash_pos + 1, Length(mapped_rel));
-        end
-        else
-        begin
-          mount_prefix := mapped_rel;
-          rel_after_prefix := '';
-        end;
-
-        mount_folder := g_qjsp_mounts.Values[mount_prefix];
-        if mount_folder <> '' then
-        begin
-          Result := TryLoadFromMount(ctx, opaque, pascal_root, mount_prefix, mount_folder, rel_after_prefix);
-          if Result <> nil then
-            Exit;
-        end;
       end;
 
       // Prefer explicit file if it exists.
