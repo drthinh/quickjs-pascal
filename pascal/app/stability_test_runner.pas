@@ -43,6 +43,18 @@ var
   PassedTests: Integer = 0;
   FailedTests: Integer = 0;
 
+procedure DrainPendingJobs(rt: PJSRuntime);
+var
+  pending_ctx: PJSContext;
+begin
+  if rt = nil then
+    Exit;
+  pending_ctx := nil;
+  while JS_ExecutePendingJob(rt, @pending_ctx) > 0 do
+  begin
+  end;
+end;
+
 // Helper function to load and execute JS file
 // Returns error message in errorMsg parameter if failed
 function LoadAndExecuteJSFile(ctx: PJSContext; const filename: string; out errorMsg: string): Boolean;
@@ -52,6 +64,8 @@ var
   result_val: JSValue;
   is_exception: Boolean;
   exception_str: PChar;
+  exc_val: JSValue;
+  oldMask: TFPUExceptionMask;
 begin
   Result := False;
   errorMsg := '';
@@ -75,13 +89,20 @@ begin
       end;
       
       try
-        result_val := JS_Eval(ctx, PChar(script), QWord(Length(script)), 
-                             PChar(filename), JS_EVAL_TYPE_GLOBAL);
+        oldMask := GetExceptionMask;
+        SetExceptionMask(oldMask + [exInvalidOp, exDenormalized, exZeroDivide, exOverflow, exUnderflow, exPrecision]);
+        try
+          result_val := JS_Eval(ctx, PChar(script), QWord(Length(script)), 
+                               PChar(filename), JS_EVAL_TYPE_GLOBAL);
+        finally
+          SetExceptionMask(oldMask);
+        end;
         
         is_exception := JS_IsException(result_val) <> 0;
         if is_exception then
         begin
-          exception_str := JS_ToCString(ctx, JS_GetException(ctx));
+          exc_val := JS_GetException(ctx);
+          exception_str := JS_ToCString(ctx, exc_val);
           if exception_str <> nil then
           begin
             errorMsg := 'JavaScript exception: ' + string(exception_str);
@@ -89,10 +110,12 @@ begin
           end
           else
             errorMsg := 'JavaScript exception (unable to get message)';
+          JS_FreeValue(ctx, exc_val);
           JS_FreeValue(ctx, result_val);
           Exit;
         end;
         
+        DrainPendingJobs(JS_GetRuntime(ctx));
         JS_FreeValue(ctx, result_val);
         Result := True;
       except
@@ -216,6 +239,8 @@ begin
     
     // Run the test
     success := LoadAndExecuteJSFile(ctx, testFile, errorMsg);
+
+    DrainPendingJobs(rt);
     
     // Calculate duration before cleanup
     endTime := GetTimeMicroseconds;
@@ -276,6 +301,8 @@ begin
     if ctx <> nil then
       JS_FreeContext(ctx);
     if rt <> nil then
+      js_std_free_handlers(rt);
+    if rt <> nil then
       JS_FreeRuntime(rt);
   except
     // Ignore cleanup errors
@@ -291,6 +318,8 @@ var
   startTime, endTime: Int64;
   script: string;
   result_val: JSValue;
+  exc_val: JSValue;
+  oldMask: TFPUExceptionMask;
 begin
   Result.name := 'Memory Leak Test (' + IntToStr(iterations) + ' iterations)';
   Result.passed := False;
@@ -327,22 +356,34 @@ begin
       
       // Execute a simple script
       script := 'var x = 10 + 20; console.log("Iteration ' + IntToStr(i) + ': " + x);';
-      result_val := JS_Eval(ctx, PChar(script), Length(script), 
-                           'memory_test.js', JS_EVAL_TYPE_GLOBAL);
+      oldMask := GetExceptionMask;
+      SetExceptionMask(oldMask + [exInvalidOp, exDenormalized, exZeroDivide, exOverflow, exUnderflow, exPrecision]);
+      try
+        result_val := JS_Eval(ctx, PChar(script), Length(script), 
+                             'memory_test.js', JS_EVAL_TYPE_GLOBAL);
+      finally
+        SetExceptionMask(oldMask);
+      end;
       
       if JS_IsException(result_val) <> 0 then
       begin
+        exc_val := JS_GetException(ctx);
         Result.error := 'Exception at iteration ' + IntToStr(i);
+        JS_FreeValue(ctx, exc_val);
         JS_FreeValue(ctx, result_val);
+        DrainPendingJobs(rt);
         JS_FreeContext(ctx);
+        js_std_free_handlers(rt);
         JS_FreeRuntime(rt);
         Exit;
       end;
       
       JS_FreeValue(ctx, result_val);
+      DrainPendingJobs(rt);
       
       // Cleanup
       JS_FreeContext(ctx);
+      js_std_free_handlers(rt);
       JS_FreeRuntime(rt);
     end;
     
@@ -368,6 +409,8 @@ var
   startTime, endTime: Int64;
   script: string;
   result_val: JSValue;
+  exc_val: JSValue;
+  oldMask: TFPUExceptionMask;
 begin
   Result.name := 'Stress Test (10000 operations)';
   Result.passed := False;
@@ -408,21 +451,33 @@ begin
               '} ' +
               'console.log("Stress test completed, sum =", sum);';
     
-    result_val := JS_Eval(ctx, PChar(script), Length(script), 
-                         'stress_test.js', JS_EVAL_TYPE_GLOBAL);
+    oldMask := GetExceptionMask;
+    SetExceptionMask(oldMask + [exInvalidOp, exDenormalized, exZeroDivide, exOverflow, exUnderflow, exPrecision]);
+    try
+      result_val := JS_Eval(ctx, PChar(script), Length(script), 
+                           'stress_test.js', JS_EVAL_TYPE_GLOBAL);
+    finally
+      SetExceptionMask(oldMask);
+    end;
     
     if JS_IsException(result_val) <> 0 then
     begin
+      exc_val := JS_GetException(ctx);
       Result.error := 'Exception during stress test';
+      JS_FreeValue(ctx, exc_val);
       JS_FreeValue(ctx, result_val);
+      DrainPendingJobs(rt);
       JS_FreeContext(ctx);
+      js_std_free_handlers(rt);
       JS_FreeRuntime(rt);
       Exit;
     end;
     
     JS_FreeValue(ctx, result_val);
+    DrainPendingJobs(rt);
     
     JS_FreeContext(ctx);
+    js_std_free_handlers(rt);
     JS_FreeRuntime(rt);
     
     endTime := GetTimeMicroseconds;

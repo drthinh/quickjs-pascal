@@ -101,3 +101,41 @@ Khi QAR có chữ ký, manifest sẽ chứa:
 
 - Nếu `.qar keygen --pem hello.pem` tạo ra file tên sai: hãy update `qjsp` lên version mới nhất trong repo (đã fix parser).
 - Nếu `--sign-key` báo lỗi load key: kiểm tra file có đúng raw64 (64 bytes) hoặc PEM PKCS#8 Ed25519.
+
+## JavaScript helper APIs (options object)
+
+Ngoài REPL command `.qar ...`, `qjsp` còn expose helper functions trực tiếp trong JS (global) để bạn dùng trong console / script.
+
+### 1) Keygen
+
+```javascript
+// Create key pair files. Provide at least one of { pem, raw64 }.
+// If only pem is provided, raw64 defaults to same basename + ".bin".
+// If only raw64 is provided, pem defaults to same basename + ".pem".
+const k = QarKeygen({ pem: "hello.pem" });
+// => { raw64: "hello.bin", pem: "hello.pem" }
+```
+
+### 2) Build + sign
+
+```javascript
+BuildQar("out.qar", ["src/"], {
+  signKey: "hello.pem",
+  createdBy: "me",
+  tool: "qjsp",
+  meta: { env: "dev" }
+});
+```
+
+### 3) Rebuild + sign
+
+```javascript
+RebuildQar("in.qar", "out2.qar", { signKey: "hello.bin" });
+```
+
+### Options fields
+
+- `signKey` (string): path tới private key file (raw64 hoặc PEM PKCS#8)
+- `createdBy` (string): ghi vào manifest `created_by`
+- `tool` (string): ghi vào manifest `tool`
+- `meta` (object): `{k: v}` → được convert thành list `k=v` trong manifest

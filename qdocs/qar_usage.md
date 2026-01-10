@@ -50,6 +50,27 @@ js> .qar build out.qar src/ --sign-key mykey.pem
 js> .qar inspect out.qar
 ```
 
+## JavaScript helper APIs (inside qjsp)
+
+Trong `qjsp`, các helper sau có sẵn trong global JS environment:
+
+- `BuildQar(outFile, inputs, opts?)`
+- `RebuildQar(inFile, outFile, opts?)`
+- `QarKeygen(opts)`
+
+Ví dụ:
+
+```javascript
+// keygen
+const key = QarKeygen({ pem: 'hello.pem' });
+
+// build + sign
+BuildQar('out.qar', ['src/'], { signKey: key.pem, createdBy: 'me', tool: 'qjsp', meta: { env: 'dev' } });
+
+// rebuild + sign
+RebuildQar('out.qar', 'out2.qar', { signKey: key.raw64 });
+```
+
 ## Cấu trúc QAR file
 
 QAR file chứa:
