@@ -287,6 +287,9 @@ var
   result_val: JSValue;
   eval_flags: cint;
   script_path: string;
+  job_result: cint;
+  loop_result: cint;
+  pending_ctx: PJSContext;
 begin
   Result := False;
 
@@ -319,12 +322,43 @@ begin
   begin
     WriteLn('Error executing file: ', script_path);
     js_std_dump_error(ctx);
+    JS_FreeValue(ctx, result_val);
     Result := False;
   end
   else
   begin
+    job_result := 0;
+    pending_ctx := nil;
+    repeat
+      job_result := JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx);
+      if job_result < 0 then
+      begin
+        if pending_ctx <> nil then
+          js_std_dump_error(pending_ctx)
+        else
+          js_std_dump_error(ctx);
+        Break;
+      end;
+    until job_result = 0;
+
+    if job_result >= 0 then
+    begin
+      loop_result := js_std_loop(ctx);
+      if loop_result <> 0 then
+      begin
+        js_std_dump_error(ctx);
+        Result := False;
+      end
+      else
+      begin
+        Flush(Output);
+        Result := True;
+      end;
+    end
+    else
+      Result := False;
+
     JS_FreeValue(ctx, result_val);
-    Result := True;
   end;
 end;
 
@@ -2918,7 +2952,8 @@ begin
                   begin
                     // Flush output to ensure all console.log output is displayed
                     Flush(Output);
-                    WriteLn('File loaded successfully');
+                    if qjs_log.DebugLevel > 0 then
+                      WriteLn('File loaded successfully');
                   end;
                   // Flush again after execution
                   Flush(Output);
