@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

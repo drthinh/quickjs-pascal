@@ -253,8 +253,8 @@ function JS_GetOwnPropertyNames(ctx: PJSContext; ptab: PPJSPropertyEnum; plen: P
 function JS_GetOwnProperty(ctx: PJSContext; desc: pointer; obj: JSValueConst; prop: JSAtom): cint; cdecl; external libqjs;
 
 // Array operations
-function JS_GetLength(ctx: PJSContext; obj: JSValueConst): cint; cdecl; external libqjs;
-function JS_SetLength(ctx: PJSContext; obj: JSValueConst; len: cuint32): cint; cdecl; external libqjs;
+function JS_GetLength(ctx: PJSContext; obj: JSValueConst; pres: Pcint64): cint; cdecl; external libqjs;
+function JS_SetLength(ctx: PJSContext; obj: JSValueConst; len: cint64): cint; cdecl; external libqjs;
 
 // ArrayBuffer operations
 function JS_NewArrayBuffer(ctx: PJSContext; buf: Pcuint8; len: csize_t; free_func: JSFreeArrayBufferDataFunc; opaque: pointer; is_shared: cint): JSValue; cdecl; external libqjs;

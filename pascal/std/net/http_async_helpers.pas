@@ -116,6 +116,7 @@ end;
 function GetHeadersFromJs(ctx: PJSContext; v: JSValueConst; out headers: THttpHeaders): Boolean;
 var
   len: cint;
+  len64: cint64;
   i: cint;
   pair: JSValue;
   keyVal: JSValue;
@@ -135,9 +136,12 @@ begin
   if JS_IsArray(ctx, v) = 0 then
     Exit;
 
-  len := JS_GetLength(ctx, v);
-  if len < 0 then
+  len64 := 0;
+  if JS_GetLength(ctx, v, @len64) <> 0 then
     Exit;
+  if (len64 < 0) or (len64 > High(cint)) then
+    Exit;
+  len := cint(len64);
 
   SetLength(headers, len);
   for i := 0 to len - 1 do

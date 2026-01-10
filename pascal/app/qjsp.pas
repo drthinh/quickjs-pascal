@@ -15,7 +15,8 @@ uses
   console_utf8,
   examples_config,
   file_utils,
-  qjsp_module_loader, http_helpers, http_async_helpers, fs_watch_helpers;
+  qjsp_module_loader, http_helpers, http_async_helpers, fs_watch_helpers,
+  qjsp_zip_shim;
 
 const
   APP_AUTHOR = 'Nguyen Duc Thinh - dr.nguyenducthinh@gmail.com';
@@ -2139,6 +2140,8 @@ begin
   js_init_module_os(ctx, 'qjs:os');
   js_init_module_bjson(ctx, 'bjson');
   js_init_module_bjson(ctx, 'qjs:bjson');
+
+  RegisterZipModuleShims(ctx);
 
   // Initialize standard handlers
   js_std_init_handlers(rt);

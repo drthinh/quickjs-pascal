@@ -157,6 +157,97 @@ begin
   g_module_load_stack.Add(module_name_str);
   try
 
+  if Pos('lib:', module_name_str) = 1 then
+  begin
+    exe_dir := ExtractFilePath(ExpandFileName(ParamStr(0)));
+    pascal_root := ExpandFileName(IncludeTrailingPathDelimiter(exe_dir) + '..');
+
+    mapped_rel := Copy(module_name_str, Length('lib:') + 1, Length(module_name_str));
+    if (mapped_rel <> '') and ((mapped_rel[1] = '/') or (mapped_rel[1] = '\')) then
+      mapped_rel := Copy(mapped_rel, 2, Length(mapped_rel));
+    mapped_rel := StringReplace(mapped_rel, '\', '/', [rfReplaceAll]);
+
+    // Normalize: allow both explicit files and package dirs.
+    if (Length(mapped_rel) >= 3) and (LowerCase(Copy(mapped_rel, Length(mapped_rel) - 2, 3)) = '.js') then
+      mapped_rel := Copy(mapped_rel, 1, Length(mapped_rel) - 3);
+
+    // Safety/diagnostics: reject path traversal and suspicious names early.
+    if (Pos('..', mapped_rel) > 0) or (Pos(':', mapped_rel) > 0) then
+    begin
+      JS_ThrowReferenceError(ctx, PChar('invalid lib module path: ' + mapped_rel));
+      Result := nil;
+      Exit;
+    end;
+
+    // lib:* must be configured via mounts (config "libraries" section).
+    // lib:<name>/path maps to mount <name>=<folder>.
+    if (g_qjsp_mounts = nil) then
+    begin
+      JS_ThrowReferenceError(ctx, PChar('no library mounts configured (missing config "libraries")'));
+      Result := nil;
+      Exit;
+    end;
+
+    slash_pos := Pos('/', mapped_rel);
+    if slash_pos > 0 then
+    begin
+      mount_prefix := Copy(mapped_rel, 1, slash_pos - 1);
+      rel_after_prefix := Copy(mapped_rel, slash_pos + 1, Length(mapped_rel));
+    end
+    else
+    begin
+      mount_prefix := mapped_rel;
+      rel_after_prefix := '';
+    end;
+
+    mount_folder := g_qjsp_mounts.Values[mount_prefix];
+    if mount_folder = '' then
+    begin
+      JS_ThrowReferenceError(ctx, PChar('missing library mount: ' + mount_prefix + '=... (configure in config JSON "libraries")'));
+      Result := nil;
+      Exit;
+    end;
+
+    qjs_log.DebugMsg(0, 'lib: map "' + module_name_str + '" -> mount "' + mount_prefix + '" folder "' + mount_folder + '" rel "' + mapped_rel + '"');
+
+    // Ensure relative paths resolve regardless of caller's current directory.
+    old_dir := GetCurrentDir;
+    try
+      try
+        SetCurrentDir(pascal_root);
+      except
+        // ignore
+      end;
+
+      Result := TryLoadFromMount(ctx, opaque, pascal_root, mount_prefix, mount_folder, rel_after_prefix);
+      if Result <> nil then
+        Exit;
+
+      ex := JS_GetException(ctx);
+      JS_FreeValue(ctx, ex);
+
+      if rel_after_prefix <> '' then
+        tried_msg :=
+          'tried:' + LineEnding +
+          '  - ' + mount_prefix + '/' + rel_after_prefix + '.js' + LineEnding +
+          '  - ' + mount_prefix + '/' + rel_after_prefix + '/index.js'
+      else
+        tried_msg :=
+          'tried:' + LineEnding +
+          '  - ' + mount_prefix + '.js' + LineEnding +
+          '  - ' + mount_prefix + '/index.js';
+      JS_ThrowReferenceError(ctx, PChar('could not load lib module: ' + module_name_str + LineEnding + tried_msg));
+      Result := nil;
+    finally
+      try
+        SetCurrentDir(old_dir);
+      except
+        // ignore
+      end;
+    end;
+    Exit;
+  end;
+
   if Pos('qjsp:', module_name_str) = 1 then
   begin
     exe_dir := ExtractFilePath(ExpandFileName(ParamStr(0)));

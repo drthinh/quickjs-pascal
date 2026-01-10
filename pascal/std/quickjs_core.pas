@@ -95,8 +95,8 @@ function JS_GetOwnPropertyNames(ctx: PJSContext; ptab: PPJSPropertyEnum; plen: P
 function JS_GetOwnProperty(ctx: PJSContext; desc: pointer; obj: JSValueConst; prop: JSAtom): cint; cdecl; external libqjs;
 
 // Array helpers
-function JS_GetLength(ctx: PJSContext; obj: JSValueConst): cint; cdecl; external libqjs;
-function JS_SetLength(ctx: PJSContext; obj: JSValueConst; len: cuint32): cint; cdecl; external libqjs;
+function JS_GetLength(ctx: PJSContext; obj: JSValueConst; pres: Pcint64): cint; cdecl; external libqjs;
+function JS_SetLength(ctx: PJSContext; obj: JSValueConst; len: cint64): cint; cdecl; external libqjs;
 
 // ArrayBuffer helpers
 function JS_NewArrayBuffer(ctx: PJSContext; buf: Pcuint8; len: csize_t; free_func: JSFreeArrayBufferDataFunc; opaque: pointer; is_shared: cint): JSValue; cdecl; external libqjs;
@@ -160,6 +160,7 @@ function JS_SetConstructorBit(ctx: PJSContext; func_obj: JSValueConst; val: cint
 function JS_NewCModule(ctx: PJSContext; name_str: PChar; func: JSModuleInitFunc): PJSModuleDef; cdecl; external libqjs;
 function JS_AddModuleExport(ctx: PJSContext; m: PJSModuleDef; name_str: PChar): cint; cdecl; external libqjs;
 function JS_AddModuleExportList(ctx: PJSContext; m: PJSModuleDef; tab: pointer; len: cint): cint; cdecl; external libqjs;
+function JS_SetModuleExport(ctx: PJSContext; m: PJSModuleDef; name_str: PChar; val: JSValue): cint; cdecl; external libqjs;
 function JS_SetModuleLoaderFunc(rt: PJSRuntime; module_normalize: JSModuleNormalizeFunc; module_loader: JSModuleLoaderFunc; opaque: pointer): cint; cdecl; external libqjs;
 function JS_GetImportMeta(ctx: PJSContext; m: PJSModuleDef): JSValue; cdecl; external libqjs;
 function JS_GetModuleName(ctx: PJSContext; m: PJSModuleDef): JSValue; cdecl; external libqjs;

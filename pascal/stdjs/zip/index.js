@@ -1,4 +1,4 @@
-import * as nativeZip from "qjs:zip";
+import * as nativeZip from "qjsp:zip/native";
 
 export const open = nativeZip.open;
 export const openFile = nativeZip.openFile;

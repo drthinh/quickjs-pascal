@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"D:/Projects/quickjs/quickjs-master/master/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

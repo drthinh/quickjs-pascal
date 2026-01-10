@@ -1,3 +1,0 @@
-"C:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\qjsc.dir/objects.a
-D:\codeblocks-25.03mingw-nosetup\MinGW\bin\ar.exe qc CMakeFiles\qjsc.dir/objects.a @CMakeFiles\qjsc.dir\objects1.rsp
-D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe -Os -DNDEBUG -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables -fno-unwind-tables  -Wl,--stack,8388608 -static -static-libgcc -Wl,--whole-archive CMakeFiles\qjsc.dir/objects.a -Wl,--no-whole-archive -o qjsc.exe -Wl,--out-implib,libqjsc.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\qjsc.dir\linkLibs.rsp

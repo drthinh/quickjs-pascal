@@ -42,7 +42,8 @@ interface
 
 uses
   ctypes, SysUtils, Classes, quickjs_types, quickjs_core, quickjs_std, fpjson, zlib,
-  qcrypto_sha256, qcrypto_base64, qcrypto_ed25519_sign, qcrypto_ed25519_keyload;
+  qcrypto_sha256, qcrypto_base64, qcrypto_ed25519_sign, qcrypto_ed25519_keyload,
+  qjsp_zip_shim;
 
 const
   {$IFDEF WINDOWS}
@@ -1573,6 +1574,8 @@ begin
     js_init_module_os(ctx, 'qjs:os');
     js_init_module_bjson(ctx, 'bjson');
     js_init_module_bjson(ctx, 'qjs:bjson');
+
+    RegisterZipModuleShims(ctx);
     
     // Set up module loader with fallback (required for QAR module resolution)
     // Use wrapper to handle path mismatches (e.g., import 'qar_test_lib/math.js' but QAR has 'math.js')
