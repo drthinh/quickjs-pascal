@@ -5,7 +5,8 @@ unit qar_helpers;
 interface
 
 uses
-  SysUtils, ctypes, quickjs_types, quickjs_core, quickjs_std, qar, qjs_log;
+  SysUtils, Classes, ctypes, quickjs_types, quickjs_core, quickjs_std, qar, qjs_log,
+  qar_tooling_backend;
 
 // Type alias for QAR reading functions (from qar unit)
 type
@@ -46,6 +47,8 @@ function js_get_qar_info(ctx: PJSContext; this_val: JSValueConst; argc: cint; ar
 function js_execute_qar_entry(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
 function js_get_qar_asset(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
 function js_build_qar(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+function js_rebuild_qar(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+function js_qar_keygen(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
 function js_module_loader_wrapper(ctx: PJSContext; module_name: PChar; opaque: pointer): PJSModuleDef; cdecl;
 
 // Register QAR helper functions to JavaScript global object
@@ -57,6 +60,110 @@ procedure ExampleReadQarInfo(qar_filename: string);
 procedure ExampleExecuteQarEntry(ctx: PJSContext; qar_filename, entry_path: string);
 
 implementation
+
+const
+  // JS_GetOwnPropertyNames flags (QuickJS)
+  JS_GPN_STRING_MASK = 1;
+  JS_GPN_SYMBOL_MASK = 2;
+  JS_GPN_PRIVATE_MASK = 4;
+  JS_GPN_ENUM_ONLY = 8;
+
+function JsValueToStringOrEmpty(ctx: PJSContext; v: JSValueConst): string;
+var
+  p: PChar;
+begin
+  Result := '';
+  if JS_IsUndefined(v) <> 0 then
+    Exit;
+  if JS_IsNull(v) <> 0 then
+    Exit;
+  p := JS_ToCString(ctx, v);
+  if p = nil then
+    Exit;
+  Result := string(p);
+  JS_FreeCString(ctx, p);
+end;
+
+function GetOptString(ctx: PJSContext; const opts: JSValueConst; const key: PChar): string;
+var
+  v: JSValue;
+begin
+  Result := '';
+  if JS_IsObject(opts) = 0 then
+    Exit;
+  v := JS_GetPropertyStr(ctx, opts, key);
+  try
+    if JS_IsException(v) <> 0 then
+      Exit;
+    Result := JsValueToStringOrEmpty(ctx, v);
+  finally
+    JS_FreeValue(ctx, v);
+  end;
+end;
+
+function GetOptObject(ctx: PJSContext; const opts: JSValueConst; const key: PChar): JSValue;
+begin
+  Result := JS_UNDEFINED;
+  if JS_IsObject(opts) = 0 then
+    Exit;
+  Result := JS_GetPropertyStr(ctx, opts, key);
+end;
+
+function ParseMetaObjectToStrings(ctx: PJSContext; const metaObj: JSValueConst): TStrings;
+var
+  props: PJSPropertyEnum;
+  props_len: cuint32;
+  i: cuint32;
+  k: string;
+  v: JSValue;
+  pv: PChar;
+  keyVal: JSValue;
+begin
+  Result := nil;
+  if JS_IsObject(metaObj) = 0 then
+    Exit;
+
+  props := nil;
+  props_len := 0;
+  if JS_GetOwnPropertyNames(ctx, @props, @props_len, metaObj, JS_GPN_STRING_MASK or JS_GPN_ENUM_ONLY) <> 0 then
+    Exit;
+
+  Result := TStringList.Create;
+  try
+    for i := 0 to props_len - 1 do
+    begin
+      keyVal := JS_AtomToValue(ctx, props[i].atom);
+      if JS_IsException(keyVal) <> 0 then
+      begin
+        JS_FreeValue(ctx, keyVal);
+        Continue;
+      end;
+      k := JsValueToStringOrEmpty(ctx, keyVal);
+      JS_FreeValue(ctx, keyVal);
+      if k = '' then
+        Continue;
+
+      v := JS_GetProperty(ctx, metaObj, props[i].atom);
+      if JS_IsException(v) <> 0 then
+      begin
+        JS_FreeValue(ctx, v);
+        Continue;
+      end;
+      pv := JS_ToCString(ctx, v);
+      if pv <> nil then
+      begin
+        Result.Add(k + '=' + string(pv));
+        JS_FreeCString(ctx, pv);
+      end;
+      JS_FreeValue(ctx, v);
+    end;
+  finally
+    for i := 0 to props_len - 1 do
+      JS_FreeAtom(ctx, props[i].atom);
+    if props <> nil then
+      js_free(ctx, props);
+  end;
+end;
 
 procedure SetQarVerifyModeFromString(const s: string);
 var
@@ -834,11 +941,16 @@ var
   item: JSValue;
   item_str: PChar;
   ret: cint;
+  opts: JSValue;
+  bopts: qar_tooling_backend.TQarBuildOptions;
+  metaObj: JSValue;
+  metaList: TStrings;
+  err: string;
 begin
   try
   if argc < 2 then
   begin
-    Result := JS_ThrowTypeError(ctx, PChar('BuildQar expects 2 arguments: outputFile and inputFiles (string or array)'));
+    Result := JS_ThrowTypeError(ctx, PChar('BuildQar expects 2 arguments: outputFile and inputFiles (string or array), plus optional options object'));
     Exit;
   end;
 
@@ -943,14 +1055,41 @@ begin
     Exit;
   end;
 
-  // Build QAR file
-  WriteLn('Building QAR file: ', output_file_str);
-  WriteLn('Input files:');
-  for i := 0 to input_count - 1 do
-    WriteLn('  ', input_files[i]);
-  
-  // JS binding hiện tại không truyền entry_points, giữ behavior cũ
-  ret := qar.BuildQar(output_file_str, input_files);
+  FillChar(bopts, SizeOf(bopts), 0);
+  bopts.entry_main := '';
+  bopts.entry_init := '';
+  bopts.created_by := '';
+  bopts.tool := '';
+  bopts.sign_key_file := '';
+  bopts.meta := nil;
+
+  opts := JS_UNDEFINED;
+  if argc >= 3 then
+    opts := argv[2];
+
+  if JS_IsObject(opts) <> 0 then
+  begin
+    bopts.sign_key_file := GetOptString(ctx, opts, 'signKey');
+    bopts.created_by := GetOptString(ctx, opts, 'createdBy');
+    bopts.tool := GetOptString(ctx, opts, 'tool');
+
+    metaObj := GetOptObject(ctx, opts, 'meta');
+    metaList := nil;
+    try
+      if JS_IsException(metaObj) = 0 then
+        metaList := ParseMetaObjectToStrings(ctx, metaObj);
+      bopts.meta := metaList;
+      ret := qar_tooling_backend.QarBuildWithOptions(output_file_str, input_files, bopts);
+    finally
+      if metaList <> nil then
+        metaList.Free;
+      JS_FreeValue(ctx, metaObj);
+    end;
+  end
+  else
+  begin
+    ret := qar_tooling_backend.QarBuildWithOptions(output_file_str, input_files, bopts);
+  end;
   
   if ret < 0 then
   begin
@@ -963,6 +1102,140 @@ begin
   except
     on E: Exception do
       Result := JS_ThrowPlainError(ctx, PChar('qar:BuildQar: ' + E.Message));
+  end;
+end;
+
+function js_rebuild_qar(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+var
+  in_file, out_file: string;
+  pin, pout: PChar;
+  opts: JSValue;
+  bopts: qar_tooling_backend.TQarBuildOptions;
+  metaObj: JSValue;
+  metaList: TStrings;
+  ret: cint;
+begin
+  try
+    if argc < 2 then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('RebuildQar expects 2 arguments: inputFile and outputFile, plus optional options object'));
+      Exit;
+    end;
+
+    pin := JS_ToCString(ctx, argv[0]);
+    if pin = nil then
+    begin
+      Result := JS_EXCEPTION;
+      Exit;
+    end;
+    in_file := string(pin);
+    JS_FreeCString(ctx, pin);
+
+    pout := JS_ToCString(ctx, argv[1]);
+    if pout = nil then
+    begin
+      Result := JS_EXCEPTION;
+      Exit;
+    end;
+    out_file := string(pout);
+    JS_FreeCString(ctx, pout);
+
+    FillChar(bopts, SizeOf(bopts), 0);
+    bopts.entry_main := '';
+    bopts.entry_init := '';
+    bopts.created_by := '';
+    bopts.tool := '';
+    bopts.sign_key_file := '';
+    bopts.meta := nil;
+
+    opts := JS_UNDEFINED;
+    if argc >= 3 then
+      opts := argv[2];
+
+    if JS_IsObject(opts) <> 0 then
+    begin
+      bopts.sign_key_file := GetOptString(ctx, opts, 'signKey');
+      bopts.created_by := GetOptString(ctx, opts, 'createdBy');
+      bopts.tool := GetOptString(ctx, opts, 'tool');
+      metaObj := GetOptObject(ctx, opts, 'meta');
+      metaList := nil;
+      try
+        if JS_IsException(metaObj) = 0 then
+          metaList := ParseMetaObjectToStrings(ctx, metaObj);
+        bopts.meta := metaList;
+        ret := qar_tooling_backend.QarRebuildWithOptions(in_file, out_file, bopts);
+      finally
+        if metaList <> nil then
+          metaList.Free;
+        JS_FreeValue(ctx, metaObj);
+      end;
+    end
+    else
+      ret := qar_tooling_backend.QarRebuildWithOptions(in_file, out_file, bopts);
+
+    if ret < 0 then
+      Result := JS_ThrowTypeError(ctx, PChar('RebuildQar: Failed to rebuild QAR file'))
+    else
+      Result := JS_NewBool(ctx, 1);
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:RebuildQar: ' + E.Message));
+  end;
+end;
+
+function js_qar_keygen(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
+var
+  pemFile: string;
+  raw64File: string;
+  base: string;
+  err: string;
+begin
+  try
+    if argc < 1 then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('QarKeygen expects 1 argument: options object { pem, raw64 }'));
+      Exit;
+    end;
+    if JS_IsObject(argv[0]) = 0 then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('QarKeygen: options must be an object'));
+      Exit;
+    end;
+
+    pemFile := GetOptString(ctx, argv[0], 'pem');
+    raw64File := GetOptString(ctx, argv[0], 'raw64');
+
+    if (pemFile = '') and (raw64File = '') then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('QarKeygen: provide at least one of { pem, raw64 }'));
+      Exit;
+    end;
+
+    if (pemFile <> '') and (raw64File = '') then
+    begin
+      base := ChangeFileExt(pemFile, '');
+      raw64File := base + '.bin';
+    end
+    else if (raw64File <> '') and (pemFile = '') then
+    begin
+      base := ChangeFileExt(raw64File, '');
+      pemFile := base + '.pem';
+    end;
+
+    err := '';
+    if not qar_tooling_backend.QarKeygenFiles(raw64File, pemFile, err) then
+    begin
+      Result := JS_ThrowTypeError(ctx, PChar('QarKeygen: ' + err));
+      Exit;
+    end;
+
+    // return { raw64, pem }
+    Result := JS_NewObject(ctx);
+    JS_DefinePropertyValueStr(ctx, Result, PChar('raw64'), JS_NewString(ctx, PChar(raw64File)), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, Result, PChar('pem'), JS_NewString(ctx, PChar(pemFile)), JS_PROP_C_W_E);
+  except
+    on E: Exception do
+      Result := JS_ThrowPlainError(ctx, PChar('qar:QarKeygen: ' + E.Message));
   end;
 end;
 
@@ -1069,7 +1342,15 @@ begin
 
   // Register BuildQar
   JS_DefinePropertyValueStr(ctx, global_obj, PChar('BuildQar'),
-    JS_NewCFunction(ctx, @js_build_qar, PChar('BuildQar'), 2), JS_PROP_C_W_E);
+    JS_NewCFunction(ctx, @js_build_qar, PChar('BuildQar'), 3), JS_PROP_C_W_E);
+
+  // Register RebuildQar
+  JS_DefinePropertyValueStr(ctx, global_obj, PChar('RebuildQar'),
+    JS_NewCFunction(ctx, @js_rebuild_qar, PChar('RebuildQar'), 3), JS_PROP_C_W_E);
+
+  // Register QarKeygen
+  JS_DefinePropertyValueStr(ctx, global_obj, PChar('QarKeygen'),
+    JS_NewCFunction(ctx, @js_qar_keygen, PChar('QarKeygen'), 1), JS_PROP_C_W_E);
 
   JS_FreeValue(ctx, global_obj);
 end;

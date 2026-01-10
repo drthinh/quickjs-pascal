@@ -8,6 +8,7 @@ uses
   qjs_log,
   qcrypto_base64,
   qcrypto_ed25519_sign,
+  qar_tooling_backend,
   qar, qjsp_qar_tooling, quickjs_miniz, quickjs_debug, quickjs_memdebug,
   fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers,
@@ -3351,47 +3352,11 @@ begin
             if out_path = '' then
               out_path := qar_output + '.bin';
 
-            // generate seed
-            if not QjspGetRandomBytes(qar_src_bytes, 32) then
+            // Shared backend implementation (same as JS helpers)
+            guardArg := '';
+            if not qar_tooling_backend.QarKeygenFiles(out_path, qar_input, guardArg) then
             begin
-              WriteLn('Error: RNG failed');
-              Flush(Output);
-              Continue;
-            end;
-
-            // derive pubkey (seed32 -> Ed25519 public key)
-            for k_qar := 0 to 31 do
-              keygen_seed[k_qar] := qar_src_bytes[k_qar];
-            if not Ed25519PublicKeyFromSeed(keygen_seed, keygen_pk) then
-            begin
-              WriteLn('Error: failed to derive public key');
-              Flush(Output);
-              Continue;
-            end;
-
-            // raw64 = seed||pubkey
-            SetLength(qar_src_bytes, 64);
-            for k_qar := 0 to 31 do
-              qar_src_bytes[k_qar] := keygen_seed[k_qar];
-            for k_qar := 0 to 31 do
-              qar_src_bytes[32 + k_qar] := keygen_pk[k_qar];
-
-            file_content := '';
-            if not WriteAllBytesToFile(out_path, qar_src_bytes, file_content) then
-            begin
-              WriteLn('Error: failed to write raw64 key: ', file_content);
-              Flush(Output);
-              Continue;
-            end;
-
-            // pem (pkcs8)
-            SetLength(qar_src_bytes, 32);
-            for k_qar := 0 to 31 do
-              qar_src_bytes[k_qar] := keygen_seed[k_qar];
-            file_content := BuildPkcs8Ed25519Pem(qar_src_bytes);
-            if not WriteAllTextToFile(qar_input, file_content, guardArg) then
-            begin
-              WriteLn('Error: failed to write PEM key: ', guardArg);
+              WriteLn('Error: keygen failed: ', guardArg);
               Flush(Output);
               Continue;
             end;
