@@ -5,7 +5,7 @@ unit compression_helpers;
 interface
 
 uses
-  ctypes, SysUtils, quickjs_types, quickjs_core, quickjs_miniz;
+  ctypes, SysUtils, quickjs_types, quickjs_core, zlib;
 
 // JavaScript bindings for compression functions
 function js_compress(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
@@ -23,7 +23,7 @@ var
   input_buf: Pcuint8;
   input_size: csize_t;
   output_buf: Pcuint8;
-  output_size: mz_ulong;
+  output_size: uLongf;
   level: cint;
   ret: cint;
 begin
@@ -58,7 +58,7 @@ begin
       end;
 
       // Get compression level (optional, default to MZ_DEFAULT_LEVEL)
-      level := MZ_DEFAULT_LEVEL;
+      level := 6;
       if argc >= 2 then
       begin
         if JS_ToInt32(ctx, @level, argv[1]) < 0 then
@@ -72,7 +72,7 @@ begin
       end;
 
       // Calculate output buffer size
-      output_size := mz_compressBound(mz_ulong(input_size));
+      output_size := compressBound(uLong(input_size));
       output_buf := GetMem(output_size);
       if output_buf = nil then
       begin
@@ -81,8 +81,8 @@ begin
       end;
 
       // Compress
-      ret := mz_compress2(output_buf, @output_size, input_buf, mz_ulong(input_size), level);
-      if ret <> MZ_OK then
+      ret := compress2(PBytef(output_buf), @output_size, PBytef(input_buf), uLong(input_size), level);
+      if ret <> Z_OK then
       begin
         Result := JS_ThrowTypeError(ctx, PChar('compress: compression failed'));
         Exit;
@@ -106,7 +106,7 @@ var
   input_buf: Pcuint8;
   input_size: csize_t;
   output_buf: Pcuint8;
-  output_size: mz_ulong;
+  output_size: uLongf;
   uncompressed_size: cint64;
   ret: cint;
 begin
@@ -148,13 +148,13 @@ begin
           Result := JS_EXCEPTION;
           Exit;
         end;
-        output_size := mz_ulong(uncompressed_size);
+        output_size := uLongf(uncompressed_size);
       end
       else
       begin
         // Estimate: compressed data is usually smaller, so start with input_size * 2
         // This is a heuristic and may need adjustment
-        output_size := mz_ulong(input_size) * 2;
+        output_size := uLongf(input_size) * 2;
       end;
 
       // Allocate output buffer
@@ -166,23 +166,23 @@ begin
       end;
 
       // Uncompress
-      ret := mz_uncompress(output_buf, @output_size, input_buf, mz_ulong(input_size));
-      if ret <> MZ_OK then
+      ret := uncompress(PBytef(output_buf), @output_size, PBytef(input_buf), uLong(input_size));
+      if ret <> Z_OK then
       begin
         // Try with larger buffer if size was not provided
         if argc < 2 then
         begin
           FreeMem(output_buf);
           output_buf := nil;
-          output_size := mz_ulong(input_size) * 4;
+          output_size := uLongf(input_size) * 4;
           output_buf := GetMem(output_size);
           if output_buf = nil then
           begin
             Result := JS_ThrowTypeError(ctx, PChar('uncompress: out of memory'));
             Exit;
           end;
-          ret := mz_uncompress(output_buf, @output_size, input_buf, mz_ulong(input_size));
-          if ret <> MZ_OK then
+          ret := uncompress(PBytef(output_buf), @output_size, PBytef(input_buf), uLong(input_size));
+          if ret <> Z_OK then
           begin
             Result := JS_ThrowTypeError(ctx, PChar('uncompress: decompression failed'));
             Exit;
@@ -211,7 +211,7 @@ end;
 function js_compressBound(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
 var
   source_size: cint64;
-  bound: mz_ulong;
+  bound: uLong;
 begin
   try
     if argc < 1 then
@@ -232,7 +232,7 @@ begin
       Exit;
     end;
 
-    bound := mz_compressBound(mz_ulong(source_size));
+    bound := compressBound(uLong(source_size));
     Result := JS_NewInt64(ctx, cint64(bound));
   except
     on E: Exception do

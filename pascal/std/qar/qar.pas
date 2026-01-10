@@ -41,7 +41,7 @@ unit qar;
 interface
 
 uses
-  ctypes, SysUtils, Classes, quickjs_types, quickjs_core, quickjs_std, fpjson, quickjs_miniz,
+  ctypes, SysUtils, Classes, quickjs_types, quickjs_core, quickjs_std, fpjson, zlib,
   qcrypto_sha256, qcrypto_base64, qcrypto_ed25519_sign, qcrypto_ed25519_keyload;
 
 const
@@ -424,8 +424,8 @@ end;
 function qar_entry_load_data(qar: PQarFile; entry: PQarEntry): cint; cdecl;
 var
   comp: TBytes;
-  destLen: mz_ulong;
-  srcLen: mz_ulong;
+  destLen: uLongf;
+  srcLen: uLong;
   ret: cint;
   bcStart: Int64;
   n: NativeInt;
@@ -446,16 +446,16 @@ begin
       Exit;
     if (entry^.flags and 2) <> 0 then
     begin
-      destLen := mz_ulong(entry^.bytecode_orig_size);
+      destLen := uLongf(entry^.bytecode_orig_size);
       SetLength(entry^.bytecode_cache, destLen);
-      srcLen := mz_ulong(entry^.bytecode_size);
-      ret := mz_uncompress(@entry^.bytecode_cache[0], @destLen, @comp[0], srcLen);
-      if ret <> MZ_OK then
+      srcLen := uLong(entry^.bytecode_size);
+      ret := uncompress(PBytef(@entry^.bytecode_cache[0]), @destLen, PBytef(@comp[0]), srcLen);
+      if ret <> Z_OK then
       begin
         SetLength(entry^.bytecode_cache, 0);
         Exit;
       end;
-      if destLen <> mz_ulong(entry^.bytecode_orig_size) then
+      if destLen <> uLongf(entry^.bytecode_orig_size) then
         SetLength(entry^.bytecode_cache, destLen);
     end
     else
@@ -474,16 +474,16 @@ begin
       Exit;
     if (entry^.flags and 2) <> 0 then
     begin
-      destLen := mz_ulong(entry^.source_orig_size);
+      destLen := uLongf(entry^.source_orig_size);
       SetLength(entry^.source_cache, destLen);
-      srcLen := mz_ulong(entry^.source_size);
-      ret := mz_uncompress(@entry^.source_cache[0], @destLen, @comp[0], srcLen);
-      if ret <> MZ_OK then
+      srcLen := uLong(entry^.source_size);
+      ret := uncompress(PBytef(@entry^.source_cache[0]), @destLen, PBytef(@comp[0]), srcLen);
+      if ret <> Z_OK then
       begin
         SetLength(entry^.source_cache, 0);
         Exit;
       end;
-      if destLen <> mz_ulong(entry^.source_orig_size) then
+      if destLen <> uLongf(entry^.source_orig_size) then
         SetLength(entry^.source_cache, destLen);
     end
     else
@@ -653,19 +653,19 @@ end;
 function CompressData(const src: Pcuint8; src_len: csize_t; 
                      var dst: Pcuint8; var dst_len: csize_t): cint;
 var
-  dest_len: mz_ulong;
+  dest_len: uLongf;
   compressed: Pcuint8;
   ret: cint;
 begin
   Result := -1;
   
-  dest_len := mz_compressBound(mz_ulong(src_len));
+  dest_len := compressBound(uLong(src_len));
   compressed := GetMem(dest_len);
   if compressed = nil then
     Exit;
   
-  ret := mz_compress2(compressed, @dest_len, src, mz_ulong(src_len), MZ_DEFAULT_LEVEL);
-  if ret <> MZ_OK then
+  ret := compress2(PBytef(compressed), @dest_len, PBytef(src), uLong(src_len), 6);
+  if ret <> Z_OK then
   begin
     FreeMem(compressed);
     Exit;
@@ -1571,8 +1571,6 @@ begin
     js_init_module_std(ctx, 'qjs:std');
     js_init_module_os(ctx, 'os');
     js_init_module_os(ctx, 'qjs:os');
-    js_init_module_zip(ctx, 'zip');
-    js_init_module_zip(ctx, 'qjs:zip');
     js_init_module_bjson(ctx, 'bjson');
     js_init_module_bjson(ctx, 'qjs:bjson');
     

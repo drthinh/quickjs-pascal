@@ -9,7 +9,7 @@ uses
   qcrypto_base64,
   qcrypto_ed25519_sign,
   qar_tooling_backend,
-  qar, qjsp_qar_tooling, quickjs_miniz, quickjs_debug, quickjs_memdebug,
+  qar, qjsp_qar_tooling, quickjs_debug, quickjs_memdebug,
   fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers,
   console_utf8,
@@ -2137,8 +2137,6 @@ begin
   js_init_module_std(ctx, 'qjs:std');
   js_init_module_os(ctx, 'os');
   js_init_module_os(ctx, 'qjs:os');
-  js_init_module_zip(ctx, 'zip');
-  js_init_module_zip(ctx, 'qjs:zip');
   js_init_module_bjson(ctx, 'bjson');
   js_init_module_bjson(ctx, 'qjs:bjson');
 
