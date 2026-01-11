@@ -1,5 +1,13 @@
+const _kInputStream = Symbol.for("qjsp.java.io.InputStream");
+
 export class InputStream {
-  constructor() {}
+  static [Symbol.hasInstance](instance) {
+    return !!(instance && instance[_kInputStream]);
+  }
+
+  constructor() {
+    this[_kInputStream] = true;
+  }
 
   read() {
     throw new Error("java.io.InputStream.read is not implemented");

@@ -14,7 +14,7 @@ procedure qjsp_clear_mounts;
 implementation
 
 uses
-  qar_helpers, qjs_log, StrUtils;
+  qar_helpers, qjs_log, StrUtils, quickjs_debug;
 
 var
   g_module_load_stack: TStringList;
@@ -60,6 +60,7 @@ var
   qjs_base: string;
   rel_fs: string;
   ex: JSValue;
+  info: string;
 begin
   Result := nil;
 
@@ -77,37 +78,30 @@ begin
   if FileExists(fs_base + '.js') then
   begin
     Result := js_module_loader(ctx, PChar(qjs_base + '.js'), opaque);
-    Exit;
+    if Result <> nil then
+      Exit;
+    if qjs_log.DebugLevel > 0 then
+    begin
+      info := quickjs_debug.JS_GetErrorInfo(ctx);
+      if info <> '' then
+        qjs_log.DebugMsg(0, 'lib: load failed for "' + qjs_base + '.js" (exists): ' + StringReplace(info, LineEnding, ' | ', [rfReplaceAll]));
+    end;
+    ex := JS_GetException(ctx);
+    JS_FreeValue(ctx, ex);
   end;
   if DirectoryExists(fs_base) then
   begin
     Result := js_module_loader(ctx, PChar(qjs_base + '/index.js'), opaque);
-    Exit;
-  end;
-
-  Result := js_module_loader(ctx, PChar(qjs_base), opaque);
-  if Result = nil then
-  begin
+    if Result <> nil then
+      Exit;
+    if qjs_log.DebugLevel > 0 then
+    begin
+      info := quickjs_debug.JS_GetErrorInfo(ctx);
+      if info <> '' then
+        qjs_log.DebugMsg(0, 'lib: load failed for "' + qjs_base + '/index.js" (dir exists): ' + StringReplace(info, LineEnding, ' | ', [rfReplaceAll]));
+    end;
     ex := JS_GetException(ctx);
     JS_FreeValue(ctx, ex);
-  end;
-  if Result = nil then
-  begin
-    Result := js_module_loader(ctx, PChar(qjs_base + '.js'), opaque);
-    if Result = nil then
-    begin
-      ex := JS_GetException(ctx);
-      JS_FreeValue(ctx, ex);
-    end;
-  end;
-  if Result = nil then
-  begin
-    Result := js_module_loader(ctx, PChar(qjs_base + '/index.js'), opaque);
-    if Result = nil then
-    begin
-      ex := JS_GetException(ctx);
-      JS_FreeValue(ctx, ex);
-    end;
   end;
 end;
 
@@ -116,6 +110,10 @@ var
   module_name_str: string;
   mapped_name_fs: string;
   mapped_name_qjs: string;
+  mapped_name_fs_lib: string;
+  mapped_name_qjs_lib: string;
+  mapped_name_fs_rt: string;
+  mapped_name_qjs_rt: string;
   mapped_rel: string;
   mapped_name_alt: string;
   exe_dir: string;
@@ -272,10 +270,23 @@ begin
 
     // Absolute filesystem path used only for existence checks.
     mapped_name_fs := StringReplace(mapped_rel, '/', PathDelim, [rfReplaceAll]);
-    mapped_name_fs := IncludeTrailingPathDelimiter(pascal_root) + 'js' + PathDelim + 'runtime' + PathDelim + mapped_name_fs;
 
-    // Relative POSIX path for QuickJS loader (avoid Windows drive-letter ':' in module specifiers).
-    mapped_name_qjs := 'js/runtime/' + mapped_rel;
+    // Prefer js/libs/<mapped_rel> if it exists; otherwise fall back to js/runtime/<mapped_rel>.
+    mapped_name_fs_lib := IncludeTrailingPathDelimiter(pascal_root) + 'js' + PathDelim + 'libs' + PathDelim + mapped_name_fs;
+    mapped_name_qjs_lib := 'js/libs/' + mapped_rel;
+    mapped_name_fs_rt := IncludeTrailingPathDelimiter(pascal_root) + 'js' + PathDelim + 'runtime' + PathDelim + mapped_name_fs;
+    mapped_name_qjs_rt := 'js/runtime/' + mapped_rel;
+
+    if FileExists(mapped_name_fs_lib + '.js') or DirectoryExists(mapped_name_fs_lib) then
+    begin
+      mapped_name_fs := mapped_name_fs_lib;
+      mapped_name_qjs := mapped_name_qjs_lib;
+    end
+    else
+    begin
+      mapped_name_fs := mapped_name_fs_rt;
+      mapped_name_qjs := mapped_name_qjs_rt;
+    end;
 
     qjs_log.DebugMsg(0, 'qjsp: map "' + module_name_str + '" -> "' + mapped_name_fs + '"');
 
@@ -302,35 +313,15 @@ begin
         Exit;
       end;
 
-      // Fallback: let QuickJS loader attempt its own resolution.
-      Result := js_module_loader(ctx, PChar(mapped_name_qjs), opaque);
-      if Result = nil then
-      begin
-        ex := JS_GetException(ctx);
-        JS_FreeValue(ctx, ex);
-        mapped_name_alt := mapped_name_qjs + '.js';
-        Result := js_module_loader(ctx, PChar(mapped_name_alt), opaque);
-      end;
-      if Result = nil then
-      begin
-        ex := JS_GetException(ctx);
-        JS_FreeValue(ctx, ex);
-        mapped_name_alt := mapped_name_qjs + '/index.js';
-        Result := js_module_loader(ctx, PChar(mapped_name_alt), opaque);
-      end;
+      ex := JS_GetException(ctx);
+      JS_FreeValue(ctx, ex);
 
-      if Result = nil then
-      begin
-        ex := JS_GetException(ctx);
-        JS_FreeValue(ctx, ex);
+      tried_msg :=
+        'tried:' + LineEnding +
+        '  - ' + mapped_name_qjs + '.js' + LineEnding +
+        '  - ' + mapped_name_qjs + '/index.js';
 
-        tried_msg :=
-          'tried:' + LineEnding +
-          '  - ' + mapped_name_qjs + '.js' + LineEnding +
-          '  - ' + mapped_name_qjs + '/index.js';
-
-        JS_ThrowReferenceError(ctx, PChar('could not load qjsp module: ' + module_name_str + LineEnding + tried_msg));
-      end;
+      JS_ThrowReferenceError(ctx, PChar('could not load qjsp module: ' + module_name_str + LineEnding + tried_msg));
     finally
       try
         SetCurrentDir(old_dir);

@@ -1,6 +1,14 @@
 import { OutputStream } from "qjsp:java/io/outputstream.js";
 import { System } from "qjsp:java/lang/system.js";
 
+function _isOutputStreamLike(v) {
+  return v != null &&
+    typeof v.write === "function" &&
+    typeof v.writeBytes === "function" &&
+    typeof v.flush === "function" &&
+    typeof v.close === "function";
+}
+
 function _str(x) {
   if (x === null) return "null";
   if (x === void 0) return "undefined";
@@ -9,7 +17,7 @@ function _str(x) {
 
 export class PrintStream {
   constructor(out, autoFlush) {
-    if (!(out instanceof OutputStream)) throw new TypeError("PrintStream(out[, autoFlush]): out must be OutputStream");
+    if (!_isOutputStreamLike(out)) throw new TypeError("PrintStream(out[, autoFlush]): out must be OutputStream");
     this._out = out;
     this._autoFlush = !!autoFlush;
     this._closed = false;

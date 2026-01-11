@@ -1,8 +1,16 @@
 import { OutputStream } from "qjsp:java/io/outputstream.js";
 
+function _isOutputStreamLike(v) {
+  return v != null &&
+    typeof v.write === "function" &&
+    typeof v.writeBytes === "function" &&
+    typeof v.flush === "function" &&
+    typeof v.close === "function";
+}
+
 export class DataOutputStream {
   constructor(output) {
-    if (!(output instanceof OutputStream)) throw new TypeError("DataOutputStream(output): output must be OutputStream");
+    if (!_isOutputStreamLike(output)) throw new TypeError("DataOutputStream(output): output must be OutputStream");
     this._out = output;
     this._tmp = new Uint8Array(8);
     this._dv = new DataView(this._tmp.buffer);

@@ -1,9 +1,17 @@
 import { OutputStream } from "qjsp:java/io/outputstream.js";
 
+function _isOutputStreamLike(v) {
+  return v != null &&
+    typeof v.write === "function" &&
+    typeof v.writeBytes === "function" &&
+    typeof v.flush === "function" &&
+    typeof v.close === "function";
+}
+
 export class BufferedOutputStream extends OutputStream {
   constructor(output, size) {
     super();
-    if (!(output instanceof OutputStream)) throw new TypeError("BufferedOutputStream(output[, size]): output must be OutputStream");
+    if (!_isOutputStreamLike(output)) throw new TypeError("BufferedOutputStream(output[, size]): output must be OutputStream");
     const n = size === void 0 ? 8192 : (Number(size) | 0);
     if (n <= 0) throw new RangeError("BufferedOutputStream: size must be > 0");
     this._out = output;

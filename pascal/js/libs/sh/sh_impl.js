@@ -12,7 +12,7 @@ import { spawnp as _spawnp, spawn as _spawn } from "qjsp:os/spawn.js";
 import { fetch as _fetch } from "qjsp:net/fetch.js";
 import * as http from "qjsp:net/http.js";
 
-import { runBuiltin } from "qjsp:sh/builtins.js";
+import { runBuiltin } from "./builtins.js";
 
 export const platform = system.platform;
 
@@ -1529,9 +1529,6 @@ export function repl(line) {
     return;
   }
 
-  // fallback to system command
-  // IMPORTANT: do not block the Pascal REPL by returning a Promise that will be awaited.
-  // Run as foreground process with streaming output via spawn.
   try {
     const p = which(args[0]);
     if (p != null && String(p) !== "") {

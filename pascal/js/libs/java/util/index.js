@@ -1,6 +1,10 @@
+import * as zip from "qjsp:java/util/zip/index.js";
+import * as concurrent from "qjsp:java/util/concurrent/index.js";
+
 export { Random } from "qjsp:java/util/random.js";
 export { Base64 } from "qjsp:java/util/base64.js";
-export * as zip from "qjsp:java/util/zip/index.js";
+export { zip };
+export { concurrent };
 
 export { Optional } from "qjsp:java/util/optional.js";
 export { Objects } from "qjsp:java/util/objects.js";

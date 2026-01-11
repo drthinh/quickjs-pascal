@@ -12,6 +12,7 @@
     }
   },
   "tests" : {
-    "async_test.js" : true
+    "async_test.js" : true,
+    "java_test.js" : true
   }
 }

@@ -19,6 +19,16 @@ export class Integer extends JNumber {
     if (!Number.isInteger(r) || r < 2 || r > 36) throw new RangeError("Integer.parseInt: radix must be 2..36");
     const str = String(s).trim();
     if (str.length === 0) throw new NumberFormatException("empty string");
+
+    const digits = "0123456789abcdefghijklmnopqrstuvwxyz";
+    const allowed = digits.slice(0, r);
+    const body = str[0] === "+" || str[0] === "-" ? str.slice(1) : str;
+    if (body.length === 0) throw new NumberFormatException("invalid integer");
+    for (let i = 0; i < body.length; i++) {
+      const c = body[i].toLowerCase();
+      if (allowed.indexOf(c) < 0) throw new NumberFormatException("invalid integer");
+    }
+
     const n = globalThis.parseInt(str, r);
     if (!Number.isFinite(n)) throw new NumberFormatException("invalid integer");
     return n | 0;

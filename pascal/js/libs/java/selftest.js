@@ -16,6 +16,9 @@ import { Path } from "qjsp:java/nio/file/path.js";
 import { Files } from "qjsp:java/nio/file/files.js";
 import * as Nio from "qjsp:java/nio/index.js";
 import { ZipFile } from "qjsp:java/util/zip/ZipFile.js";
+import { Instant } from "qjsp:java/time/instant.js";
+import { Duration } from "qjsp:java/time/duration.js";
+import { CompletableFuture } from "qjsp:java/util/concurrent/CompletableFuture.js";
 import { File } from "qjsp:java/io/file.js";
 import { ByteArrayInputStream } from "qjsp:java/io/bytearrayinputstream.js";
 import { ByteArrayOutputStream } from "qjsp:java/io/bytearrayoutputstream.js";
@@ -97,6 +100,11 @@ export async function runJavaSelfTest(opts) {
     _assert(ex instanceof Throwable, "Exception instanceof Throwable");
     _assert(rex instanceof Exception, "RuntimeException instanceof Exception");
     _assert(er instanceof Throwable, "java.lang.Error instanceof Throwable");
+
+    const cause = new Exception("cause");
+    const ex2 = new Exception("outer", cause);
+    _eq(ex2.name, "Exception", "Exception.name");
+    _assert(ex2.cause === cause, "Throwable.cause should be preserved");
 
     ok("java.lang (Object/String/Math/Throwable)");
   } catch (e) {
@@ -200,6 +208,14 @@ export async function runJavaSelfTest(opts) {
     _eq(Objects.toString(null, "n"), "n", "Objects.toString nullDefault");
     _eq(Objects.equals(1, 1), true, "Objects.equals");
 
+    let nnThrew = false;
+    try {
+      Objects.requireNonNull(null, "boom");
+    } catch (e) {
+      nnThrew = e instanceof TypeError && String(e.message) === "boom";
+    }
+    _assert(nnThrew, "Objects.requireNonNull should throw TypeError with message");
+
     const xs = [3, 1, 2];
     Collections.sort(xs);
     _eq(xs.join(","), "1,2,3", "Collections.sort");
@@ -262,6 +278,47 @@ export async function runJavaSelfTest(opts) {
     ok("java.nio.file.Files_Path");
   } catch (e) {
     fail("java.nio.file.Files_Path", e);
+  }
+
+  // java.nio.file extended helpers
+  try {
+    const baseDir = o.tmpDir ? Path.of(String(o.tmpDir)) : Path.of("tmp", "stdjs-java");
+    Files.createDirectories(baseDir);
+    const p = baseDir.resolve("walk-test.txt");
+    Files.writeString(p, "x");
+    const arr = Files.walkArray(baseDir, { recursive: true, includeDirs: false });
+    _assert(Array.isArray(arr) && arr.some((x) => String(x).indexOf("walk-test.txt") >= 0), "Files.walkArray should include file");
+    const g = Files.glob("**/walk-test.txt", { cwd: baseDir.toString() });
+    _assert(Array.isArray(g) && g.length >= 1, "Files.glob should match");
+    _assert(Files.deleteIfExists(p) === true, "cleanup walk-test.txt");
+    ok("java.nio.file.Files_Extended");
+  } catch (e) {
+    fail("java.nio.file.Files_Extended", e);
+  }
+
+  // java.time
+  try {
+    const t0 = Instant.ofEpochMilli(1000);
+    const d = Duration.ofSeconds(1);
+    const t1 = t0.plus(d);
+    _eq(t1.toEpochMilli(), 2000, "Instant.plus(Duration)");
+    _eq(Duration.between(t0, t1).toMillis(), 1000, "Duration.between");
+    ok("java.time (Instant/Duration)");
+  } catch (e) {
+    fail("java.time (Instant/Duration)", e);
+  }
+
+  // java.util.concurrent.CompletableFuture
+  try {
+    const cf = CompletableFuture.supplyAsync(() => 41).thenApply((x) => x + 1);
+    _eq(await cf.toPromise(), 42, "CompletableFuture.thenApply/toPromise");
+
+    const d = CompletableFuture.deferred();
+    d.complete(7);
+    _eq(await d.toPromise(), 7, "CompletableFuture.deferred.complete");
+    ok("java.util.concurrent.CompletableFuture");
+  } catch (e) {
+    fail("java.util.concurrent.CompletableFuture", e);
   }
 
   // java.io.File
@@ -367,6 +424,14 @@ export async function runJavaSelfTest(opts) {
       ps.println("B");
       ps.println();
       ps.close();
+
+      let closedThrew = false;
+      try {
+        ps.print("X");
+      } catch (e) {
+        closedThrew = String(e && e.message ? e.message : e).indexOf("closed") >= 0;
+      }
+      _assert(closedThrew, "PrintStream should throw after close");
     }
 
     {
@@ -414,7 +479,11 @@ export async function runJavaSelfTest(opts) {
     const ab = new TextEncoder().encode("hello").buffer;
     const zipBytes = globalThis.Zip && typeof globalThis.Zip.create === "function"
       ? globalThis.Zip.create([{ name: "a.txt", data: ab }])
-      : (await import("qjs:zip")).create([{ name: "a.txt", data: ab }]);
+      : (await import("qjsp:zip")).create([{ name: "a.txt", data: ab }]);
+
+    const zipBytes2 = globalThis.Zip && typeof globalThis.Zip.create === "function"
+      ? (await import("qjsp:java/util/zip/index.js")).Zip.create([{ name: "b.txt", data: ab }])
+      : (await import("qjsp:java/util/zip/index.js")).Zip.create([{ name: "b.txt", data: ab }]);
 
     const zf = ZipFile.fromBytes(zipBytes);
     _assert(zf.size() >= 1, "ZipFile size");
@@ -423,6 +492,11 @@ export async function runJavaSelfTest(opts) {
     const bytes = zf.getEntryBytes("a.txt");
     _eq(new TextDecoder().decode(bytes), "hello", "Zip read contents");
     zf.close();
+
+    const zf2 = ZipFile.fromBytes(zipBytes2);
+    _assert(zf2.getEntry("b.txt") instanceof Object, "ZipFile.getEntry via java.util.zip.Zip");
+    _eq(new TextDecoder().decode(zf2.getEntryBytes("b.txt")), "hello", "Zip read contents 2");
+    zf2.close();
     ok("java.util.zip.ZipFile");
   } catch (e) {
     fail("java.util.zip.ZipFile", e);

@@ -1,4 +1,4 @@
-import * as nativeZip from "qjs:zip";
+import * as nativeZip from "qjsp:zip";
 import { ZipEntry } from "qjsp:java/util/zip/ZipEntry.js";
 
 export class ZipFile {

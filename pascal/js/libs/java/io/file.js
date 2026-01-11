@@ -11,9 +11,18 @@ export class File {
   getPath() { return this._path; }
   toString() { return this._path; }
   exists() { return fs.exists(this._path); }
-  isDirectory() { return fs.isDirectory(this._path); }
-  isFile() { return fs.isFile(this._path); }
-  length() { return fs.isFile(this._path) ? fs.stat(this._path).size : 0; }
+  isDirectory() {
+    const st = fs.stat(this._path);
+    return st != null && ((st.mode & 0o170000) === 0o040000);
+  }
+  isFile() {
+    const st = fs.stat(this._path);
+    return st != null && ((st.mode & 0o170000) === 0o100000);
+  }
+  length() {
+    const st = fs.stat(this._path);
+    return st != null && ((st.mode & 0o170000) === 0o100000) ? (st.size | 0) : 0;
+  }
   delete() { if (!fs.exists(this._path)) return false; fs.remove(this._path); return true; }
   mkdirs() { fs.mkdirp(this._path); return true; }
   getName() { return p.basename(this._path); }

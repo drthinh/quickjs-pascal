@@ -1,1 +1,1 @@
-﻿export * from "qjsp:sh/index.js";
+﻿export * from "./sh_impl.js";

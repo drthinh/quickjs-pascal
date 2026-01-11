@@ -1,9 +1,17 @@
 import { OutputStream } from "qjsp:java/io/outputstream.js";
 
+function _isOutputStreamLike(v) {
+  return v != null &&
+    typeof v.write === "function" &&
+    typeof v.writeBytes === "function" &&
+    typeof v.flush === "function" &&
+    typeof v.close === "function";
+}
+
 export class FilterOutputStream extends OutputStream {
   constructor(output) {
     super();
-    if (!(output instanceof OutputStream)) throw new TypeError("FilterOutputStream(output): output must be OutputStream");
+    if (!_isOutputStreamLike(output)) throw new TypeError("FilterOutputStream(output): output must be OutputStream");
     this._out = output;
   }
 

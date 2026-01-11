@@ -17,6 +17,33 @@ export const Files = Object.freeze({
     return fs.exists(_p(path));
   },
 
+  walk(path, opts) {
+    const p0 = _p(path);
+    const o = opts && typeof opts === "object" ? opts : {};
+    const recursive = o.recursive !== void 0 ? !!o.recursive : true;
+    const includeDirs = !!o.includeDirs;
+    return fs.walk(p0, { recursive, includeDirs });
+  },
+
+  walkArray(path, opts) {
+    return Array.from(Files.walk(path, opts));
+  },
+
+  glob(pattern, opts) {
+    const o = opts && typeof opts === "object" ? opts : {};
+    return fs.glob(String(pattern), o);
+  },
+
+  createTempDirectory(prefix, opts) {
+    const o = opts && typeof opts === "object" ? opts : {};
+    const dir = fs.mkdtemp(prefix === void 0 ? "tmp" : String(prefix), { dir: o.dir });
+    return new Path(dir);
+  },
+
+  watch(path, listener, opts) {
+    return fs.watch(_p(path), listener, opts);
+  },
+
   readAllBytes(path) {
     return fs.readFile(_p(path));
   },
