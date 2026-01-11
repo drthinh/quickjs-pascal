@@ -43,8 +43,10 @@ export function runBuiltin(cmd, args, stdinText, api) {
     let outFile = "";
     let followRedirects = cmd === "curl" ? true : true;
     let method = "GET";
-    const headersObj = {};
+    const headers = [];
     let data = void 0;
+    let timeoutMs = 15000;
+    let maxBytes = 0;
 
     // Minimal arg parsing
     for (let i = 1; i < args.length; i++) {
@@ -83,6 +85,28 @@ export function runBuiltin(cmd, args, stdinText, api) {
           continue;
         }
 
+        if (a === "-m" || a === "--max-time") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (v === "") throw new Error(cmd + ": missing seconds after " + a);
+          const sec = Number(v);
+          if (!Number.isFinite(sec) || sec < 0) throw new Error(cmd + ": invalid max-time: " + v);
+          timeoutMs = Math.floor(sec * 1000);
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "--max-bytes") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (v === "") throw new Error(cmd + ": missing bytes after " + a);
+          const n = Number(v);
+          if (!Number.isFinite(n) || n < 0) throw new Error(cmd + ": invalid max-bytes: " + v);
+          maxBytes = Math.floor(n);
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
         if (a === "-H" || a === "--header") {
           const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
           if (!v) throw new Error(cmd + ": missing header after " + a);
@@ -91,7 +115,7 @@ export function runBuiltin(cmd, args, stdinText, api) {
           if (p <= 0) throw new Error(cmd + ": invalid header: " + s);
           const k = s.slice(0, p).trim();
           const vv = s.slice(p + 1).trim();
-          headersObj[k] = vv;
+          headers.push([k, vv]);
           if (j + 1 < list.length) j++;
           else i++;
           continue;
@@ -116,6 +140,10 @@ export function runBuiltin(cmd, args, stdinText, api) {
 
     if (!url) throw new Error("Usage: " + cmd + " [options] <url>");
 
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url)) {
+      url = "https://" + url;
+    }
+
     // wget -O: infer output name
     if (cmd === "wget" && outFile === "" && args.includes("-O")) {
       try {
@@ -129,12 +157,27 @@ export function runBuiltin(cmd, args, stdinText, api) {
       }
     }
 
-    const r = http.request(method, url, {
-      headers: headersObj,
-      body: data,
-      followRedirects,
-      responseType: outFile ? "arraybuffer" : "text",
-    });
+    if (maxBytes > 0) {
+      const hasRange = headers.some((kv) => kv && String(kv[0] || "").toLowerCase() === "range");
+      if (!hasRange) {
+        headers.push(["Range", `bytes=0-${Math.max(0, maxBytes - 1)}`]);
+      }
+    }
+
+    try {
+      warnCompat(`${cmd}: timeoutMs=${timeoutMs} maxBytes=${maxBytes}`);
+    } catch (e) {
+    }
+
+    const responseType = outFile ? "arraybuffer" : "text";
+
+    let r;
+    if (typeof globalThis.HttpRequest === "function") {
+      r = globalThis.HttpRequest(method, url, headers, data, { followRedirects, responseType, timeoutMs, maxBytes });
+    } else {
+      // JS wrapper signature http.request(method, url, { headers, body, ... })
+      r = http.request(method, url, { headers, body: data, followRedirects, responseType, timeoutMs, maxBytes });
+    }
 
     if (!r || typeof r.status !== "number") throw new Error(cmd + ": invalid response");
     if (r.status < 200 || r.status >= 300) throw new Error(cmd + ": HTTP " + r.status);
@@ -144,7 +187,35 @@ export function runBuiltin(cmd, args, stdinText, api) {
       return "";
     }
 
-    return r.text();
+    let outText = "";
+    if (r && typeof r.text === "function") {
+      outText = r.text();
+      if (typeof outText !== "string") outText = String(outText);
+    } else if (r && r.bodyText !== void 0) {
+      outText = String(r.bodyText);
+    } else if (r && r.body != null) {
+      let u8;
+      if (r.body instanceof Uint8Array) u8 = r.body;
+      else if (r.body instanceof ArrayBuffer) u8 = new Uint8Array(r.body);
+      else if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView && ArrayBuffer.isView(r.body)) {
+        u8 = new Uint8Array(r.body.buffer, r.body.byteOffset, r.body.byteLength);
+      } else {
+        u8 = new Uint8Array(0);
+      }
+      outText = new TextDecoder().decode(u8);
+    } else {
+      outText = "";
+    }
+
+    const defaultMax = 64 * 1024;
+    const limit = maxBytes > 0 ? maxBytes : defaultMax;
+    if (limit > 0 && outText.length > limit) {
+      const shown = outText.slice(0, limit);
+      const omitted = outText.length - limit;
+      return shown + "\n" + cmd + ": (truncated, omitted " + omitted + " bytes; use -o <file> to save full response)";
+    }
+
+    return outText;
   }
 
   if (cmd === "ps") {
@@ -442,7 +513,27 @@ export function runBuiltin(cmd, args, stdinText, api) {
 
   if (cmd === "curl" || cmd === "tar") {
     if (stdinText != null) throw new Error(cmd + ": stdin piping not supported");
-    const argv = args.slice(1).map(toStr).map(quoteArgShell);
+    let argvRaw = args.slice(1).map(toStr);
+    if (cmd === "curl") {
+      // Support our compat flag when falling back to system curl.
+      // Translate: --max-bytes N  =>  -r 0-(N-1)
+      const out = [];
+      for (let i = 0; i < argvRaw.length; i++) {
+        const a = argvRaw[i];
+        if (a === "--max-bytes") {
+          const v = (i + 1 < argvRaw.length) ? argvRaw[i + 1] : "";
+          const n = Number(v);
+          if (!Number.isFinite(n) || n < 0) throw new Error(cmd + ": invalid max-bytes: " + v);
+          if (n > 0) out.push("-r", `0-${Math.max(0, Math.floor(n) - 1)}`);
+          i++;
+          continue;
+        }
+        out.push(a);
+      }
+      argvRaw = out;
+    }
+
+    const argv = argvRaw.map(quoteArgShell);
     const fullCmd = [cmd, ...argv].join(" ");
     const r = exec(fullCmd);
     return r && typeof r.stdout === "string" ? r.stdout.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n$/, "") : "";

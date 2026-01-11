@@ -57,7 +57,8 @@ function JS_IsNumber(v: JSValueConst): cint; cdecl;
 function JS_IsBigInt(v: JSValueConst): cint; cdecl;
 function JS_IsString(v: JSValueConst): cint; cdecl;
 function JS_IsObject(v: JSValueConst): cint; cdecl;
-function JS_IsArray(ctx: PJSContext; v: JSValueConst): cint; cdecl; external libqjs;
+function JS_IsArrayValue(v: JSValueConst): cbool; cdecl; external libqjs name 'JS_IsArray';
+function JS_IsArray(ctx: PJSContext; v: JSValueConst): cint; cdecl; inline;
 function JS_IsException(v: JSValueConst): cint; cdecl;
 function JS_IsUninitialized(v: JSValueConst): cint; cdecl;
 function JS_IsFunction(ctx: PJSContext; v: JSValueConst): cint; cdecl; external libqjs;
@@ -102,7 +103,8 @@ function JS_SetLength(ctx: PJSContext; obj: JSValueConst; len: cint64): cint; cd
 function JS_NewArrayBuffer(ctx: PJSContext; buf: Pcuint8; len: csize_t; free_func: JSFreeArrayBufferDataFunc; opaque: pointer; is_shared: cint): JSValue; cdecl; external libqjs;
 function JS_NewArrayBufferCopy(ctx: PJSContext; buf: Pcuint8; len: csize_t): JSValue; cdecl; external libqjs;
 function JS_GetArrayBuffer(ctx: PJSContext; psize: Pcsize_t; obj: JSValueConst): Pcuint8; cdecl; external libqjs;
-function JS_IsArrayBuffer(obj: JSValueConst): cint; cdecl; external libqjs;
+function JS_IsArrayBufferValue(obj: JSValueConst): cbool; cdecl; external libqjs name 'JS_IsArrayBuffer';
+function JS_IsArrayBuffer(obj: JSValueConst): cint; cdecl; inline;
 procedure JS_DetachArrayBuffer(ctx: PJSContext; obj: JSValueConst); cdecl; external libqjs;
 
 // TypedArray helpers
@@ -122,8 +124,10 @@ function JS_EvalFunction(ctx: PJSContext; func_obj: JSValueConst): JSValue; cdec
 
 // Exception helpers
 function JS_GetException(ctx: PJSContext): JSValue; cdecl; external libqjs;
-function JS_IsError(ctx: PJSContext; val: JSValueConst): cint; cdecl; external libqjs;
-procedure JS_ResetUncatchableException(ctx: PJSContext); cdecl; external libqjs;
+function JS_IsErrorValue(val: JSValueConst): cbool; cdecl; external libqjs name 'JS_IsError';
+function JS_IsError(ctx: PJSContext; val: JSValueConst): cint; cdecl; inline;
+procedure JS_ResetUncatchableError(ctx: PJSContext); cdecl; external libqjs name 'JS_ResetUncatchableError';
+procedure JS_ResetUncatchableException(ctx: PJSContext); cdecl; inline;
 
 // Atom helpers
 function JS_NewAtom(ctx: PJSContext; str: PChar): JSAtom; cdecl; external libqjs;
@@ -140,7 +144,8 @@ function JS_ValueToAtom(ctx: PJSContext; val: JSValueConst): JSAtom; cdecl; exte
 function JS_NewClassID(pclass_id: PJSClassID): JSClassID; cdecl; external libqjs;
 function JS_NewClass(rt: PJSRuntime; class_id: JSClassID; class_def: PJSClassDef): cint; cdecl; external libqjs;
 function JS_IsInstanceOf(ctx: PJSContext; obj: JSValueConst; class_id: JSClassID): cint; cdecl; external libqjs;
-function JS_GetClassID(obj: JSValueConst; pclass_id: PJSClassID): cint; cdecl; external libqjs;
+function JS_GetClassIDValue(obj: JSValueConst): JSClassID; cdecl; external libqjs name 'JS_GetClassID';
+function JS_GetClassID(obj: JSValueConst; pclass_id: PJSClassID): cint; cdecl; inline;
 function JS_IsRegisteredClass(rt: PJSRuntime; class_id: JSClassID): cbool; cdecl; external libqjs;
 function JS_GetClassName(rt: PJSRuntime; class_id: JSClassID): JSAtom; cdecl; external libqjs;
 function JS_GetOpaque(obj: JSValueConst; class_id: JSClassID): pointer; cdecl; external libqjs;
@@ -187,7 +192,8 @@ procedure JS_SetIsHTMLDDA(ctx: PJSContext; obj: JSValueConst); cdecl; external l
 // Promise helpers
 function JS_PromiseState(ctx: PJSContext; promise: JSValueConst): JSPromiseStateEnum; cdecl; external libqjs;
 function JS_PromiseResult(ctx: PJSContext; promise: JSValueConst): JSValue; cdecl; external libqjs;
-function JS_IsPromise(val: JSValueConst): cint; cdecl; external libqjs;
+function JS_IsPromiseValue(val: JSValueConst): cbool; cdecl; external libqjs name 'JS_IsPromise';
+function JS_IsPromise(val: JSValueConst): cint; cdecl; inline;
 
 // String helpers
 function JS_ToString(ctx: PJSContext; val: JSValueConst): JSValue; cdecl; external libqjs;
@@ -323,6 +329,56 @@ end;
 function JS_IsUninitialized(v: JSValueConst): cint; cdecl;
 begin
   if JS_VALUE_GET_TAG(v) = JS_TAG_UNINITIALIZED then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+function JS_IsArray(ctx: PJSContext; v: JSValueConst): cint; cdecl; inline;
+begin
+  if JS_IsArrayValue(v) then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+function JS_IsError(ctx: PJSContext; val: JSValueConst): cint; cdecl; inline;
+begin
+  if JS_IsErrorValue(val) then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+procedure JS_ResetUncatchableException(ctx: PJSContext); cdecl; inline;
+begin
+  JS_ResetUncatchableError(ctx);
+end;
+
+function JS_IsArrayBuffer(obj: JSValueConst): cint; cdecl; inline;
+begin
+  if JS_IsArrayBufferValue(obj) then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+function JS_IsPromise(val: JSValueConst): cint; cdecl; inline;
+begin
+  if JS_IsPromiseValue(val) then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+function JS_GetClassID(obj: JSValueConst; pclass_id: PJSClassID): cint; cdecl; inline;
+var
+  id: JSClassID;
+begin
+  id := JS_GetClassIDValue(obj);
+  if pclass_id <> nil then
+    pclass_id^ := id;
+  if id <> 0 then
     Result := 1
   else
     Result := 0;

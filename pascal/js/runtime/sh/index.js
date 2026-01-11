@@ -1419,6 +1419,16 @@ export function repl(line) {
     return;
   }
 
+  if (cmd === "wget" || cmd === "curl") {
+    try {
+      const out = _runBuiltin(cmd, args, null);
+      if (out != null && String(out) !== "") _puts(String(out) + "\n");
+    } catch (e) {
+      _puts("Error: " + (e && e.message ? e.message : String(e)) + "\n");
+    }
+    return;
+  }
+
   if (cmd === "basename" || cmd === "dirname" || cmd === "realpath" || cmd === "stat" || cmd === "env" || cmd === "export" || cmd === "unset" || cmd === "sleep" || cmd === "date" || cmd === "clear" || cmd === "rmdir" || cmd === "mktemp" || cmd === "wc" || cmd === "sort" || cmd === "uniq" || cmd === "cut" || cmd === "tr" || cmd === "tee" || cmd === "xargs" || cmd === "ps" || cmd === "kill" || cmd === "ln") {
     try {
       const out = _runBuiltin(cmd, args, null);

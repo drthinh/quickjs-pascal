@@ -13,10 +13,25 @@ function normalizeOptions(options) {
   return options;
 }
 
-export function request(method, url, options) {
+export function request(method, url, ...args) {
   method = String(method || "GET");
   url = String(url);
-  options = normalizeOptions(options);
+
+  // Support both:
+  // - request(method, url, options)
+  // - request(method, url, headers, body, options)
+  let options;
+  if (args.length >= 3) {
+    const headersArg = args[0];
+    const bodyArg = args[1];
+    const optionsArg = args[2];
+    const o = normalizeOptions(optionsArg) || {};
+    if (o.headers === void 0) o.headers = headersArg;
+    if (o.body === void 0) o.body = bodyArg;
+    options = o;
+  } else {
+    options = normalizeOptions(args[0]);
+  }
 
   const headers = headersToPairs(options && options.headers);
   const body = options && options.body;
@@ -31,6 +46,7 @@ export function request(method, url, options) {
     timeoutMs: options && options.timeoutMs,
     followRedirects: options && options.followRedirects,
     responseType: respType,
+    maxBytes: options && options.maxBytes,
   };
 
   const r = globalThis.HttpRequest(method, url, headers, body, nativeOpts);

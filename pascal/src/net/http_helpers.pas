@@ -7,7 +7,8 @@ interface
 uses
   SysUtils, Classes, ctypes,
   quickjs_types, quickjs_core,
-  Windows;
+  Windows,
+  qjs_log;
 
 function js_http_request(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
 procedure RegisterHttpHelpers(ctx: PJSContext);
@@ -164,9 +165,6 @@ begin
     Exit;
   end;
 
-  if JS_IsArray(ctx, v) = 0 then
-    Exit;
-
   len64 := 0;
   if JS_GetLength(ctx, v, @len64) <> 0 then
     Exit;
@@ -180,12 +178,6 @@ begin
     pair := JS_GetPropertyUint32(ctx, v, cuint32(i));
     if JS_IsException(pair) <> 0 then
       Exit;
-
-    if JS_IsArray(ctx, pair) = 0 then
-    begin
-      JS_FreeValue(ctx, pair);
-      Exit;
-    end;
 
     keyVal := JS_GetPropertyUint32(ctx, pair, 0);
     valVal := JS_GetPropertyUint32(ctx, pair, 1);
@@ -239,6 +231,7 @@ var
   headers: THttpHeaders;
   obj: JSValue;
   timeoutMs: Integer;
+  maxBytes: Integer;
   allowRedirects: Boolean;
   optObj: JSValue;
   optVal: JSValue;
@@ -257,6 +250,12 @@ var
   headerListVal: JSValueConst;
   followVal: JSValue;
   respTypeVal: JSValue;
+  optFromArg3: Boolean;
+  arg3Obj: JSValue;
+  hdrValTmp: JSValue;
+  bodyValTmp: JSValue;
+  bodyNeedsFree: Boolean;
+  maxVal: JSValue;
   session: HINTERNET;
   connect: HINTERNET;
   request: HINTERNET;
@@ -280,6 +279,8 @@ var
   ms: TMemoryStream;
   tmpBuf: array[0..8191] of Byte;
   hdrList: TStringList;
+  chunkSize: DWORD;
+  totalRead: Int64;
 begin
   try
     Result := JS_EXCEPTION;
@@ -293,48 +294,133 @@ begin
   method := JsValueToString(ctx, argv[0]);
   url := JsValueToString(ctx, argv[1]);
 
+  optFromArg3 := False;
+  bodyNeedsFree := False;
+  arg3Obj := JS_UNDEFINED;
+  hdrValTmp := JS_UNDEFINED;
+  bodyValTmp := JS_UNDEFINED;
+
   headerListVal := JS_UNDEFINED;
   if argc >= 3 then
-    headerListVal := argv[2];
+  begin
+    // Support wrapper style: HttpRequest(method, url, { headers, body, ...options })
+    if (JS_IsObject(argv[2]) <> 0) then
+    begin
+      hdrValTmp := JS_GetPropertyStr(ctx, argv[2], PChar('headers'));
+      if JS_IsUndefined(hdrValTmp) = 0 then
+      begin
+        arg3Obj := JS_DupValue(ctx, argv[2]);
+        optFromArg3 := True;
+
+        headerListVal := hdrValTmp;
+
+        bodyValTmp := JS_GetPropertyStr(ctx, arg3Obj, PChar('body'));
+        bodyVal := bodyValTmp;
+        bodyNeedsFree := True;
+      end
+      else
+      begin
+        JS_FreeValue(ctx, hdrValTmp);
+        headerListVal := argv[2];
+      end;
+    end
+    else
+      headerListVal := argv[2];
+  end;
 
   okHeaders := GetHeadersFromJs(ctx, headerListVal, headers);
+  if optFromArg3 then
+    JS_FreeValue(ctx, hdrValTmp);
   if not okHeaders then
   begin
+    if optFromArg3 then
+    begin
+      if bodyNeedsFree then
+        JS_FreeValue(ctx, bodyValTmp);
+      JS_FreeValue(ctx, arg3Obj);
+    end;
     JS_ThrowTypeError(ctx, PChar('headers must be an array of [name, value] pairs'));
     Exit;
   end;
 
-  bodyVal := JS_UNDEFINED;
-  if argc >= 4 then
-    bodyVal := argv[3];
+  if not optFromArg3 then
+  begin
+    bodyVal := JS_UNDEFINED;
+    if argc >= 4 then
+      bodyVal := argv[3];
+  end;
 
   timeoutMs := 0;
+  maxBytes := 0;
   allowRedirects := True;
   responseType := 'arraybuffer';
 
-  if argc >= 5 then
+  if optFromArg3 then
+    optObj := arg3Obj
+  else if argc >= 5 then
+    optObj := JS_DupValue(ctx, argv[4])
+  else
+    optObj := JS_UNDEFINED;
+
+  qjs_log.DebugMsg(0, 'HttpRequest: argc=' + IntToStr(argc) + ' optFromArg3=' + BoolToStr(optFromArg3, True) +
+    ' optIsObject=' + BoolToStr(JS_IsObject(optObj) <> 0, True) +
+    ' optIsArray=' + BoolToStr(JS_IsArray(ctx, optObj) <> 0, True));
+
+  if (JS_IsObject(optObj) <> 0) then
   begin
-    optObj := JS_DupValue(ctx, argv[4]);
-    if (JS_IsUndefined(optObj) = 0) and (JS_IsNull(optObj) = 0) then
-    begin
-      optVal := JS_GetPropertyStr(ctx, optObj, PChar('timeoutMs'));
-      timeoutMs := JsValueToInt(ctx, optVal, 0);
-      JS_FreeValue(ctx, optVal);
+    optVal := JS_GetPropertyStr(ctx, optObj, PChar('timeoutMs'));
+    qjs_log.DebugMsg(0, 'HttpRequest: opt.has(timeoutMs)=' + BoolToStr(JS_IsUndefined(optVal) = 0, True));
+    JS_FreeValue(ctx, optVal);
 
-      followVal := JS_GetPropertyStr(ctx, optObj, PChar('followRedirects'));
-      if JS_IsUndefined(followVal) = 0 then
-        allowRedirects := (JS_ToBool(ctx, followVal) <> 0);
-      JS_FreeValue(ctx, followVal);
+    optVal := JS_GetPropertyStr(ctx, optObj, PChar('maxBytes'));
+    qjs_log.DebugMsg(0, 'HttpRequest: opt.has(maxBytes)=' + BoolToStr(JS_IsUndefined(optVal) = 0, True));
+    JS_FreeValue(ctx, optVal);
 
-      respTypeVal := JS_GetPropertyStr(ctx, optObj, PChar('responseType'));
-      if JS_IsUndefined(respTypeVal) = 0 then
-        responseType := LowerCase(JsValueToString(ctx, respTypeVal));
-      JS_FreeValue(ctx, respTypeVal);
-    end;
-    JS_FreeValue(ctx, optObj);
+    optVal := JS_GetPropertyStr(ctx, optObj, PChar('responseType'));
+    qjs_log.DebugMsg(0, 'HttpRequest: opt.has(responseType)=' + BoolToStr(JS_IsUndefined(optVal) = 0, True));
+    JS_FreeValue(ctx, optVal);
+
+    optVal := JS_GetPropertyStr(ctx, optObj, PChar('followRedirects'));
+    qjs_log.DebugMsg(0, 'HttpRequest: opt.has(followRedirects)=' + BoolToStr(JS_IsUndefined(optVal) = 0, True));
+    JS_FreeValue(ctx, optVal);
   end;
 
+  if (JS_IsUndefined(optObj) = 0) and (JS_IsNull(optObj) = 0) then
+  begin
+    optVal := JS_GetPropertyStr(ctx, optObj, PChar('timeoutMs'));
+    if JS_IsUndefined(optVal) <> 0 then
+      qjs_log.DebugMsg(0, 'HttpRequest: options.timeoutMs is undefined');
+    timeoutMs := JsValueToInt(ctx, optVal, 0);
+    JS_FreeValue(ctx, optVal);
+
+    followVal := JS_GetPropertyStr(ctx, optObj, PChar('followRedirects'));
+    if JS_IsUndefined(followVal) = 0 then
+      allowRedirects := (JS_ToBool(ctx, followVal) <> 0);
+    JS_FreeValue(ctx, followVal);
+
+    respTypeVal := JS_GetPropertyStr(ctx, optObj, PChar('responseType'));
+    if JS_IsUndefined(respTypeVal) <> 0 then
+      qjs_log.DebugMsg(0, 'HttpRequest: options.responseType is undefined');
+    if JS_IsUndefined(respTypeVal) = 0 then
+      responseType := LowerCase(JsValueToString(ctx, respTypeVal));
+    JS_FreeValue(ctx, respTypeVal);
+
+    maxVal := JS_GetPropertyStr(ctx, optObj, PChar('maxBytes'));
+    if JS_IsUndefined(maxVal) <> 0 then
+      qjs_log.DebugMsg(0, 'HttpRequest: options.maxBytes is undefined');
+    maxBytes := JsValueToInt(ctx, maxVal, 0);
+    JS_FreeValue(ctx, maxVal);
+  end;
+  if (optFromArg3 = False) and (argc >= 5) then
+    JS_FreeValue(ctx, optObj);
+
   asText := responseType = 'text';
+
+  qjs_log.DebugMsg(0, 'HttpRequest: ' + UpperCase(method) + ' ' + url +
+    ' timeoutMs=' + IntToStr(timeoutMs) +
+    ' maxBytes=' + IntToStr(maxBytes) +
+    ' followRedirects=' + BoolToStr(allowRedirects, True) +
+    ' responseType=' + responseType);
 
   session := nil;
   connect := nil;
@@ -355,6 +441,7 @@ begin
 
     if not WinHttpCrackUrl(PWideChar(fullUrlW), Length(fullUrlW), 0, uc) then
     begin
+      qjs_log.DebugMsg(0, 'HttpRequest: WinHttpCrackUrl failed: ' + WinHttpLastErrorMessage);
       JS_ThrowTypeError(ctx, PChar('Invalid URL: ' + url));
       Exit;
     end;
@@ -364,6 +451,9 @@ begin
     SetString(scheme, uc.lpszScheme, uc.dwSchemeLength);
     port := uc.nPort;
 
+    qjs_log.DebugMsg(1, 'HttpRequest: scheme=' + string(scheme) + ' host=' + string(hostName) +
+      ' port=' + IntToStr(port) + ' path=' + string(urlPath));
+
     flags := 0;
     if (LowerCase(string(scheme)) = 'https') then
       flags := flags or WINHTTP_FLAG_SECURE;
@@ -372,6 +462,7 @@ begin
       WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if session = nil then
     begin
+      qjs_log.DebugMsg(0, 'HttpRequest: WinHttpOpen failed: ' + WinHttpLastErrorMessage);
       JS_ThrowTypeError(ctx, PChar(WinHttpLastErrorMessage));
       Exit;
     end;
@@ -392,6 +483,7 @@ begin
     connect := WinHttpConnect(session, PWideChar(hostName), port, 0);
     if connect = nil then
     begin
+      qjs_log.DebugMsg(0, 'HttpRequest: WinHttpConnect failed: ' + WinHttpLastErrorMessage);
       JS_ThrowTypeError(ctx, PChar(WinHttpLastErrorMessage));
       Exit;
     end;
@@ -401,8 +493,16 @@ begin
       WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
     if request = nil then
     begin
+      qjs_log.DebugMsg(0, 'HttpRequest: WinHttpOpenRequest failed: ' + WinHttpLastErrorMessage);
       JS_ThrowTypeError(ctx, PChar(WinHttpLastErrorMessage));
       Exit;
+    end;
+
+    if timeoutMs > 0 then
+    begin
+      WinHttpSetOption(request, WINHTTP_OPTION_CONNECT_TIMEOUT, @timeoutMs, SizeOf(timeoutMs));
+      WinHttpSetOption(request, WINHTTP_OPTION_SEND_TIMEOUT, @timeoutMs, SizeOf(timeoutMs));
+      WinHttpSetOption(request, WINHTTP_OPTION_RECEIVE_TIMEOUT, @timeoutMs, SizeOf(timeoutMs));
     end;
 
     // Add custom headers
@@ -451,6 +551,7 @@ begin
     if not WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
       WINHTTP_NO_REQUEST_DATA, 0, DWORD(Length(s)), 0) then
     begin
+      qjs_log.DebugMsg(0, 'HttpRequest: WinHttpSendRequest failed: ' + WinHttpLastErrorMessage);
       JS_ThrowTypeError(ctx, PChar(WinHttpLastErrorMessage));
       Exit;
     end;
@@ -460,6 +561,7 @@ begin
       bytesWritten := 0;
       if not WinHttpWriteData(request, Pointer(s), DWORD(Length(s)), bytesWritten) then
       begin
+        qjs_log.DebugMsg(0, 'HttpRequest: WinHttpWriteData failed: ' + WinHttpLastErrorMessage);
         JS_ThrowTypeError(ctx, PChar(WinHttpLastErrorMessage));
         Exit;
       end;
@@ -467,6 +569,7 @@ begin
 
     if not WinHttpReceiveResponse(request, nil) then
     begin
+      qjs_log.DebugMsg(0, 'HttpRequest: WinHttpReceiveResponse failed: ' + WinHttpLastErrorMessage);
       JS_ThrowTypeError(ctx, PChar(WinHttpLastErrorMessage));
       Exit;
     end;
@@ -478,10 +581,13 @@ begin
     if not WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE or WINHTTP_QUERY_FLAG_NUMBER, nil,
       @statusCode, bufLen, idx) then
     begin
+      qjs_log.DebugMsg(0, 'HttpRequest: WinHttpQueryHeaders(status) failed: ' + WinHttpLastErrorMessage);
       JS_ThrowTypeError(ctx, PChar(WinHttpLastErrorMessage));
       Exit;
     end;
     status := Integer(statusCode);
+
+    qjs_log.DebugMsg(1, 'HttpRequest: status=' + IntToStr(status));
 
     // Raw headers
     bufLen := 0;
@@ -506,11 +612,13 @@ begin
       hdrList := TStringList.Create;
 
     // Read response body
+    totalRead := 0;
     while True do
     begin
       avail := 0;
       if not WinHttpQueryDataAvailable(request, avail) then
       begin
+        qjs_log.DebugMsg(0, 'HttpRequest: WinHttpQueryDataAvailable failed: ' + WinHttpLastErrorMessage);
         JS_ThrowTypeError(ctx, PChar(WinHttpLastErrorMessage));
         Exit;
       end;
@@ -520,21 +628,42 @@ begin
       while avail > 0 do
       begin
         if avail > DWORD(Length(tmpBuf)) then
-          bytesRead := DWORD(Length(tmpBuf))
+          chunkSize := DWORD(Length(tmpBuf))
         else
-          bytesRead := avail;
+          chunkSize := avail;
+
+        if (maxBytes > 0) and (ms.Size >= maxBytes) then
+        begin
+          avail := 0;
+          Break;
+        end;
+
+        if (maxBytes > 0) and ((maxBytes - ms.Size) < chunkSize) then
+          chunkSize := DWORD(maxBytes - ms.Size);
+
+        bytesRead := chunkSize;
 
         if not WinHttpReadData(request, @tmpBuf[0], bytesRead, bytesRead) then
         begin
+          qjs_log.DebugMsg(0, 'HttpRequest: WinHttpReadData failed: ' + WinHttpLastErrorMessage);
           JS_ThrowTypeError(ctx, PChar(WinHttpLastErrorMessage));
           Exit;
         end;
         if bytesRead = 0 then
           Break;
-        ms.WriteBuffer(tmpBuf[0], bytesRead);
+        ms.WriteBuffer(tmpBuf, bytesRead);
+        totalRead := totalRead + bytesRead;
         Dec(avail, bytesRead);
       end;
+
+      if (maxBytes > 0) and (ms.Size >= maxBytes) then
+        Break;
     end;
+
+    if maxBytes > 0 then
+      qjs_log.DebugMsg(1, 'HttpRequest: bodyBytes=' + IntToStr(ms.Size) + ' (stopped at maxBytes)')
+    else
+      qjs_log.DebugMsg(1, 'HttpRequest: bodyBytes=' + IntToStr(ms.Size));
 
     // Build JS response
     obj := JS_NewObject(ctx);
@@ -563,18 +692,27 @@ begin
         JS_DefinePropertyValueStr(ctx, obj, PChar('bodyText'), JS_NewString(ctx, PChar('')), JS_PROP_C_W_E);
     end;
 
-      Result := obj;
-    finally
-      if hdrList <> nil then
-        hdrList.Free;
-      ms.Free;
-      if request <> nil then
-        WinHttpCloseHandle(request);
-      if connect <> nil then
-        WinHttpCloseHandle(connect);
-      if session <> nil then
-        WinHttpCloseHandle(session);
+    Result := obj;
+  finally
+    ms.Free;
+
+    if request <> nil then
+      WinHttpCloseHandle(request);
+    if connect <> nil then
+      WinHttpCloseHandle(connect);
+    if session <> nil then
+      WinHttpCloseHandle(session);
+
+    if hdrList <> nil then
+      hdrList.Free;
+
+    if optFromArg3 then
+    begin
+      if bodyNeedsFree then
+        JS_FreeValue(ctx, bodyValTmp);
+      JS_FreeValue(ctx, arg3Obj);
     end;
+  end;
   except
     on E: Exception do
     begin

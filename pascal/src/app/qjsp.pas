@@ -734,31 +734,6 @@ begin
 
     rootObj := TJSONObject(jsonData);
 
-    // Legacy/single shell block -> mode "sh"
-    modesData := rootObj.Find('shell');
-    if (modesData <> nil) and (modesData is TJSONObject) then
-    begin
-      itemObj := TJSONObject(modesData);
-      cfg.Name := 'sh';
-      cfg.ModuleName := 'qjsp:sh';
-      cfg.GlobalName := 'sh';
-      cfg.ReplFunction := 'repl';
-      cfg.Prompt := 'sh> ';
-      tmp := itemObj.Find('module');
-      if (tmp <> nil) and (tmp.JSONType = jtString) then
-        cfg.ModuleName := tmp.AsString;
-      tmp := itemObj.Find('global');
-      if (tmp <> nil) and (tmp.JSONType = jtString) then
-        cfg.GlobalName := tmp.AsString;
-      tmp := itemObj.Find('replFunction');
-      if (tmp <> nil) and (tmp.JSONType = jtString) then
-        cfg.ReplFunction := tmp.AsString;
-      tmp := itemObj.Find('prompt');
-      if (tmp <> nil) and (tmp.JSONType = jtString) then
-        cfg.Prompt := tmp.AsString;
-      AddOrReplaceMode(cfg);
-    end;
-
     // New multi-mode block
     modesData := rootObj.Find('repl_modes');
     if (modesData <> nil) and (modesData is TJSONObject) then
@@ -935,6 +910,7 @@ var
   // QAR keygen
   keygen_seed: TEd25519Seed;
   keygen_pk: TEd25519PublicKey;
+  reload_requested: boolean;
 
 {$IFDEF WINDOWS}
 type
@@ -1282,6 +1258,9 @@ begin
   JS_FreeValue(ctx, result_val);
   Result := True;
 end;
+
+label
+  RestartRuntime;
 
 begin
   ConsoleInitUtf8;
@@ -2271,6 +2250,9 @@ begin
   dll_helpers.LoadedDynamicLibraries := TStringList.Create;
   dll_helpers.LoadedDynamicLibraries.Sorted := False;
 
+RestartRuntime:
+  reload_requested := False;
+
   // Initialize QuickJS runtime
   rt := JS_NewRuntime;
   if rt = nil then
@@ -2456,8 +2438,10 @@ begin
     begin
       WriteLn('Commands:');
       WriteLn('  .help | help                - Detailed help');
+      WriteLn('  .menu | menu                - Quick command menu');
       WriteLn('  .load <file.js>             - Load & run a JS file');
       WriteLn('  .import <module> [name]     - Import ESM module and bind to global');
+      WriteLn('  .reload                     - Reload JS runtime (recreate context/runtime)');
       WriteLn('  .build <out.qar> <inputs..> - Build QAR from JS files/folder');
       WriteLn('  .qar / .tool / .verify      - QAR tooling commands');
       WriteLn('  .lib ...                    - Manage libraries (mounts)');
@@ -2483,9 +2467,68 @@ begin
       if script = '' then
         Continue;
 
+      if (script = '.menu') or (script = 'menu') then
+      begin
+        if ActiveReplMode <> '' then
+        begin
+          WriteLn('Menu (', ActiveReplMode, ')');
+          WriteLn('============');
+          WriteLn('  .js                         - Back to js>');
+          WriteLn('  .reload                     - Reload JS runtime');
+          WriteLn('  .help                       - Full help');
+          WriteLn('  .menu                       - This menu');
+          WriteLn('  .exit/.quit                 - Exit program');
+        end
+        else
+        begin
+          WriteLn('Menu');
+          WriteLn('====');
+          WriteLn('  .load <file.js>             - Load & run a JS file');
+          WriteLn('  .import <module> [name]     - Import ESM module');
+          WriteLn('  .reload                     - Reload JS runtime');
+          WriteLn('  .mode <name> on|off         - Enable/disable mode (e.g. sh)');
+          WriteLn('  .help                       - Full help');
+          WriteLn('  .menu                       - This menu');
+          WriteLn('  .exit/.quit                 - Exit program');
+        end;
+        Flush(Output);
+        Continue;
+      end;
+
+      if (script = '.reload') or (script = 'reload') then
+      begin
+        reload_requested := True;
+        Break;
+      end;
+
       try
         if (script = 'help') or (script = '.help') then
         begin
+          if (ActiveReplMode <> '') and FindReplModeConfig(ActiveReplMode, replCfg) then
+          begin
+            if ImportedReplModes.IndexOf(replCfg.Name) < 0 then
+            begin
+              file_content :=
+                'import * as ' + replCfg.GlobalName + ' from ' + QuotedStr(replCfg.ModuleName) + ';' + LineEnding +
+                'globalThis[' + QuotedStr(replCfg.GlobalName) + '] = ' + replCfg.GlobalName + ';' + LineEnding;
+
+              if RunEvalCode(ctx, '<repl_mode_import>', file_content) then
+                ImportedReplModes.Add(replCfg.Name)
+              else
+              begin
+                WriteLn('Error: failed to import ', replCfg.ModuleName);
+                Flush(Output);
+                Continue;
+              end;
+            end;
+
+            file_content :=
+              'if (typeof ' + replCfg.GlobalName + '.help === ''function'') ' + replCfg.GlobalName + '.help();' + LineEnding;
+            RunEvalCode(ctx, '<repl_mode_help>', file_content);
+            Flush(Output);
+            Continue;
+          end;
+
           WriteLn('Help');
           WriteLn('====');
           WriteLn;
@@ -2496,6 +2539,12 @@ begin
           WriteLn('REPL commands:');
           WriteLn('  .help | help');
           WriteLn('    Show this help.');
+          WriteLn;
+          WriteLn('  .menu | menu');
+          WriteLn('    Show a quick command menu.');
+          WriteLn;
+          WriteLn('  .reload');
+          WriteLn('    Reload JS runtime (recreate runtime/context + reload modules).');
           WriteLn;
           WriteLn('QAR security flags (CLI):');
           WriteLn('  --verify off|warn|strict');
@@ -2515,8 +2564,8 @@ begin
           WriteLn('    Example: .import qjsp:sh sh');
           WriteLn('             sh.ls(".")');
           WriteLn;
-          WriteLn('  .sh on|off');
-          WriteLn('    Toggle shell mode. When ON, prompt becomes "sh>" and commands like');
+          WriteLn('  .mode sh on|off');
+          WriteLn('    Toggle shell REPL mode. When ON, prompt becomes "sh>" and commands like');
           WriteLn('    "pwd", "ls", "cd <dir>", "which <cmd>" are mapped to qjsp:sh helpers.');
           WriteLn('    Type ".js" (or "js") to return to JS prompt.');
           WriteLn;
@@ -2582,6 +2631,7 @@ begin
           WriteLn('    - LoadDLL("path")           : Load a specific dynamic library file');
           WriteLn('    - CallDllFunction(id, "Func", "sig", ...args)');
           WriteLn('    - FreeDLL(id)');
+          WriteLn;
           WriteLn;
           WriteLn('Tips:');
           WriteLn('  - Use ".qar help" to see QAR tooling commands.');
@@ -4098,6 +4148,47 @@ begin
   end;
 
   // End interactive mode block
+  if (not run_script_mode) and reload_requested then
+  begin
+    // Reset mode/module tracking so the next REPL session re-imports cleanly.
+    ImportedReplModes.Clear;
+
+    try
+      file_content :=
+        'import * as rt from ''qjsp:runtime/index.js'';' + LineEnding +
+        'if (rt && typeof rt.shutdown === ''function'') rt.shutdown();' + LineEnding;
+
+      result_val := JS_Eval(ctx,
+        PChar(file_content),
+        QWord(Length(file_content)),
+        PChar('<stdjs_shutdown_reload>'),
+        JS_EVAL_TYPE_MODULE);
+
+      if JS_IsException(result_val) <> 0 then
+      begin
+        if qjs_log.DebugLevel > 0 then
+          js_std_dump_error(ctx);
+        JS_FreeValue(ctx, result_val);
+      end
+      else
+      begin
+        JS_FreeValue(ctx, result_val);
+        pending_ctx := nil;
+        while JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx) > 0 do
+        begin
+        end;
+      end;
+    except
+      // ignore
+    end;
+
+    js_std_free_handlers(rt);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+    goto RestartRuntime;
+  end;
+
   // Cleanup
   if qjs_log.DebugLevel > 1 then
     DumpRuntimeMemoryUsageToConsole(rt);
