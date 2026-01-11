@@ -1,3 +1,5 @@
+import { toComparator } from "qjsp:java/util/comparator.js";
+
 export class Arrays {
   static asList() {
     return Array.prototype.slice.call(arguments);
@@ -20,6 +22,36 @@ export class Arrays {
     if (aa.length !== bb.length) return false;
     for (let i = 0; i < aa.length; i++) if (aa[i] !== bb[i]) return false;
     return true;
+  }
+
+  static sort(array, comparator) {
+    if (!Array.isArray(array)) throw new TypeError("Arrays.sort: array must be an Array");
+    if (comparator !== void 0) {
+      const cmp = toComparator(comparator);
+      array.sort((a, b) => cmp(a, b));
+    } else {
+      array.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    }
+    return array;
+  }
+
+  static binarySearch(array, key, comparator) {
+    const arr = Array.isArray(array) ? array : Array.from(array);
+    const cmp = comparator ? toComparator(comparator) : (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+    let low = 0;
+    let high = arr.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const c = cmp(arr[mid], key);
+      if (c < 0) {
+        low = mid + 1;
+      } else if (c > 0) {
+        high = mid - 1;
+      } else {
+        return mid;
+      }
+    }
+    return -(low + 1);
   }
 
   static fill(array, value, fromIndex, toIndex) {

@@ -146,7 +146,7 @@ function BuildQar(const output_file: string; const input_files: array of string;
   const entry_main: string = ''; const entry_init: string = '';
   const created_by: string = ''; const tool: string = ''; const meta: TStrings = nil;
   const sig_pubkey_b64: string = ''; const sig_b64: string = '';
-  const sign_key_file: string = ''): cint;
+  const sign_key_file: string = ''; const omit_source: boolean = False): cint;
 
 // Version and information functions
 function GetQarVersion: string;
@@ -923,7 +923,7 @@ begin
 end;
 
 // Compile JS file to bytecode
-function CompileAndAddEntry(ctx: PJSContext; entry: PQarBuildEntry): cint;
+function CompileAndAddEntry(ctx: PJSContext; entry: PQarBuildEntry; const omit_source: boolean): cint;
 var
   buf: Pcuint8;
   buf_len: csize_t;
@@ -942,16 +942,27 @@ begin
     Exit;
   end;
   
+  source_buf := nil;
   // Save source/asset data - allocate regular memory and copy
-  source_buf := GetMem(buf_len);
-  if source_buf = nil then
+  // For assets, always embed payload.
+  // For JS, omit source if requested.
+  if (entry^.is_asset <> 0) or (not omit_source) then
   begin
-    js_free(ctx, buf);
-    Exit;
+    source_buf := GetMem(buf_len);
+    if source_buf = nil then
+    begin
+      js_free(ctx, buf);
+      Exit;
+    end;
+    Move(buf^, source_buf^, buf_len);
+    entry^.source := source_buf;
+    entry^.source_len := buf_len;
+  end
+  else
+  begin
+    entry^.source := nil;
+    entry^.source_len := 0;
   end;
-  Move(buf^, source_buf^, buf_len);
-  entry^.source := source_buf;
-  entry^.source_len := buf_len;
   
   // Asset: skip compilation, no bytecode
   if entry^.is_asset <> 0 then
@@ -985,8 +996,10 @@ begin
   begin
     WriteLn('Compilation error in ', entry^.filepath, ':');
     js_std_dump_error(ctx);
-    FreeMem(source_buf);
+    if source_buf <> nil then
+      FreeMem(source_buf);
     entry^.source := nil;
+    entry^.source_len := 0;
     Exit;
   end;
   
@@ -998,8 +1011,10 @@ begin
   if entry^.bytecode = nil then
   begin
     WriteLn('Failed to write bytecode for ', entry^.filepath);
-    FreeMem(source_buf);
+    if source_buf <> nil then
+      FreeMem(source_buf);
     entry^.source := nil;
+    entry^.source_len := 0;
     Exit;
   end;
   
@@ -1516,7 +1531,7 @@ function BuildQar(const output_file: string; const input_files: array of string;
   const entry_main: string = ''; const entry_init: string = '';
   const created_by: string = ''; const tool: string = ''; const meta: TStrings = nil;
   const sig_pubkey_b64: string = ''; const sig_b64: string = '';
-  const sign_key_file: string = ''): cint;
+  const sign_key_file: string = ''; const omit_source: boolean = False): cint;
 var
   list: TQarEntryList;
   rt: PJSRuntime;
@@ -1691,7 +1706,7 @@ begin
       begin
         entry := list.GetEntry(i);
         WriteLn('  ', entry^.path);
-        if CompileAndAddEntry(ctx, entry) < 0 then
+        if CompileAndAddEntry(ctx, entry, omit_source) < 0 then
         begin
           WriteLn('Failed to compile ', entry^.filepath);
           Exit;
@@ -1706,7 +1721,10 @@ begin
         end
         else
         begin
-          entry^.sha256_source := Sha256HexPtr(entry^.source, entry^.source_len);
+          if omit_source then
+            entry^.sha256_source := ''
+          else
+            entry^.sha256_source := Sha256HexPtr(entry^.source, entry^.source_len);
           entry^.sha256_bytecode := Sha256HexPtr(entry^.bytecode, entry^.bytecode_len);
         end;
       end;

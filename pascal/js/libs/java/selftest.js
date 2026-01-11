@@ -8,6 +8,9 @@ import { HashSet } from "qjsp:java/util/hashset.js";
 import { Arrays } from "qjsp:java/util/arrays.js";
 import { Objects } from "qjsp:java/util/objects.js";
 import { Collections } from "qjsp:java/util/collections.js";
+import { PriorityQueue } from "qjsp:java/util/priorityqueue.js";
+import { TreeMap } from "qjsp:java/util/treemap.js";
+import { TreeSet } from "qjsp:java/util/treeset.js";
 import { URI } from "qjsp:java/net/uri.js";
 import { URL } from "qjsp:java/net/url.js";
 import { URLEncoder } from "qjsp:java/net/urlencoder.js";
@@ -223,6 +226,82 @@ export async function runJavaSelfTest(opts) {
     ok("java.util core (Optional/ArrayList/HashMap/HashSet/Arrays/Objects/Collections)");
   } catch (e) {
     fail("java.util core (Optional/ArrayList/HashMap/HashSet/Arrays/Objects/Collections)", e);
+  }
+
+  // java.util algorithms helpers (Arrays/Collections)
+  try {
+    const a = [5, 1, 4, 2, 3];
+    Arrays.sort(a);
+    _eq(a.join(","), "1,2,3,4,5", "Arrays.sort");
+
+    _eq(Arrays.binarySearch(a, 3), 2, "Arrays.binarySearch hit");
+    _eq(Arrays.binarySearch(a, 6), -6, "Arrays.binarySearch miss");
+
+    _eq(Collections.binarySearch(a, 4), 3, "Collections.binarySearch hit");
+    ok("java.util algorithms (Arrays.sort/binarySearch, Collections.binarySearch)");
+  } catch (e) {
+    fail("java.util algorithms (Arrays.sort/binarySearch, Collections.binarySearch)", e);
+  }
+
+  // java.util.PriorityQueue
+  try {
+    const pq = new PriorityQueue();
+    _assert(pq.isEmpty(), "PriorityQueue.isEmpty initially");
+    pq.offer(3);
+    pq.offer(1);
+    pq.offer(2);
+    _eq(pq.size(), 3, "PriorityQueue.size");
+    _eq(pq.peek(), 1, "PriorityQueue.peek");
+    _eq(pq.poll(), 1, "PriorityQueue.poll 1");
+    _eq(pq.poll(), 2, "PriorityQueue.poll 2");
+    _eq(pq.poll(), 3, "PriorityQueue.poll 3");
+    _eq(pq.poll(), null, "PriorityQueue.poll empty");
+
+    const revCmp = { compare: (a, b) => (a < b ? 1 : a > b ? -1 : 0) };
+    const pq2 = new PriorityQueue(revCmp);
+    pq2.offer(1);
+    pq2.offer(3);
+    pq2.offer(2);
+    _eq(pq2.poll(), 3, "PriorityQueue(comparatorObject).poll 3");
+    _eq(pq2.poll(), 2, "PriorityQueue(comparatorObject).poll 2");
+    _eq(pq2.poll(), 1, "PriorityQueue(comparatorObject).poll 1");
+    ok("java.util.PriorityQueue");
+  } catch (e) {
+    fail("java.util.PriorityQueue", e);
+  }
+
+  // java.util.Comparator + Collections helpers + TreeMap/TreeSet
+  try {
+    const cmpDesc = { compare: (a, b) => (a < b ? 1 : a > b ? -1 : 0) };
+    const ys = [1, 3, 2];
+    Collections.sort(ys, cmpDesc);
+    _eq(ys.join(","), "3,2,1", "Collections.sort comparatorObject");
+
+    const zs = [1, 2, 3, 4, 5];
+    Collections.rotate(zs, 2);
+    _eq(zs.join(","), "4,5,1,2,3", "Collections.rotate");
+    Collections.reverse(zs);
+    _eq(zs.join(","), "3,2,1,5,4", "Collections.reverse");
+    Collections.shuffle(zs, { nextDouble: () => 0 });
+    _eq(zs[0], 2, "Collections.shuffle deterministic nextDouble");
+
+    const tm = new TreeMap();
+    tm.put("b", 2);
+    tm.put("a", 1);
+    tm.put("c", 3);
+    _eq(tm.firstKey(), "a", "TreeMap.firstKey");
+    _eq(tm.lastKey(), "c", "TreeMap.lastKey");
+    _eq(tm.get("b"), 2, "TreeMap.get");
+
+    const ts = new TreeSet();
+    ts.add(3);
+    ts.add(1);
+    ts.add(2);
+    _eq(ts.first(), 1, "TreeSet.first");
+    _eq(ts.last(), 3, "TreeSet.last");
+    ok("java.util.Comparator/Collections extras/TreeMap/TreeSet");
+  } catch (e) {
+    fail("java.util.Comparator/Collections extras/TreeMap/TreeSet", e);
   }
 
   // URI/URL
@@ -524,4 +603,32 @@ export async function runJavaSelfTest(opts) {
   const failCount = results.length - okCount;
 
   return { ok: failCount === 0, okCount, failCount, results };
+}
+
+if (globalThis && globalThis.__qjsp_java_selftest_autorun__ && !globalThis.__qjsp_java_selftest_ran__) {
+  globalThis.__qjsp_java_selftest_ran__ = true;
+  (async () => {
+    try {
+      const r = await runJavaSelfTest(globalThis.__qjsp_java_selftest_opts__);
+      globalThis.__qjsp_java_selftest_last__ = r;
+      if (globalThis.console && typeof globalThis.console.log === "function") {
+        globalThis.console.log(`java/selftest: ok=${r.ok} okCount=${r.okCount} failCount=${r.failCount}`);
+        if (!r.ok) {
+          const fails = r.results.filter((x) => !x.ok);
+          for (const f of fails) {
+            globalThis.console.log(`FAIL: ${String(f.name)}: ${String(f.error)}`);
+          }
+          try {
+            globalThis.console.log(JSON.stringify(fails, null, 2));
+          } catch (e) {
+            globalThis.console.log(fails);
+          }
+        }
+      }
+    } catch (e) {
+      if (globalThis.console && typeof globalThis.console.error === "function") {
+        globalThis.console.error(e);
+      }
+    }
+  })();
 }

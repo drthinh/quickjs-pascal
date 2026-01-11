@@ -1,5 +1,6 @@
 export { System } from "qjsp:java/lang/system.js";
 export { Object } from "qjsp:java/lang/object.js";
+export { Class } from "qjsp:java/lang/class.js";
 export { String } from "qjsp:java/lang/string.js";
 export { Math } from "qjsp:java/lang/math.js";
 export { Throwable } from "qjsp:java/lang/throwable.js";

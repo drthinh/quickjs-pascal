@@ -35,11 +35,15 @@ export function runBuiltin(cmd, args, stdinText, api) {
   if (cmd === "pwd") return pwd();
   if (cmd === "echo") return echo(...args.slice(1));
 
-  if (cmd === "wget" || cmd === "curl") {
+  if (cmd === "wget" || (cmd === "curl" && http && typeof http.request === "function")) {
     if (stdinText != null) throw new Error(cmd + ": stdin piping not supported");
-    if (!http || typeof http.request !== "function") throw new Error(cmd + ": http client not available");
+    if (cmd === "wget") {
+      const hasNative = typeof globalThis.HttpRequest === "function";
+      const hasJs = http && typeof http.request === "function";
+      if (!hasNative && !hasJs) throw new Error(cmd + ": http client not available");
+    }
 
-    let url = "";
+    const urls = [];
     let outFile = "";
     let followRedirects = cmd === "curl" ? true : true;
     let method = "GET";
@@ -47,6 +51,34 @@ export function runBuiltin(cmd, args, stdinText, api) {
     let data = void 0;
     let timeoutMs = 15000;
     let maxBytes = 0;
+    let silent = false;
+    let includeHeaders = false;
+    let headOnly = false;
+    let retryCount = 0;
+    let retryDelayMs = 0;
+    let continueAt = false;
+    let outputIsDir = false;
+
+    const _isDirPath = (p) => {
+      try {
+        const st = fs.stat(p);
+        if (!st) return false;
+        return (st.mode & 0o170000) === 0o040000;
+      } catch (e) {
+        return false;
+      }
+    };
+
+    const _inferOutNameFromUrl = (u) => {
+      try {
+        const clean = String(u).split("?")[0].split("#")[0];
+        const b = clean.replace(/\\/g, "/");
+        const name = b.endsWith("/") ? "index.html" : b.slice(b.lastIndexOf("/") + 1) || "index.html";
+        return resolvePathExpanded(name);
+      } catch (e) {
+        return resolvePathExpanded("index.html");
+      }
+    };
 
     // Minimal arg parsing
     for (let i = 1; i < args.length; i++) {
@@ -62,15 +94,66 @@ export function runBuiltin(cmd, args, stdinText, api) {
           continue;
         }
 
-        if (a === "-O") {
-          // wget: use last path segment
+        if (a === "-s" || a === "--silent") {
+          silent = true;
           continue;
         }
 
-        if (a === "-o" || a === "-O" || a === "--output") {
+        if (a === "-i" || a === "--include") {
+          includeHeaders = true;
+          continue;
+        }
+
+        if (a === "-I" || a === "--head") {
+          method = "HEAD";
+          includeHeaders = true;
+          headOnly = true;
+          continue;
+        }
+
+        if (a === "-O") {
+          if (cmd === "curl") {
+            continue;
+          }
           const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
           if (!v) throw new Error(cmd + ": missing output file after " + a);
           outFile = resolvePathExpanded(expandArg(v));
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "-o" || a === "--output") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (!v) throw new Error(cmd + ": missing output file after " + a);
+          outFile = resolvePathExpanded(expandArg(v));
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "-u" || a === "--user") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (!v) throw new Error(cmd + ": missing user after " + a);
+          const s = String(v);
+          const hasAuth = headers.some((kv) => kv && String(kv[0] || "").toLowerCase() === "authorization");
+          if (!hasAuth) {
+            try {
+              const { base64FromString } = require("qjsp:encoding/base64.js");
+              headers.push(["Authorization", "Basic " + base64FromString(s)]);
+            } catch (e) {
+              throw new Error(cmd + ": basic auth unavailable (base64 module missing)");
+            }
+          }
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "-A" || a === "--user-agent") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (!v) throw new Error(cmd + ": missing user-agent after " + a);
+          headers.push(["User-Agent", String(v)]);
           if (j + 1 < list.length) j++;
           else i++;
           continue;
@@ -131,31 +214,102 @@ export function runBuiltin(cmd, args, stdinText, api) {
           continue;
         }
 
-        if (!isFlag(a) && !url) {
-          url = String(expandArg(a));
+        if (a === "--retry") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (v === "") throw new Error(cmd + ": missing count after " + a);
+          const n = Number(v);
+          if (!Number.isFinite(n) || n < 0) throw new Error(cmd + ": invalid retry: " + v);
+          retryCount = Math.floor(n);
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "--retry-delay") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (v === "") throw new Error(cmd + ": missing seconds after " + a);
+          const sec = Number(v);
+          if (!Number.isFinite(sec) || sec < 0) throw new Error(cmd + ": invalid retry-delay: " + v);
+          retryDelayMs = Math.floor(sec * 1000);
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "-C" || a === "--continue-at") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (!v) throw new Error(cmd + ": missing offset after " + a);
+          if (String(v) !== "-") {
+            throw new Error(cmd + ": only '-C -' (auto) is supported");
+          }
+          continueAt = true;
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "--data-urlencode") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (v === "") throw new Error(cmd + ": missing data after " + a);
+          const s = String(v);
+          let part;
+          const p = s.indexOf("=");
+          if (p >= 0) {
+            const k = s.slice(0, p);
+            const vv = s.slice(p + 1);
+            part = encodeURIComponent(k) + "=" + encodeURIComponent(vv);
+          } else {
+            part = encodeURIComponent(s);
+          }
+          if (data === void 0 || data === null) data = part;
+          else data = String(data) + "&" + part;
+          const hasCt = headers.some((kv) => kv && String(kv[0] || "").toLowerCase() === "content-type");
+          if (!hasCt) headers.push(["Content-Type", "application/x-www-form-urlencoded"]);
+          if (method === "GET") method = "POST";
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (a === "-F" || a === "--form") {
+          const v = (j + 1 < list.length) ? list[j + 1] : (i + 1 < args.length ? toStr(args[i + 1]) : "");
+          if (!v) throw new Error(cmd + ": missing form field after " + a);
+          const s = String(v);
+          const p = s.indexOf("=");
+          if (p <= 0) throw new Error(cmd + ": invalid form field (expected key=value): " + s);
+          const k = s.slice(0, p);
+          const vv = s.slice(p + 1);
+          if (!Array.isArray(data)) data = [];
+          data.push({ k, v: vv });
+          if (method === "GET") method = "POST";
+          if (j + 1 < list.length) j++;
+          else i++;
+          continue;
+        }
+
+        if (!isFlag(a)) {
+          urls.push(String(expandArg(a)));
           continue;
         }
       }
     }
 
-    if (!url) throw new Error("Usage: " + cmd + " [options] <url>");
+    if (!urls.length) throw new Error("Usage: " + cmd + " [options] <url> [url...]");
 
-    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url)) {
-      url = "https://" + url;
-    }
-
-    // wget -O: infer output name
-    if (cmd === "wget" && outFile === "" && args.includes("-O")) {
-      try {
-        const u = String(url);
-        const clean = u.split("?")[0].split("#")[0];
-        const b = clean.replace(/\\/g, "/");
-        const name = b.endsWith("/") ? "index.html" : b.slice(b.lastIndexOf("/") + 1) || "index.html";
-        outFile = resolvePathExpanded(name);
-      } catch (e) {
-        outFile = resolvePathExpanded("index.html");
+    if (outFile) {
+      outputIsDir = _isDirPath(outFile) || /[\\/]$/.test(outFile);
+      if (urls.length > 1 && !outputIsDir) {
+        throw new Error(cmd + ": multiple URLs require output to be a directory when using -o/--output/-O <file>");
       }
     }
+
+    const _normalizeUrl = (u) => {
+      let uu = String(u);
+      if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(uu)) {
+        uu = "https://" + uu;
+      }
+      return uu;
+    };
 
     if (maxBytes > 0) {
       const hasRange = headers.some((kv) => kv && String(kv[0] || "").toLowerCase() === "range");
@@ -164,58 +318,180 @@ export function runBuiltin(cmd, args, stdinText, api) {
       }
     }
 
-    try {
-      warnCompat(`${cmd}: timeoutMs=${timeoutMs} maxBytes=${maxBytes}`);
-    } catch (e) {
-    }
-
-    const responseType = outFile ? "arraybuffer" : "text";
-
-    let r;
-    if (typeof globalThis.HttpRequest === "function") {
-      r = globalThis.HttpRequest(method, url, headers, data, { followRedirects, responseType, timeoutMs, maxBytes });
-    } else {
-      // JS wrapper signature http.request(method, url, { headers, body, ... })
-      r = http.request(method, url, { headers, body: data, followRedirects, responseType, timeoutMs, maxBytes });
-    }
-
-    if (!r || typeof r.status !== "number") throw new Error(cmd + ": invalid response");
-    if (r.status < 200 || r.status >= 300) throw new Error(cmd + ": HTTP " + r.status);
-
-    if (outFile) {
-      fs.writeFile(outFile, r.body);
-      return "";
-    }
-
-    let outText = "";
-    if (r && typeof r.text === "function") {
-      outText = r.text();
-      if (typeof outText !== "string") outText = String(outText);
-    } else if (r && r.bodyText !== void 0) {
-      outText = String(r.bodyText);
-    } else if (r && r.body != null) {
-      let u8;
-      if (r.body instanceof Uint8Array) u8 = r.body;
-      else if (r.body instanceof ArrayBuffer) u8 = new Uint8Array(r.body);
-      else if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView && ArrayBuffer.isView(r.body)) {
-        u8 = new Uint8Array(r.body.buffer, r.body.byteOffset, r.body.byteLength);
-      } else {
-        u8 = new Uint8Array(0);
+    if (!silent) {
+      try {
+        warnCompat(`${cmd}: timeoutMs=${timeoutMs} maxBytes=${maxBytes}`);
+      } catch (e) {
       }
-      outText = new TextDecoder().decode(u8);
-    } else {
-      outText = "";
     }
 
-    const defaultMax = 64 * 1024;
-    const limit = maxBytes > 0 ? maxBytes : defaultMax;
-    if (limit > 0 && outText.length > limit) {
-      const shown = outText.slice(0, limit);
-      const omitted = outText.length - limit;
-      return shown + "\n" + cmd + ": (truncated, omitted " + omitted + " bytes; use -o <file> to save full response)";
+    const _buildBodyAndHeaders = () => {
+      if (Array.isArray(data)) {
+        const boundary = "----qjsp-form-" + Math.floor(Math.random() * 0xffffffff).toString(16);
+        const parts = [];
+        for (const it of data) {
+          if (!it || it.k == null) continue;
+          parts.push(
+            "--" + boundary + "\r\n" +
+            "Content-Disposition: form-data; name=\"" + String(it.k).replace(/"/g, "\\\"") + "\"\r\n\r\n" +
+            String(it.v == null ? "" : it.v) + "\r\n"
+          );
+        }
+        parts.push("--" + boundary + "--\r\n");
+        const bodyText = parts.join("");
+        const hasCt = headers.some((kv) => kv && String(kv[0] || "").toLowerCase() === "content-type");
+        if (!hasCt) headers.push(["Content-Type", "multipart/form-data; boundary=" + boundary]);
+        return bodyText;
+      }
+      return data;
+    };
+
+    const _doRequest = (u, reqHeaders, reqBody, responseType, reqMaxBytes) => {
+      if (typeof globalThis.HttpRequest === "function") {
+        return globalThis.HttpRequest(method, u, reqHeaders, reqBody, { followRedirects, responseType, timeoutMs, maxBytes: reqMaxBytes });
+      }
+      return http.request(method, u, { headers: reqHeaders, body: reqBody, followRedirects, responseType, timeoutMs, maxBytes: reqMaxBytes });
+    };
+
+    const _shouldRetryHttp = (status) => {
+      const s = Number(status);
+      if (!Number.isFinite(s)) return false;
+      return s === 429 || s >= 500;
+    };
+
+    const outputs = [];
+
+    for (const rawUrl of urls) {
+      const url = _normalizeUrl(rawUrl);
+      let fileOut = "";
+      if (outFile) {
+        if (outputIsDir) fileOut = path.join(outFile, path.basename(_inferOutNameFromUrl(url)));
+        else fileOut = outFile;
+      } else if (cmd === "curl" && args.includes("-O")) {
+        fileOut = _inferOutNameFromUrl(url);
+      } else if (cmd === "wget") {
+        fileOut = _inferOutNameFromUrl(url);
+      }
+
+      let rangeFrom = 0;
+      if (continueAt && fileOut) {
+        try {
+          const st = fs.stat(fileOut);
+          if (st && typeof st.size === "number" && st.size > 0) {
+            rangeFrom = st.size;
+          }
+        } catch (e) {
+        }
+      }
+
+      const responseType = fileOut ? "arraybuffer" : "text";
+      const reqBody = _buildBodyAndHeaders();
+      const reqHeaders = headers.slice();
+      let reqMaxBytes = maxBytes;
+
+      if (rangeFrom > 0) {
+        const hasRange = reqHeaders.some((kv) => kv && String(kv[0] || "").toLowerCase() === "range");
+        if (!hasRange) reqHeaders.push(["Range", `bytes=${Math.max(0, rangeFrom)}-`]);
+        if (reqMaxBytes > 0) {
+          reqMaxBytes = Math.max(0, reqMaxBytes - rangeFrom);
+        }
+      }
+
+      let r;
+      let lastErr = null;
+      for (let attempt = 0; attempt <= retryCount; attempt++) {
+        try {
+          r = _doRequest(url, reqHeaders, reqBody, responseType, reqMaxBytes);
+          if (!r || typeof r.status !== "number") throw new Error(cmd + ": invalid response");
+          if (r.status < 200 || r.status >= 300) {
+            if (attempt < retryCount && _shouldRetryHttp(r.status)) {
+              if (retryDelayMs > 0) proc.sleep(retryDelayMs);
+              continue;
+            }
+            throw new Error(cmd + ": HTTP " + r.status);
+          }
+          lastErr = null;
+          break;
+        } catch (e) {
+          lastErr = e;
+          if (attempt < retryCount) {
+            if (retryDelayMs > 0) proc.sleep(retryDelayMs);
+            continue;
+          }
+          throw e;
+        }
+      }
+      if (lastErr) throw lastErr;
+
+      const _formatHeaders = (hh) => {
+        if (!hh || typeof hh !== "object") return "";
+        const out = [];
+        for (const k of Object.keys(hh)) {
+          try {
+            out.push(String(k) + ": " + String(hh[k]));
+          } catch (e) {
+          }
+        }
+        return out.join("\n");
+      };
+
+      if (headOnly) {
+        outputs.push(_formatHeaders(r.headers));
+        continue;
+      }
+
+      if (fileOut) {
+        if (rangeFrom > 0) {
+          const prev = fs.readFile(fileOut);
+          const next = r.body instanceof Uint8Array ? r.body : (r.body instanceof ArrayBuffer ? new Uint8Array(r.body) : new Uint8Array(0));
+          const merged = new Uint8Array(prev.length + next.length);
+          merged.set(prev, 0);
+          merged.set(next, prev.length);
+          fs.writeFile(fileOut, merged);
+        } else {
+          fs.writeFile(fileOut, r.body);
+        }
+        continue;
+      }
+
+      let outText = "";
+      if (r && typeof r.text === "function") {
+        outText = r.text();
+        if (typeof outText !== "string") outText = String(outText);
+      } else if (r && r.bodyText !== void 0) {
+        outText = String(r.bodyText);
+      } else if (r && r.body != null) {
+        let u8;
+        if (r.body instanceof Uint8Array) u8 = r.body;
+        else if (r.body instanceof ArrayBuffer) u8 = new Uint8Array(r.body);
+        else if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView && ArrayBuffer.isView(r.body)) {
+          u8 = new Uint8Array(r.body.buffer, r.body.byteOffset, r.body.byteLength);
+        } else {
+          u8 = new Uint8Array(0);
+        }
+        outText = new TextDecoder().decode(u8);
+      } else {
+        outText = "";
+      }
+
+      const defaultMax = 64 * 1024;
+      const limit = maxBytes > 0 ? maxBytes : defaultMax;
+      if (limit > 0 && outText.length > limit) {
+        const shown = outText.slice(0, limit);
+        const omitted = outText.length - limit;
+        outText = shown + "\n" + cmd + ": (truncated, omitted " + omitted + " bytes; use -o <file> to save full response)";
+      }
+
+      if (includeHeaders) {
+        const ht = _formatHeaders(r.headers);
+        if (ht) outText = ht + "\n\n" + outText;
+      }
+
+      outputs.push(outText);
     }
 
-    return outText;
+    return outputs.join("\n");
+
   }
 
   if (cmd === "ps") {
