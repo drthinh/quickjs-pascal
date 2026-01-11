@@ -16,7 +16,7 @@ uses
   examples_config,
   file_utils,
   qjsp_module_loader, http_helpers, http_async_helpers, fs_watch_helpers,
-  qjsp_zip_shim;
+  qjsp_zip_shim, qjsp_spawn_shim;
 
 const
   APP_AUTHOR = 'Nguyen Duc Thinh - dr.nguyenducthinh@gmail.com';
@@ -160,100 +160,74 @@ begin
   end;
 end;
 
-function EnsureLibrariesObject(var RootObj: TJSONObject): TJSONObject;
-var
-  libsData: TJSONData;
-begin
-  Result := nil;
-  if RootObj = nil then
-    RootObj := TJSONObject.Create;
-  libsData := RootObj.Find('libraries');
-  if (libsData <> nil) and (libsData is TJSONObject) then
-    Result := TJSONObject(libsData)
-  else
-  begin
-    Result := TJSONObject.Create;
-    RootObj.Add('libraries', Result);
-  end;
-end;
+// Forward declaration (used by LoadAndExecuteJSFile helper)
+function RunScriptFile(ctx: PJSContext; const filename: string): boolean; forward;
 
 procedure ConfigLibrariesList(const FileName: string; DebugLevel: integer);
 var
-  rootObj, libsObj: TJSONObject;
+  rootObj: TJSONObject;
   libsData: TJSONData;
+  libsObj: TJSONObject;
   i: integer;
 begin
   rootObj := ReadConfigJsonObject(FileName, DebugLevel);
+  if rootObj = nil then
+  begin
+    WriteLn('No config file: ', FileName);
+    Exit;
+  end;
   try
-    if rootObj = nil then
-      Exit;
     libsData := rootObj.Find('libraries');
     if (libsData = nil) or (not (libsData is TJSONObject)) then
+    begin
+      WriteLn('No libraries configured.');
       Exit;
+    end;
     libsObj := TJSONObject(libsData);
+    if libsObj.Count = 0 then
+    begin
+      WriteLn('No libraries configured.');
+      Exit;
+    end;
+    WriteLn('Libraries:');
     for i := 0 to libsObj.Count - 1 do
-      WriteLn(libsObj.Names[i], '=', libsObj.Items[i].AsString);
+      WriteLn('  ', libsObj.Names[i], '=', libsObj.Strings[libsObj.Names[i]]);
   finally
-    if rootObj <> nil then
-      rootObj.Free;
+    rootObj.Free;
   end;
 end;
 
 procedure ConfigLibrariesListPretty(const FileName: string; DebugLevel: integer);
-var
-  rootObj, libsObj: TJSONObject;
-  libsData: TJSONData;
-  i: integer;
-  prefix: string;
-  folder: string;
 begin
-  rootObj := ReadConfigJsonObject(FileName, DebugLevel);
-  try
-    if rootObj = nil then
-    begin
-      WriteLn('No config file: ', FileName);
-      Exit;
-    end;
-
-    libsData := rootObj.Find('libraries');
-    if (libsData = nil) or (not (libsData is TJSONObject)) then
-    begin
-      WriteLn('No libraries registered.');
-      WriteLn('Tip: .lib add <prefix> <folder>');
-      Exit;
-    end;
-
-    libsObj := TJSONObject(libsData);
-    if libsObj.Count = 0 then
-    begin
-      WriteLn('No libraries registered.');
-      WriteLn('Tip: .lib add <prefix> <folder>');
-      Exit;
-    end;
-
-    WriteLn('Registered libraries:');
-    for i := 0 to libsObj.Count - 1 do
-    begin
-      prefix := libsObj.Names[i];
-      folder := libsObj.Items[i].AsString;
-      WriteLn('  - ', prefix, ' -> ', folder);
-    end;
-  finally
-    if rootObj <> nil then
-      rootObj.Free;
-  end;
+  ConfigLibrariesList(FileName, DebugLevel);
 end;
 
 procedure ConfigLibrariesAdd(const FileName: string; DebugLevel: integer; const Prefix: string; const Folder: string);
 var
-  rootObj, libsObj: TJSONObject;
+  rootObj: TJSONObject;
+  libsData: TJSONData;
+  libsObj: TJSONObject;
+  idx: integer;
 begin
   rootObj := ReadConfigJsonObject(FileName, DebugLevel);
   if rootObj = nil then
     rootObj := TJSONObject.Create;
   try
-    libsObj := EnsureLibrariesObject(rootObj);
-    libsObj.Strings[Trim(Prefix)] := Trim(Folder);
+    libsData := rootObj.Find('libraries');
+    if (libsData = nil) or (not (libsData is TJSONObject)) then
+    begin
+      libsObj := TJSONObject.Create;
+      rootObj.Add('libraries', libsObj);
+    end
+    else
+      libsObj := TJSONObject(libsData);
+
+    idx := libsObj.IndexOfName(Prefix);
+    if idx >= 0 then
+      libsObj.Strings[Prefix] := Folder
+    else
+      libsObj.Add(Prefix, Folder);
+
     WriteConfigJsonObject(FileName, rootObj);
   finally
     rootObj.Free;
@@ -262,8 +236,10 @@ end;
 
 procedure ConfigLibrariesRemove(const FileName: string; DebugLevel: integer; const Prefix: string);
 var
-  rootObj, libsObj: TJSONObject;
+  rootObj: TJSONObject;
   libsData: TJSONData;
+  libsObj: TJSONObject;
+  idx: integer;
 begin
   rootObj := ReadConfigJsonObject(FileName, DebugLevel);
   if rootObj = nil then
@@ -273,93 +249,18 @@ begin
     if (libsData = nil) or (not (libsData is TJSONObject)) then
       Exit;
     libsObj := TJSONObject(libsData);
-    libsObj.Delete(Trim(Prefix));
+    idx := libsObj.IndexOfName(Prefix);
+    if idx >= 0 then
+      libsObj.Delete(idx);
     WriteConfigJsonObject(FileName, rootObj);
   finally
     rootObj.Free;
   end;
 end;
 
-// Helper function to load and execute a JS file
-function LoadAndExecuteJSFile(ctx: PJSContext; const filename: string): boolean;
-var
-  file_content: string;
-  result_val: JSValue;
-  eval_flags: cint;
-  script_path: string;
-  job_result: cint;
-  loop_result: cint;
-  pending_ctx: PJSContext;
+function LoadAndExecuteJSFile(ctx: PJSContext; const filename: string): Boolean;
 begin
-  Result := False;
-
-  if not ResolveScriptPath(filename, script_path) then
-  begin
-    if qjs_log.DebugLevel > 0 then
-      WriteLn('[DEBUG] File not found: ', filename, ' (tried: ', script_path, ')');
-    Exit;
-  end;
-
-  if qjs_log.DebugLevel > 0 then
-    WriteLn('[DEBUG] Loading file: ', script_path);
-
-  if not ReadTextFileToString(script_path, file_content) then
-    Exit;
-  
-  // Execute file content
-  eval_flags := JS_EVAL_TYPE_GLOBAL;
-  if JS_DetectModule(PChar(file_content), QWord(Length(file_content))) <> 0 then
-  begin
-    eval_flags := JS_EVAL_TYPE_MODULE;
-    if qjs_log.DebugLevel > 1 then
-      WriteLn('[DEBUG] Detected as MODULE');
-  end;
-  
-  result_val := JS_Eval(ctx, PChar(file_content), QWord(Length(file_content)),
-    PChar(script_path), eval_flags);
-  
-  if JS_IsException(result_val) <> 0 then
-  begin
-    WriteLn('Error executing file: ', script_path);
-    js_std_dump_error(ctx);
-    JS_FreeValue(ctx, result_val);
-    Result := False;
-  end
-  else
-  begin
-    job_result := 0;
-    pending_ctx := nil;
-    repeat
-      job_result := JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx);
-      if job_result < 0 then
-      begin
-        if pending_ctx <> nil then
-          js_std_dump_error(pending_ctx)
-        else
-          js_std_dump_error(ctx);
-        Break;
-      end;
-    until job_result = 0;
-
-    if job_result >= 0 then
-    begin
-      loop_result := js_std_loop(ctx);
-      if loop_result <> 0 then
-      begin
-        js_std_dump_error(ctx);
-        Result := False;
-      end
-      else
-      begin
-        Flush(Output);
-        Result := True;
-      end;
-    end
-    else
-      Result := False;
-
-    JS_FreeValue(ctx, result_val);
-  end;
+  Result := RunScriptFile(ctx, filename);
 end;
 
 function EnsureDirExists(const dir: string): boolean;
@@ -1165,7 +1066,8 @@ begin
 
   if not ResolveScriptPath(filename, script_path) then
   begin
-    WriteLn('Error: File not found: ', filename);
+    if qjs_log.DebugLevel > 0 then
+      WriteLn('[DEBUG] File not found: ', filename, ' (tried: ', script_path, ')');
     Exit;
   end;
 
@@ -1217,16 +1119,15 @@ begin
 
   if JS_IsException(result_val) <> 0 then
   begin
+    WriteLn('Error executing file: ', script_path);
     js_std_dump_error(ctx);
     JS_FreeValue(ctx, result_val);
-    qar_helpers.CurrentScriptDir := '';
-    Exit;
-  end;
-
-  job_result := 0;
-  pending_ctx := nil;
-  if eval_flags = JS_EVAL_TYPE_MODULE then
+    Result := False;
+  end
+  else
   begin
+    job_result := 0;
+    pending_ctx := nil;
     repeat
       job_result := JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx);
       if job_result < 0 then
@@ -1238,23 +1139,28 @@ begin
         Break;
       end;
     until job_result = 0;
-  end;
 
-  if job_result >= 0 then
-  begin
-    loop_result := js_std_loop(ctx);
-    if loop_result <> 0 then
+    if job_result >= 0 then
     begin
-      js_std_dump_error(ctx);
-      JS_FreeValue(ctx, result_val);
-      qar_helpers.CurrentScriptDir := '';
-      Exit;
-    end;
-  end;
+      SpawnPoll(ctx);
+      loop_result := js_std_loop(ctx);
+      if loop_result <> 0 then
+      begin
+        js_std_dump_error(ctx);
+        JS_FreeValue(ctx, result_val);
+        Result := False;
+      end
+      else
+      begin
+        Flush(Output);
+        Result := True;
+      end;
+    end
+    else
+      Result := False;
 
-  JS_FreeValue(ctx, result_val);
-  qar_helpers.CurrentScriptDir := '';
-  Result := True;
+    JS_FreeValue(ctx, result_val);
+  end;
 end;
 
 function RunEvalCode(ctx: PJSContext; const source_name: string; const code: string): boolean;
@@ -1305,6 +1211,7 @@ begin
 
   if job_result >= 0 then
   begin
+    SpawnPoll(ctx);
     loop_result := js_std_loop(ctx);
     if loop_result <> 0 then
     begin
@@ -2326,6 +2233,7 @@ begin
   js_init_module_bjson(ctx, 'qjs:bjson');
 
   RegisterZipModuleShims(ctx);
+  RegisterSpawnModuleShims(ctx);
 
   // Initialize standard handlers
   js_std_init_handlers(rt);
@@ -2943,6 +2851,7 @@ begin
 
                 if job_result >= 0 then
                 begin
+                  SpawnPoll(ctx);
                   loop_result := js_std_loop(ctx);
                   if loop_result <> 0 then
                   begin

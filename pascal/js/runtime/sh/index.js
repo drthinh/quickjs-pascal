@@ -7,6 +7,7 @@ import * as system from "qjsp:os/system.js";
 import * as proc from "qjsp:os/process.js";
 import * as env from "qjsp:os/env.js";
 import { exec, execFile } from "qjsp:os/exec.js";
+import { spawnp as _spawnp, spawn as _spawn } from "qjsp:os/spawn.js";
 
 import { fetch as _fetch } from "qjsp:net/fetch.js";
 import * as http from "qjsp:net/http.js";
@@ -594,6 +595,23 @@ function _cleanupTemp(obj) {
   }
 }
 
+let _fgProc = null;
+
+export function fg() {
+  return _fgProc;
+}
+
+export function fgKill(sig) {
+  if (_fgProc && typeof _fgProc.kill === "function") {
+    try {
+      _fgProc.kill(sig);
+      return true;
+    } catch (e) {
+    }
+  }
+  return false;
+}
+
 function _runBuiltin(cmd, args, stdinText) {
   const api = {
     pwd,
@@ -1088,6 +1106,14 @@ export function run(command) {
 }
 
 export function runp(command) {
+  // Prefer spawn-based execution for streaming output (chunked).
+  try {
+    if (typeof _spawnp === "function") {
+      const code = _spawnp(_toStr(command));
+      return typeof code === "number" ? code : 0;
+    }
+  } catch (e) {
+  }
   const r = run(command);
   if (r && typeof r.stdout === "string" && r.stdout !== "") _puts(r.stdout);
   return r && typeof r.code === "number" ? r.code : 0;
@@ -1492,6 +1518,30 @@ export function repl(line) {
   }
 
   // fallback to system command
+  // IMPORTANT: do not block the Pascal REPL by returning a Promise that will be awaited.
+  // Run as foreground process with streaming output via spawn.
+  try {
+    if (typeof _spawn === "function") {
+      const argv = platform === "win32" ? ["cmd.exe", "/C", raw] : ["sh", "-c", raw];
+      _fgProc = _spawn(argv, { mergeStderr: true, inheritStdio: true, shell: true });
+      try {
+        _fgProc.waitSync();
+      } finally {
+        _fgProc = null;
+      }
+      if (platform === "win32") {
+        os.sleep(100);
+      }
+      _puts("\n");
+      return;
+    }
+    _puts("Error: spawn unavailable (sh module not updated?)\n");
+    return;
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    _puts("Error: spawn failed: " + msg + "\n");
+    return;
+  }
   runp(raw);
 }
 
