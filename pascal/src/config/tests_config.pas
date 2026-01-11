@@ -1,4 +1,4 @@
-unit examples_config;
+unit tests_config;
 
 {$mode objfpc}{$H+}
 
@@ -38,8 +38,8 @@ procedure LoadExamplesConfigFromFile(var Configs: TExampleConfigs; const FileNam
 var
   json_content, line: string;
   f: TextFile;
-  jsonData, examplesData: TJSONData;
-  rootObj, examplesObj: TJSONObject;
+  jsonData, testsData: TJSONData;
+  rootObj, testsObj: TJSONObject;
   i, count: integer;
   key: string;
   item: TJSONData;
@@ -88,18 +88,20 @@ begin
       Exit;
 
     rootObj := TJSONObject(jsonData);
-    examplesData := rootObj.Find('examples');
-    if (examplesData = nil) or not (examplesData is TJSONObject) then
+    testsData := rootObj.Find('tests');
+    if (testsData = nil) then
+      testsData := rootObj.Find('examples');
+    if (testsData = nil) or not (testsData is TJSONObject) then
       Exit;
 
-    examplesObj := TJSONObject(examplesData);
-    count := examplesObj.Count;
+    testsObj := TJSONObject(testsData);
+    count := testsObj.Count;
     SetLength(Configs, count);
 
     for i := 0 to count - 1 do
     begin
-      key := examplesObj.Names[i];
-      item := examplesObj.Items[i];
+      key := testsObj.Names[i];
+      item := testsObj.Items[i];
 
       if (item <> nil) and (item.JSONType = jtBoolean) then
         enabled := item.AsBoolean
@@ -117,7 +119,7 @@ end;
 // Helper function to save examples config to JSON file
 procedure SaveExamplesConfigToFile(const FileName: string; const Configs: TExampleConfigs);
 var
-  rootObj, examplesObj: TJSONObject;
+  rootObj, testsObj: TJSONObject;
   existingContent: string;
   existingJson, existingLibraries: TJSONData;
   existingRoot: TJSONObject;
@@ -126,7 +128,7 @@ var
   jsonStr: string;
   out_dir: string;
 begin
-  // Build JSON structure: { "examples": { "name": boolean, ... } }
+  // Build JSON structure: { "tests": { "name": boolean, ... } }
   // but preserve other existing top-level keys (e.g. libraries) when present.
   rootObj := TJSONObject.Create;
   try
@@ -152,12 +154,12 @@ begin
         rootObj.Add('libraries', existingLibraries.Clone);
     end;
 
-    examplesObj := TJSONObject.Create;
-    rootObj.Add('examples', examplesObj);
+    testsObj := TJSONObject.Create;
+    rootObj.Add('tests', testsObj);
 
     // Add each example to examples object
     for i := 0 to Length(Configs) - 1 do
-      examplesObj.Add(Configs[i].name, Configs[i].enabled);
+      testsObj.Add(Configs[i].name, Configs[i].enabled);
 
     // Serialize to string
     jsonStr := rootObj.FormatJSON([]);

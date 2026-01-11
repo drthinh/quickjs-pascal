@@ -13,7 +13,7 @@ uses
   fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers,
   console_utf8,
-  examples_config,
+  tests_config,
   file_utils,
   qjsp_module_loader, http_helpers, http_async_helpers, fs_watch_helpers,
   qjsp_zip_shim, qjsp_spawn_shim;
@@ -198,8 +198,66 @@ begin
 end;
 
 procedure ConfigLibrariesListPretty(const FileName: string; DebugLevel: integer);
+var
+  rootObj: TJSONObject;
+  libsData: TJSONData;
+  libsObj: TJSONObject;
+  i: integer;
+  maxPfx: integer;
+  pfx, cfgPath, resolvedPath: string;
+  configDir, pascalRoot: string;
+  ok: boolean;
 begin
-  ConfigLibrariesList(FileName, DebugLevel);
+  rootObj := ReadConfigJsonObject(FileName, DebugLevel);
+  if rootObj = nil then
+  begin
+    WriteLn('No config file: ', FileName);
+    Exit;
+  end;
+  try
+    libsData := rootObj.Find('libraries');
+    if (libsData = nil) or (not (libsData is TJSONObject)) then
+    begin
+      WriteLn('No libraries configured.');
+      Exit;
+    end;
+    libsObj := TJSONObject(libsData);
+    if libsObj.Count = 0 then
+    begin
+      WriteLn('No libraries configured.');
+      Exit;
+    end;
+
+    maxPfx := 0;
+    for i := 0 to libsObj.Count - 1 do
+      if Length(libsObj.Names[i]) > maxPfx then
+        maxPfx := Length(libsObj.Names[i]);
+    if maxPfx < 3 then
+      maxPfx := 3;
+
+    configDir := ExtractFileDir(ExpandFileName(FileName));
+    pascalRoot := ExpandFileName(IncludeTrailingPathDelimiter(configDir) + '..');
+
+    WriteLn('Libraries (mounts):');
+    WriteLn('  ', Format('%-*s  %-22s  %-7s %s', [maxPfx, 'PFX', 'PATH', 'STATUS', 'RESOLVED']));
+    for i := 0 to libsObj.Count - 1 do
+    begin
+      pfx := libsObj.Names[i];
+      cfgPath := libsObj.Strings[pfx];
+      if (ExtractFileDrive(cfgPath) <> '') or ((Length(cfgPath) > 0) and ((cfgPath[1] = PathDelim) or (cfgPath[1] = '/'))) then
+        resolvedPath := ExpandFileName(cfgPath)
+      else
+        resolvedPath := ExpandFileName(IncludeTrailingPathDelimiter(pascalRoot) + cfgPath);
+
+      ok := DirectoryExists(resolvedPath);
+      if ok then
+        WriteLn('  ', Format('%-*s  %-22s  %-7s %s', [maxPfx, pfx, cfgPath, 'OK', resolvedPath]))
+      else
+        WriteLn('  ', Format('%-*s  %-22s  %-7s %s', [maxPfx, pfx, cfgPath, 'MISSING', resolvedPath]));
+    end;
+  finally
+    rootObj.Free;
+  end;
 end;
 
 procedure ConfigLibrariesAdd(const FileName: string; DebugLevel: integer; const Prefix: string; const Folder: string);
@@ -777,7 +835,7 @@ var
   file_content, line: string;
   f: TextFile;
   // For working directory management
-  old_dir, script_dir, script_path, test_path: string;
+  old_dir, script_dir, script_path, test_path, test_key, test_file: string;
   // For QAR pre-registration
   ret: cint;
   is_module: boolean;
@@ -1419,6 +1477,16 @@ begin
       end;
       GuardExplicit := True;
     end
+    else if (ParamStr(i) = '--mode') or (ParamStr(i) = '--repl-mode') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing value for --mode');
+        Halt(1);
+      end;
+      ActiveReplMode := ParamStr(i);
+    end
     else if (ParamStr(i) = '-h') or (ParamStr(i) = '--help') then
     begin
       WriteLn('QuickJS Pascal');
@@ -1445,6 +1513,7 @@ begin
       WriteLn('  -d, --debug [LEVEL]  Enable debug output (0=off, 1=basic, 2=verbose, default=1)');
       WriteLn('  -e CODE              Evaluate JavaScript CODE');
       WriteLn('  --guard MODE         REPL crash guard: strict | friendly');
+      WriteLn('  --mode NAME          Start interactive REPL with REPL mode enabled (e.g. sh)');
       WriteLn('  --cat FILE           Print file contents and exit');
       WriteLn('                      (supports: file.qar/entryPath to print embedded source)');
       WriteLn('  --qar-cat FILE       Alias of --cat (for QAR tooling compatibility)');
@@ -1477,6 +1546,7 @@ begin
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' --qar-rm --in-place mylib.qar index.js');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' -d 2                  (interactive mode with verbose debug)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), ' --guard friendly      (interactive mode, no hard crash on AV)');
+      WriteLn('  ', ExtractFileName(ParamStr(0)), ' --mode sh             (interactive shell mode: prompt sh>)');
       WriteLn('  ', ExtractFileName(ParamStr(0)), '                        (interactive mode)');
       Halt(0);
     end
@@ -2349,19 +2419,55 @@ begin
     LoadExamplesConfigFromFile(ExampleConfigs, ExamplesConfigFile, qjs_log.DebugLevel);
     if qjs_log.DebugLevel > 0 then
       WriteLn('Debug level: ', qjs_log.DebugLevel);
-    WriteLn('Commands:');
-    WriteLn('  .help | help                - Detailed help');
-    WriteLn('  .load <file.js>             - Load & run a JS file');
-    WriteLn('  .import <module> [name]     - Import ESM module and bind to global');
-    WriteLn('  .build <out.qar> <inputs..> - Build QAR from JS files/folder');
-    WriteLn('  .qar / .tool / .verify      - QAR tooling commands');
-    WriteLn('  .lib ...                    - Manage libraries (mounts)');
-    WriteLn('  .example ...                - Run/manage example tests');
-    WriteLn('  .debug [on|off|0|1|2]       - Toggle debug');
-    WriteLn('  .guard [strict|friendly]    - REPL crash guard mode');
-    WriteLn('  .mode <name> on|off         - Toggle REPL mode (plugin-driven)');
-    WriteLn('  .mem                        - Runtime memory usage');
-    WriteLn('  .exit/.quit (exit/quit)     - Leave program');
+    if (ActiveReplMode <> '') then
+    begin
+      if not FindReplModeConfig(ActiveReplMode, replCfg) then
+      begin
+        WriteLn('Error: unknown REPL mode: ', ActiveReplMode);
+        ActiveReplMode := '';
+      end
+      else
+      begin
+        if ImportedReplModes.IndexOf(replCfg.Name) < 0 then
+        begin
+          file_content :=
+            'import * as ' + replCfg.GlobalName + ' from ' + QuotedStr(replCfg.ModuleName) + ';' + LineEnding +
+            'globalThis[' + QuotedStr(replCfg.GlobalName) + '] = ' + replCfg.GlobalName + ';' + LineEnding;
+
+          if RunEvalCode(ctx, '<repl_mode_import>', file_content) then
+            ImportedReplModes.Add(replCfg.Name)
+          else
+          begin
+            WriteLn('Error: failed to import ', replCfg.ModuleName);
+            ActiveReplMode := '';
+          end;
+        end;
+
+        if ActiveReplMode <> '' then
+        begin
+          file_content :=
+            'if (typeof ' + replCfg.GlobalName + '.help === ''function'') ' + replCfg.GlobalName + '.help();' + LineEnding;
+          RunEvalCode(ctx, '<repl_mode_help>', file_content);
+        end;
+      end;
+    end;
+
+    if (ActiveReplMode = '') then
+    begin
+      WriteLn('Commands:');
+      WriteLn('  .help | help                - Detailed help');
+      WriteLn('  .load <file.js>             - Load & run a JS file');
+      WriteLn('  .import <module> [name]     - Import ESM module and bind to global');
+      WriteLn('  .build <out.qar> <inputs..> - Build QAR from JS files/folder');
+      WriteLn('  .qar / .tool / .verify      - QAR tooling commands');
+      WriteLn('  .lib ...                    - Manage libraries (mounts)');
+      WriteLn('  .test ...                   - Run/manage example tests');
+      WriteLn('  .debug [on|off|0|1|2]       - Toggle debug');
+      WriteLn('  .guard [strict|friendly]    - REPL crash guard mode');
+      WriteLn('  .mode <name> on|off         - Toggle REPL mode (plugin-driven)');
+      WriteLn('  .mem                        - Runtime memory usage');
+      WriteLn('  .exit/.quit (exit/quit)     - Leave program');
+    end;
 
     // Simple interactive loop
     while True do
@@ -2450,7 +2556,7 @@ begin
           WriteLn('      add <pfx> <folder>      - Add/update a mount');
           WriteLn('      remove <pfx>            - Remove a mount');
           WriteLn;
-          WriteLn('  .example [command]');
+          WriteLn('  .test [command]');
           WriteLn('    Manage and run built-in example tests:');
           WriteLn('      (no args) | run         - Run all enabled tests');
           WriteLn('      list                    - List tests + enabled/disabled');
@@ -2480,7 +2586,7 @@ begin
           WriteLn('Tips:');
           WriteLn('  - Use ".qar help" to see QAR tooling commands.');
           WriteLn('  - Use ".qar keygen --pem mykey.pem" then "--sign-key mykey.pem" to sign QAR builds.');
-          WriteLn('  - Use ".example list" to see available example test names.');
+          WriteLn('  - Use ".test list" to see available example test names.');
           WriteLn('  - Use ".lib list" to see registered library mounts.');
           WriteLn;
           Flush(Output);
@@ -2935,18 +3041,21 @@ begin
         Continue;
       end;
 
-      // Handle .example command to manage and run example scripts
-      if (Copy(script, 1, 9) = '.example ') or (script = '.example') then
+      // Handle .test command to manage and run example scripts
+      if (Copy(script, 1, 6) = '.test ') or (script = '.test') then
       begin
         cmdLine := '';
-        if Length(script) > 9 then
-          cmdLine := Trim(Copy(script, 10, Length(script)));
+        if Length(script) > 6 then
+          cmdLine := Trim(Copy(script, 7, Length(script)));
         
         cmdArgs := TStringList.Create;
         try
           cmdArgs.Delimiter := ' ';
           cmdArgs.StrictDelimiter := True;
           cmdArgs.DelimitedText := cmdLine;
+          test_path := '';
+          test_key := '';
+          test_file := '';
           
           // No subcommand or "run" - run enabled examples
           if (cmdArgs.Count = 0) or ((cmdArgs.Count = 1) and (LowerCase(cmdArgs[0]) = 'run')) then
@@ -2956,99 +3065,24 @@ begin
             begin
               if ExampleConfigs[i].enabled then
               begin
-                if ExampleConfigs[i].name = 'example1_basic.js' then
+                test_key := ExampleConfigs[i].name;
+                test_path := test_key;
+                if (Pos('/', test_path) = 0) and (Pos('\\', test_path) = 0) and (ExtractFileDrive(test_path) = '') and ((Length(test_path) = 0) or ((test_path[1] <> PathDelim) and (test_path[1] <> '/'))) then
+                  test_file := 'tests/' + test_path
+                else
+                  test_file := test_path;
+
+                WriteLn('=== Running: ', test_key, ' ===');
+                if LoadAndExecuteJSFile(ctx, test_file) then
                 begin
-                  WriteLn('=== Example 1: Basic JavaScript execution ===');
-                  if LoadAndExecuteJSFile(ctx, 'tests/example1_basic.js') then
-                  begin
-                    if qjs_log.DebugLevel > 0 then
-                      WriteLn('[DEBUG] Example 1 completed successfully');
-                  end
-                  else
-                  begin
-                    WriteLn('Warning: Could not load tests/example1_basic.js');
-                  end;
-                  WriteLn;
-                end
-                else if ExampleConfigs[i].name = 'example2_qar_info.js' then
-                begin
-                  if FileExists('qar_test.qar') then
-                  begin
-                    WriteLn('=== Example 2: QAR file info ===');
-                    qar_helpers.ExampleReadQarInfo('qar_test.qar');
-                    WriteLn;
-                  end
-                  else
-                  begin
-                    WriteLn('=== Example 2: QAR file info ===');
-                    if LoadAndExecuteJSFile(ctx, 'tests/example2_qar_info.js') then
-                    begin
-                      if qjs_log.DebugLevel > 0 then
-                        WriteLn('[DEBUG] Example 2 info displayed');
-                    end
-                    else
-                    begin
-                      WriteLn('QAR file "qar_test.qar" not found. Skipping QAR examples.');
-                      WriteLn('To test QAR functionality, create a QAR file first using:');
-                      WriteLn('  qjar -o qar_test.qar your_js_file.js');
-                    end;
-                    WriteLn;
-                  end;
-                end
-                else if ExampleConfigs[i].name = 'example3_qar_usage.js' then
-                begin
-                  WriteLn('=== Example 3: Using QAR from JavaScript ===');
-                  if LoadAndExecuteJSFile(ctx, 'tests/example3_qar_usage.js') then
-                  begin
-                    if qjs_log.DebugLevel > 0 then
-                      WriteLn('[DEBUG] Example 3 completed successfully');
-                  end
-                  else
-                  begin
-                    WriteLn('Warning: Could not load tests/example3_qar_usage.js');
-                  end;
-                  WriteLn;
-                end
-                else if ExampleConfigs[i].name = 'example4_dll_test.js' then
-                begin
-                  WriteLn('=== Example 4: Dynamic Library Function Calls ===');
-                  if LoadAndExecuteJSFile(ctx, 'tests/example4_dll_test.js') then
-                  begin
-                    if qjs_log.DebugLevel > 0 then
-                      WriteLn('[DEBUG] Example 4 completed successfully');
-                  end
-                  else
-                  begin
-                    WriteLn('Warning: Could not load tests/example4_dll_test.js');
-                    WriteLn('Note: To test dynamic library functionality:');
-                    {$IFDEF WINDOWS}
-                    WriteLn('      Compile test_dll.pas to test_dll.dll with: fpc -XX test_dll.pas');
-                    {$ELSE}
-                    {$IFDEF UNIX}
-                    WriteLn('      Compile test_dll.pas to test_dll.so with: fpc -XX test_dll.pas');
-                    {$ENDIF}
-                    {$IFDEF DARWIN}
-                    WriteLn('      Compile test_dll.pas to test_dll.dylib with: fpc -XX test_dll.pas');
-                    {$ENDIF}
-                    {$ENDIF}
-                  end;
-                  WriteLn;
+                  if qjs_log.DebugLevel > 0 then
+                    WriteLn('[DEBUG] ', test_key, ' completed successfully');
                 end
                 else
                 begin
-                  // Generic test file
-                  WriteLn('=== Running: ', ExampleConfigs[i].name, ' ===');
-                  if LoadAndExecuteJSFile(ctx, 'tests/' + ExampleConfigs[i].name) then
-                  begin
-                    if qjs_log.DebugLevel > 0 then
-                      WriteLn('[DEBUG] ', ExampleConfigs[i].name, ' completed successfully');
-                  end
-                  else
-                  begin
-                    WriteLn('Warning: Could not load tests/', ExampleConfigs[i].name);
-                  end;
-                  WriteLn;
+                  WriteLn('Warning: Could not load ', test_file);
                 end;
+                WriteLn;
               end;
             end;
           end
@@ -3065,15 +3099,15 @@ begin
                 WriteLn('  [ ] ', ExampleConfigs[i].name);
             end;
             WriteLn;
-            WriteLn('Use .example add <name> to add a test');
-            WriteLn('Use .example remove <name> to remove a test');
-            WriteLn('Use .example enable <name> to enable a test');
-            WriteLn('Use .example disable <name> to disable a test');
+            WriteLn('Use .test add <name> to add a test');
+            WriteLn('Use .test remove <name> to remove a test');
+            WriteLn('Use .test enable <name> to enable a test');
+            WriteLn('Use .test disable <name> to disable a test');
           end
           else if (cmdArgs.Count >= 2) and (LowerCase(cmdArgs[0]) = 'add') then
           begin
             // Add a new test (enabled by default)
-            j := examples_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
+            j := tests_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
             if j >= 0 then
             begin
               WriteLn('Test "', cmdArgs[1], '" already exists');
@@ -3090,7 +3124,7 @@ begin
           else if (cmdArgs.Count >= 2) and (LowerCase(cmdArgs[0]) = 'remove') then
           begin
             // Remove a test
-            j := examples_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
+            j := tests_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
             if j < 0 then
             begin
               WriteLn('Test "', cmdArgs[1], '" not found');
@@ -3108,7 +3142,7 @@ begin
           else if (cmdArgs.Count >= 2) and (LowerCase(cmdArgs[0]) = 'enable') then
           begin
             // Enable a test
-            j := examples_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
+            j := tests_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
             if j < 0 then
             begin
               WriteLn('Test "', cmdArgs[1], '" not found');
@@ -3123,7 +3157,7 @@ begin
           else if (cmdArgs.Count >= 2) and (LowerCase(cmdArgs[0]) = 'disable') then
           begin
             // Disable a test
-            j := examples_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
+            j := tests_config.FindExampleConfig(ExampleConfigs, cmdArgs[1]);
             if j < 0 then
             begin
               WriteLn('Test "', cmdArgs[1], '" not found');
@@ -3137,7 +3171,7 @@ begin
           end
           else
           begin
-            WriteLn('Usage: .example [command]');
+            WriteLn('Usage: .test [command]');
             WriteLn('Commands:');
             WriteLn('  (no args) or run  - Run all enabled example tests');
             WriteLn('  list              - List all tests and their status');

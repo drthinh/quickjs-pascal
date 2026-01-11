@@ -1116,6 +1116,8 @@ export function runp(command) {
   }
   const r = run(command);
   if (r && typeof r.stdout === "string" && r.stdout !== "") _puts(r.stdout);
+  const cmdPath = which(command);
+  if (cmdPath) _puts(`[Native] ${command} - ${cmdPath}\n`);
   return r && typeof r.code === "number" ? r.code : 0;
 }
 
@@ -1521,6 +1523,13 @@ export function repl(line) {
   // IMPORTANT: do not block the Pascal REPL by returning a Promise that will be awaited.
   // Run as foreground process with streaming output via spawn.
   try {
+    const p = which(args[0]);
+    if (p != null && String(p) !== "") {
+      _puts(`[Native] ${_toStr(args[0])} - ${String(p)}\n`);
+    }
+  } catch (e) {
+  }
+  try {
     if (typeof _spawn === "function") {
       const argv = platform === "win32" ? ["cmd.exe", "/C", raw] : ["sh", "-c", raw];
       _fgProc = _spawn(argv, { mergeStderr: true, inheritStdio: true, shell: true });
@@ -1547,4 +1556,28 @@ export function repl(line) {
 
 export function runFile(file, args, opts) {
   return execFile(_toStr(file), args, opts);
+}
+
+export function help() {
+  _puts("sh mode\n");
+  _puts("=======\n\n");
+  _puts("Built-in commands:\n");
+  _puts("  pwd\n");
+  _puts("  cd <dir>\n");
+  _puts("  ls [-a] [-l] [path]\n");
+  _puts("  which <cmd>\n");
+  _puts("  mkdir [-p] <dir>\n");
+  _puts("  rm [-r] [-f] [-i] <path>\n");
+  _puts("  cat <file>\n");
+  _puts("  head <file> [n]\n");
+  _puts("  tail <file> [n]\n");
+  _puts("  cp [-r|-a] [-f] <src> <dst>\n");
+  _puts("  mv <src> <dst>\n");
+  _puts("  touch <file>\n");
+  _puts("  grep [-r] [-i] [-n] <pattern> <path>\n");
+  _puts("  find [start] [-name GLOB] [-type f|d] [-maxdepth N]\n");
+  _puts("  run <command>\n\n");
+  _puts("Other:\n");
+  _puts("  .js   Return to JS prompt\n");
+  _puts("  help  Show this help\n\n");
 }
