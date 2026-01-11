@@ -32,3 +32,5 @@ export * as sh from "qjsp:sh/index.js";
 export * as url from "qjsp:url/index.js";
 
 export * as zip from "qjsp:zip/index.js";
+
+export * as crypto from "qjsp:crypto/index.js";

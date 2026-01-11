@@ -16,7 +16,7 @@ uses
   tests_config,
   file_utils,
   qjsp_module_loader, http_helpers, http_async_helpers, fs_watch_helpers,
-  qjsp_zip_shim, qjsp_spawn_shim;
+  qjsp_zip_shim, qjsp_spawn_shim, qjsp_crypto_shim;
 
 const
   APP_AUTHOR = 'Nguyen Duc Thinh - dr.nguyenducthinh@gmail.com';
@@ -2287,6 +2287,7 @@ RestartRuntime:
 
   RegisterZipModuleShims(ctx);
   RegisterSpawnModuleShims(ctx);
+  RegisterCryptoModuleShims(ctx);
 
   // Initialize standard handlers
   js_std_init_handlers(rt);

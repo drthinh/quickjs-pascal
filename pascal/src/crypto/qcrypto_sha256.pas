@@ -271,9 +271,17 @@ begin
 end;
 
 function Sha256DigestHexBytes(const bytes: TBytes): string;
+var
+  dummy: Byte;
 begin
   if Length(bytes) = 0 then
-    Exit('');
+  begin
+    // Sha256Update exits early when len=0, so the data pointer is never dereferenced.
+    // Still, we need a valid argument for the untyped const parameter.
+    dummy := 0;
+    Result := Sha256DigestHex(dummy, 0);
+    Exit;
+  end;
   Result := Sha256DigestHex(bytes[0], NativeUInt(Length(bytes)));
 end;
 
