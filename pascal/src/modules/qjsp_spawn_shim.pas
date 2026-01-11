@@ -163,6 +163,45 @@ end;
 var
   g_ctrl_handler_installed: boolean = False;
 
+function WinTaskKill(pid: DWORD; force: boolean): boolean;
+var
+  cmd: AnsiString;
+  si: STARTUPINFOA;
+  pi: PROCESS_INFORMATION;
+begin
+  Result := False;
+  if pid = 0 then
+    Exit;
+  FillChar(si, SizeOf(si), 0);
+  si.cb := SizeOf(si);
+  FillChar(pi, SizeOf(pi), 0);
+  cmd := 'taskkill /PID ' + AnsiString(IntToStr(pid)) + ' /T';
+  if force then
+    cmd := cmd + ' /F';
+  Result := CreateProcessA(nil, PAnsiChar(cmd), nil, nil, False, CREATE_NO_WINDOW, nil, nil, si, pi);
+  if Result then
+  begin
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+  end;
+end;
+
+function WinSendCtrlBreak(pid: DWORD): boolean;
+var
+  ignore: WINBOOL;
+begin
+  Result := False;
+  if pid = 0 then
+    Exit;
+  ignore := SetConsoleCtrlHandler(nil, True);
+  try
+    Result := GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid);
+  finally
+    if ignore then
+      SetConsoleCtrlHandler(nil, False);
+  end;
+end;
+
 procedure WinKillProcessTree(pid: DWORD);
 var
   cmd: AnsiString;
@@ -199,8 +238,8 @@ begin
       if (sp <> nil) and (sp^.P <> nil) then
       begin
         try
-          WinKillProcessTree(DWORD(sp^.P.ProcessID));
-          sp^.P.Terminate(1);
+          if not WinSendCtrlBreak(DWORD(sp^.P.ProcessID)) then
+            WinTaskKill(DWORD(sp^.P.ProcessID), False);
         except
         end;
       end;
@@ -587,6 +626,7 @@ function js_kill(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSV
 var
   id: cint64;
   sp: PSpawnProcRec;
+  sig: cint32;
 begin
   if argc < 1 then
     Exit(JS_ThrowTypeError(ctx, PChar('kill expects id')));
@@ -595,11 +635,33 @@ begin
   sp := GetProcById(id);
   if (sp = nil) or (sp^.P = nil) then
     Exit(JS_ThrowTypeError(ctx, PChar('kill: invalid process id')));
+
+  sig := 15;
+  if argc >= 2 then
+    JS_ToInt32(ctx, @sig, argv[1]);
   try
     {$IFDEF WINDOWS}
-    WinKillProcessTree(DWORD(sp^.P.ProcessID));
+    case sig of
+      2:
+        begin
+          if not WinSendCtrlBreak(DWORD(sp^.P.ProcessID)) then
+            WinTaskKill(DWORD(sp^.P.ProcessID), False);
+        end;
+      9:
+        begin
+          WinTaskKill(DWORD(sp^.P.ProcessID), True);
+          WinKillProcessTree(DWORD(sp^.P.ProcessID));
+        end;
+    else
+      begin
+        WinTaskKill(DWORD(sp^.P.ProcessID), False);
+      end;
+    end;
     {$ENDIF}
-    sp^.P.Terminate(1);
+    if sig = 9 then
+      sp^.P.Terminate(1)
+    else if (sig = 15) or (sig = 9) then
+      sp^.P.Terminate(1);
   except
   end;
   Result := JS_UNDEFINED;
