@@ -857,6 +857,7 @@ var
   pfx: string;
   qar_manifest_len: csize_t;
   qar_manifest_ptr: PChar;
+  dumpFlags: cuint64;
   qar_manifest_str: UTF8String;
   qar_main_entry: UTF8String;
   qar_src_bytes: TBytes;
@@ -1419,20 +1420,20 @@ begin
       Inc(i);
       if i > ParamCount then
       begin
-        qjs_log.DebugLevel := 1; // Default to level 1 if no value provided
+        qjs_log.SetLogLevelFromDebugLevel(1); // Default to level 1 if no value provided
       end
       else
       begin
         try
-          qjs_log.DebugLevel := StrToInt(ParamStr(i));
+          qjs_log.SetLogLevelFromDebugLevel(StrToInt(ParamStr(i)));
           if (qjs_log.DebugLevel < 0) or (qjs_log.DebugLevel > 2) then
           begin
             WriteLn('Warning: Debug level must be 0-2, using 1');
-            qjs_log.DebugLevel := 1;
+            qjs_log.SetLogLevelFromDebugLevel(1);
           end;
         except
           WriteLn('Warning: Invalid debug level, using 1');
-          qjs_log.DebugLevel := 1;
+          qjs_log.SetLogLevelFromDebugLevel(1);
         end;
       end;
     end
@@ -2794,6 +2795,96 @@ RestartRuntime:
           Continue;
         end;
 
+        if (Copy(script, 1, 4) = '.gc ') or (script = '.gc') then
+        begin
+          JS_RunGC(rt);
+          if qjs_log.DebugLevel > 0 then
+            qjs_log.LogMsg(llInfo, 'gc', 'JS_RunGC executed');
+          Flush(Output);
+          Continue;
+        end;
+
+        if (Copy(script, 1, 11) = '.dumpflags ') or (script = '.dumpflags') then
+        begin
+          cmdLine := '';
+          if Length(script) > 11 then
+            cmdLine := Trim(Copy(script, 12, Length(script)));
+
+          if cmdLine = '' then
+          begin
+            dumpFlags := JS_GetDumpFlags(rt);
+            WriteLn('QuickJS dump flags: ', UIntToStr(QWord(dumpFlags)));
+            WriteLn('Usage: .dumpflags <0|number|on|off>');
+            Flush(Output);
+          end
+          else
+          begin
+            cmdLine := LowerCase(cmdLine);
+            dumpFlags := JS_GetDumpFlags(rt);
+            if cmdLine = 'on' then
+              dumpFlags := cuint64($FFFFFFFFFFFFFFFF)
+            else if cmdLine = 'off' then
+              dumpFlags := 0
+            else
+            begin
+              try
+                dumpFlags := cuint64(StrToQWord(cmdLine));
+              except
+                WriteLn('Warning: Invalid dump flags value');
+                Flush(Output);
+                Continue;
+              end;
+            end;
+            JS_SetDumpFlags(rt, dumpFlags);
+            dumpFlags := JS_GetDumpFlags(rt);
+            WriteLn('QuickJS dump flags set to ', UIntToStr(QWord(dumpFlags)));
+            if (dumpFlags = 0) and (cmdLine <> '0') and (cmdLine <> 'off') then
+            begin
+              WriteLn('Warning: dump flags remain 0. libqjs may be built without ENABLE_DUMPS.');
+              Flush(Output);
+            end;
+            Flush(Output);
+          end;
+          Continue;
+        end;
+
+        if (Copy(script, 1, 4) = '.ts ') or (script = '.ts') then
+        begin
+          cmdLine := '';
+          if Length(script) > 4 then
+            cmdLine := Trim(Copy(script, 5, Length(script)));
+
+          if cmdLine = '' then
+          begin
+            if qjs_log.LogShowTimestamp then
+              WriteLn('Log timestamp: on')
+            else
+              WriteLn('Log timestamp: off');
+            WriteLn('Usage: .ts on | off');
+            Flush(Output);
+          end
+          else
+          begin
+            cmdLine := LowerCase(cmdLine);
+            if cmdLine = 'on' then
+              qjs_log.LogShowTimestamp := True
+            else if cmdLine = 'off' then
+              qjs_log.LogShowTimestamp := False
+            else
+            begin
+              WriteLn('Warning: Invalid .ts value, must be on or off');
+              Flush(Output);
+              Continue;
+            end;
+            if qjs_log.LogShowTimestamp then
+              WriteLn('Log timestamp enabled')
+            else
+              WriteLn('Log timestamp disabled');
+            Flush(Output);
+          end;
+          Continue;
+        end;
+
         if (Copy(script, 1, 7) = '.debug ') or (script = '.debug') then
         begin
           cmdLine := '';
@@ -2840,7 +2931,7 @@ RestartRuntime:
             end
             else
             begin
-              qjs_log.DebugLevel := newDebugLevel;
+              qjs_log.SetLogLevelFromDebugLevel(newDebugLevel);
               ApplyDebugSettings(rt);
               WriteLn('Debug level set to ', qjs_log.DebugLevel);
               Flush(Output);

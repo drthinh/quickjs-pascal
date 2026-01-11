@@ -1,0 +1,3 @@
+"C:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\api-test.dir/objects.a
+D:\codeblocks-25.03mingw-nosetup\MinGW\bin\ar.exe qc CMakeFiles\api-test.dir/objects.a @CMakeFiles\api-test.dir\objects1.rsp
+D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe -Os -DNDEBUG -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables -fno-unwind-tables  -Wl,--stack,8388608 -Wl,--whole-archive CMakeFiles\api-test.dir/objects.a -Wl,--no-whole-archive -o api-test.exe -Wl,--out-implib,libapi-test.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\api-test.dir\linkLibs.rsp

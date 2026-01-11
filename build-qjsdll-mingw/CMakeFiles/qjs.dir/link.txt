@@ -1,0 +1,3 @@
+"C:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\qjs.dir/objects.a
+D:\codeblocks-25.03mingw-nosetup\MinGW\bin\ar.exe qc CMakeFiles\qjs.dir/objects.a @CMakeFiles\qjs.dir\objects1.rsp
+D:\codeblocks-25.03mingw-nosetup\MinGW\bin\gcc.exe -Os -DNDEBUG -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables -fno-unwind-tables -shared -Wl,--gc-sections -Wl,--strip-all -Wl,--export-all-symbols -static-libgcc -o libqjs.dll -Wl,--out-implib,libqjs.dll.a -Wl,--major-image-version,0,--minor-image-version,11 -Wl,--whole-archive CMakeFiles\qjs.dir/objects.a -Wl,--no-whole-archive @CMakeFiles\qjs.dir\linkLibs.rsp

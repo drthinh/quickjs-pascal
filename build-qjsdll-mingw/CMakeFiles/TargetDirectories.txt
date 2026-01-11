@@ -1,0 +1,13 @@
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/qjs.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/qjsc.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/qjs_exe.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/run-test262.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/api-test.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/unicode_gen.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/function_source.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/edit_cache.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/rebuild_cache.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/list_install_components.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/install.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/install/local.dir
+D:/Projects/quickjs/quickjs-master/build-qjsdll-mingw/CMakeFiles/install/strip.dir

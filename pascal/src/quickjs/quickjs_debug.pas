@@ -6,7 +6,7 @@ unit quickjs_debug;
 interface
 
 uses
-  ctypes, SysUtils, quickjs_types, quickjs_core, quickjs_std;
+  ctypes, SysUtils, quickjs_types, quickjs_core, quickjs_std, qjs_log;
 
 // Convert a JSValue to Pascal string (empty string if conversion fails)
 function JSValueToString(ctx: PJSContext; v: JSValueConst): string;
@@ -146,9 +146,9 @@ begin
     end;
   end;
 
-  WriteLn('Unhandled Promise rejection: ', msg);
+  qjs_log.LogMsg(llError, 'promise', 'Unhandled Promise rejection: ' + msg);
   if st <> '' then
-    WriteLn(st);
+    qjs_log.LogMsg(llError, 'promise', st);
 end;
 
 procedure JS_InstallStdPromiseRejectionTracker(rt: PJSRuntime);

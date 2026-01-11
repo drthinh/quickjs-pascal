@@ -47,6 +47,7 @@ import { util, io, time, concurrent, log } from "qjsp:index.js";
 - `STDJ_OS.md`
 - `STDJ_URL.md`
 - `STDJ_SH.md`
+- `CRYPTO_MODULE.md`
 
 ## Tests
 
