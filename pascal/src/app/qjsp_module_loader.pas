@@ -14,7 +14,7 @@ procedure qjsp_clear_mounts;
 implementation
 
 uses
-  qar_helpers, qjs_log, StrUtils, quickjs_debug;
+  qar_helpers, qjs_log, StrUtils, quickjs_debug, qjsp_host_errors;
 
 var
   g_module_load_stack: TStringList;
@@ -148,7 +148,7 @@ begin
       stack_msg := stack_msg + ' -> ';
     stack_msg := stack_msg + module_name_str;
 
-    JS_ThrowReferenceError(ctx, PChar('circular import detected: ' + stack_msg));
+    QjspThrowHostError(ctx, QJSP_E_MODULE_CIRCULAR_IMPORT, 'circular import detected: ' + stack_msg, 'module_loader');
     Result := nil;
     Exit;
   end;
@@ -173,7 +173,7 @@ begin
     // Safety/diagnostics: reject path traversal and suspicious names early.
     if (Pos('..', mapped_rel) > 0) or (Pos(':', mapped_rel) > 0) then
     begin
-      JS_ThrowReferenceError(ctx, PChar('invalid lib module path: ' + mapped_rel));
+      QjspThrowHostError(ctx, QJSP_E_MODULE_INVALID_PATH, 'invalid lib module path: ' + mapped_rel, 'module_loader');
       Result := nil;
       Exit;
     end;
@@ -182,7 +182,7 @@ begin
     // lib:<name>/path maps to mount <name>=<folder>.
     if (g_qjsp_mounts = nil) then
     begin
-      JS_ThrowReferenceError(ctx, PChar('no library mounts configured (missing config "libraries")'));
+      QjspThrowHostError(ctx, QJSP_E_MODULE_MISSING_LIBRARY_MOUNT, 'no library mounts configured (missing config "libraries")', 'module_loader');
       Result := nil;
       Exit;
     end;
@@ -202,7 +202,7 @@ begin
     mount_folder := g_qjsp_mounts.Values[mount_prefix];
     if mount_folder = '' then
     begin
-      JS_ThrowReferenceError(ctx, PChar('missing library mount: ' + mount_prefix + '=... (configure in config JSON "libraries")'));
+      QjspThrowHostError(ctx, QJSP_E_MODULE_MISSING_LIBRARY_MOUNT, 'missing library mount: ' + mount_prefix + '=... (configure in config JSON "libraries")', 'module_loader');
       Result := nil;
       Exit;
     end;
@@ -235,7 +235,7 @@ begin
           'tried:' + LineEnding +
           '  - ' + mount_prefix + '.js' + LineEnding +
           '  - ' + mount_prefix + '/index.js';
-      JS_ThrowReferenceError(ctx, PChar('could not load lib module: ' + module_name_str + LineEnding + tried_msg));
+      QjspThrowHostError(ctx, QJSP_E_MODULE_LOAD_FAILED, 'could not load lib module: ' + module_name_str + LineEnding + tried_msg, 'module_loader');
       Result := nil;
     finally
       try
@@ -263,7 +263,7 @@ begin
     // Safety/diagnostics: reject path traversal and suspicious names early.
     if (Pos('..', mapped_rel) > 0) or (Pos(':', mapped_rel) > 0) then
     begin
-      JS_ThrowReferenceError(ctx, PChar('invalid qjsp module path: ' + mapped_rel));
+      QjspThrowHostError(ctx, QJSP_E_MODULE_INVALID_PATH, 'invalid qjsp module path: ' + mapped_rel, 'module_loader');
       Result := nil;
       Exit;
     end;
@@ -321,7 +321,7 @@ begin
         '  - ' + mapped_name_qjs + '.js' + LineEnding +
         '  - ' + mapped_name_qjs + '/index.js';
 
-      JS_ThrowReferenceError(ctx, PChar('could not load qjsp module: ' + module_name_str + LineEnding + tried_msg));
+      QjspThrowHostError(ctx, QJSP_E_MODULE_LOAD_FAILED, 'could not load qjsp module: ' + module_name_str + LineEnding + tried_msg, 'module_loader');
     finally
       try
         SetCurrentDir(old_dir);

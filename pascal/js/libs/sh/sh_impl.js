@@ -597,6 +597,108 @@ function _cleanupTemp(obj) {
 
 let _fgProc = null;
 
+let _editSession = null;
+
+function _editorPrintBuffer() {
+  if (!_editSession) return;
+  const lines = _editSession.lines;
+  for (let i = 0; i < lines.length; i++) {
+    const ln = String(i + 1).padStart(6, " ");
+    _puts(ln + "  " + lines[i] + "\n");
+  }
+  if (!lines.length) _puts("(empty)\n");
+}
+
+function _editorHandleLine(line) {
+  if (!_editSession) return;
+  const s = _toStr(line);
+
+  if (/^\s*(nano|vi|edit|view)\b/i.test(s)) {
+    _puts("(editor) You are currently editing. Use .w to save or .q to quit.\n");
+    return;
+  }
+
+  if (s === ".q") {
+    _puts("\n(cancelled)\n");
+    _editSession = null;
+    return;
+  }
+
+  if (s === ".p") {
+    _puts("\n");
+    _editorPrintBuffer();
+    _puts("\n");
+    return;
+  }
+
+  if (s === ".w") {
+    const p = _editSession.path;
+    const lines = _editSession.lines;
+    try {
+      fs.writeTextFile(p, lines.join("\n") + "\n");
+    } catch (e) {
+      _puts("Error: write failed: " + (e && e.message ? e.message : String(e)) + "\n");
+      return;
+    }
+    _puts("\n(written)\n");
+    _editSession = null;
+    return;
+  }
+
+  if (s.startsWith(".d ")) {
+    const n = Number(s.slice(3).trim());
+    const idx = Math.floor(n) - 1;
+    if (!Number.isFinite(n) || idx < 0 || idx >= _editSession.lines.length) {
+      _puts("Error: invalid line number\n");
+      return;
+    }
+    _editSession.lines.splice(idx, 1);
+    if (_editSession.insertAt > _editSession.lines.length) _editSession.insertAt = _editSession.lines.length;
+    return;
+  }
+
+  if (s.startsWith(".i ")) {
+    const n = Number(s.slice(3).trim());
+    const idx = Math.floor(n) - 1;
+    if (!Number.isFinite(n) || idx < 0 || idx > _editSession.lines.length) {
+      _puts("Error: invalid line number\n");
+      return;
+    }
+    _editSession.insertAt = idx;
+    return;
+  }
+
+  _editSession.lines.splice(_editSession.insertAt, 0, s);
+  _editSession.insertAt++;
+}
+
+function _editorStart(cmd, filePath) {
+  const a0 = _toStr(filePath);
+  if (!a0) {
+    _puts("Usage: edit <file>\n");
+    return;
+  }
+
+  const p = _resolvePathExpanded(_expandArg(a0));
+  let lines = [];
+  try {
+    if (fs.exists(p)) {
+      const text = fs.readTextFile(p);
+      lines = _splitLines(text);
+    }
+  } catch (e) {
+    _puts("Error: failed to read: " + (e && e.message ? e.message : String(e)) + "\n");
+    return;
+  }
+
+  _editSession = { cmd: _toStr(cmd), path: p, lines, insertAt: lines.length };
+
+  _puts("-- " + _editSession.cmd + " " + p + " --\n");
+  _puts("Commands: .w (write), .q (quit), .p (print), .d N (delete line), .i N (insert before line)\n");
+  _puts("Enter text lines. Empty line is allowed.\n\n");
+  if (lines.length) _editorPrintBuffer();
+}
+
 export function fg() {
   return _fgProc;
 }
@@ -637,6 +739,8 @@ function _runBuiltin(cmd, args, stdinText) {
     buildSystemCommandWithInput: _buildSystemCommandWithInput,
     cleanupTemp: _cleanupTemp,
     warnCompat: _warnCompat,
+    readLine: _readLine,
+    puts: _puts,
     writeRedirectText: _writeRedirectText,
     formatTime: _formatTime,
     fs,
@@ -1122,8 +1226,9 @@ export function runp(command) {
 }
 
 export function repl(line) {
-  const raw = _toStr(line).trim();
-  if (!raw) return;
+  const raw = _toStr(line);
+  const s = raw.trim();
+  if (!s) return;
 
   if (_hasPipeOrRedirect(raw)) {
     const redir = _parseRedirections(raw);
@@ -1348,6 +1453,22 @@ export function repl(line) {
       return;
     }
     _puts(String(cat(_expandArg(a0))) + "\n");
+    return;
+  }
+
+  if (cmd === "view") {
+    try {
+      const out = _runBuiltin(cmd, args, null);
+      if (out != null && String(out) !== "") _puts(String(out) + "\n");
+    } catch (e) {
+      _puts("Error: " + (e && e.message ? e.message : String(e)) + "\n");
+    }
+    return;
+  }
+
+  if (cmd === "edit" || cmd === "vi" || cmd === "nano") {
+    const out = _runBuiltin(cmd, args, "");
+    if (out != null && _toStr(out) !== "") _puts(_toStr(out) + "\n");
     return;
   }
 
@@ -1576,6 +1697,8 @@ export function help() {
   _puts("  mkdir [-p] <dir>\n");
   _puts("  rm [-r] [-f] [-i] <path>\n");
   _puts("  cat <file>\n");
+  _puts("  view <file> [n]           (numbered view; n=limit lines)\n");
+  _puts("  edit <file>               (editor; aliases: vi, nano)\n");
   _puts("  head <file> [n]\n");
   _puts("  tail <file> [n]\n");
   _puts("  cp [-r|-a] [-f] <src> <dst>\n");

@@ -29,6 +29,8 @@ export function runBuiltin(cmd, args, stdinText, api) {
     warnCompat,
     splitLines,
     writeRedirectText,
+    readLine,
+    puts,
     http,
   } = api;
 
@@ -609,6 +611,120 @@ export function runBuiltin(cmd, args, stdinText, api) {
       throw new Error("Usage: cat <file>");
     }
     return String(cat(expandArg(a0)));
+  }
+
+  if (cmd === "view") {
+    if (!a0) throw new Error("Usage: view <file> [n]");
+    const p = resolvePathExpanded(expandArg(a0));
+    const limRaw = args.length >= 3 ? args[2] : void 0;
+    const limNum = limRaw == null || String(limRaw) === "" ? void 0 : Number(limRaw);
+    const limit = limNum == null ? void 0 : Math.max(0, Math.floor(limNum));
+
+    const text = String(cat(p));
+    const lines = splitLines(text);
+    const out = [];
+    const n = limit == null ? lines.length : Math.min(lines.length, limit);
+    for (let i = 0; i < n; i++) {
+      const ln = String(i + 1).padStart(6, " ");
+      out.push(ln + "  " + lines[i]);
+    }
+    return out.join("\n");
+  }
+
+  if (cmd === "edit" || cmd === "vi" || cmd === "nano") {
+    if (!a0) throw new Error("Usage: edit <file>");
+    if (typeof readLine !== "function") throw new Error(cmd + ": interactive prompt not available");
+    const p = resolvePathExpanded(expandArg(a0));
+
+    let lines = [];
+    try {
+      if (fs.exists(p)) {
+        const text = fs.readTextFile(p);
+        lines = splitLines(text);
+      }
+    } catch (e) {
+      throw new Error(cmd + ": failed to read: " + (e && e.message ? e.message : String(e)));
+    }
+
+    const _p = (s) => {
+      if (typeof puts === "function") puts(String(s));
+    };
+
+    _p("-- " + cmd + " " + p + " --\n");
+    _p("Commands: :w/.w (write), :q/.q (quit), :wq/.wq (write+quit), :p/.p (print), :d N/.d N (delete line), :i N/.i N (insert before line)\n");
+    _p("Enter text lines. Empty line is allowed.\n\n");
+
+    const _print = () => {
+      for (let i = 0; i < lines.length; i++) {
+        const ln = String(i + 1).padStart(6, " ");
+        _p(ln + "  " + lines[i] + "\n");
+      }
+      if (!lines.length) _p("(empty)\n");
+    };
+
+    if (lines.length) _print();
+
+    let insertAt = lines.length;
+    while (true) {
+      const inLine = readLine("");
+      if (inLine == null) throw new Error(cmd + ": input unavailable");
+      let s = String(inLine);
+      const t = s.trim();
+      if (t.startsWith(":")) s = "." + t.slice(1).trim();
+
+      if (s === ".q") {
+        _p("\n(cancelled)\n");
+        return "";
+      }
+      if (s === ".p") {
+        _p("\n");
+        _print();
+        _p("\n");
+        continue;
+      }
+      if (s === ".w") {
+        try {
+          fs.writeTextFile(p, lines.join("\n") + "\n");
+        } catch (e) {
+          throw new Error(cmd + ": write failed: " + (e && e.message ? e.message : String(e)));
+        }
+        _p("\n(written)\n");
+        continue;
+      }
+      if (s === ".wq") {
+        try {
+          fs.writeTextFile(p, lines.join("\n") + "\n");
+        } catch (e) {
+          throw new Error(cmd + ": write failed: " + (e && e.message ? e.message : String(e)));
+        }
+        _p("\n(written)\n");
+        return "";
+      }
+      if (s.startsWith(".d ")) {
+        const n = Number(s.slice(3).trim());
+        const idx = Math.floor(n) - 1;
+        if (!Number.isFinite(n) || idx < 0 || idx >= lines.length) {
+          _p("Error: invalid line number\n");
+          continue;
+        }
+        lines.splice(idx, 1);
+        if (insertAt > lines.length) insertAt = lines.length;
+        continue;
+      }
+      if (s.startsWith(".i ")) {
+        const n = Number(s.slice(3).trim());
+        const idx = Math.floor(n) - 1;
+        if (!Number.isFinite(n) || idx < 0 || idx > lines.length) {
+          _p("Error: invalid line number\n");
+          continue;
+        }
+        insertAt = idx;
+        continue;
+      }
+
+      lines.splice(insertAt, 0, s);
+      insertAt++;
+    }
   }
 
   if (cmd === "head") {

@@ -27,9 +27,23 @@ function DefaultExamplesConfigFile: string;
 var
   exe_dir: string;
   pascal_root: string;
+  p: string;
 begin
   exe_dir := ExtractFilePath(ExpandFileName(ParamStr(0)));
   pascal_root := ExpandFileName(IncludeTrailingPathDelimiter(exe_dir) + '..');
+  p := IncludeTrailingPathDelimiter(pascal_root) + 'config' + PathDelim + 'qjsp_config.json';
+
+  if FileExists(p) then
+    Exit(p);
+
+  p := ExpandFileName('config' + PathDelim + 'qjsp_config.json');
+  if FileExists(p) then
+    Exit(p);
+
+  p := IncludeTrailingPathDelimiter(exe_dir) + 'config' + PathDelim + 'qjsp_config.json';
+  if FileExists(p) then
+    Exit(p);
+
   Result := IncludeTrailingPathDelimiter(pascal_root) + 'config' + PathDelim + 'qjsp_config.json';
 end;
 
@@ -121,8 +135,10 @@ procedure SaveExamplesConfigToFile(const FileName: string; const Configs: TExamp
 var
   rootObj, testsObj: TJSONObject;
   existingContent: string;
-  existingJson, existingLibraries: TJSONData;
+  existingJson: TJSONData;
   existingRoot: TJSONObject;
+  k: string;
+  item: TJSONData;
   f: TextFile;
   i: integer;
   jsonStr: string;
@@ -149,9 +165,15 @@ begin
     if (existingJson <> nil) and (existingJson is TJSONObject) then
     begin
       existingRoot := TJSONObject(existingJson);
-      existingLibraries := existingRoot.Find('libraries');
-      if (existingLibraries <> nil) and (existingLibraries is TJSONObject) then
-        rootObj.Add('libraries', existingLibraries.Clone);
+      for i := 0 to existingRoot.Count - 1 do
+      begin
+        k := existingRoot.Names[i];
+        if (k = 'tests') or (k = 'examples') then
+          Continue;
+        item := existingRoot.Items[i];
+        if item <> nil then
+          rootObj.Add(k, item.Clone);
+      end;
     end;
 
     testsObj := TJSONObject.Create;

@@ -3,7 +3,7 @@ program qjsp;
 {$mode objfpc}{$H+}
 
 uses
-  SysUtils, Classes, ctypes, process,
+  SysUtils, Classes, Types, ctypes, process,
   quickjs_types, quickjs_core, quickjs_std,
   qjs_log,
   qcrypto_base64,
@@ -13,6 +13,7 @@ uses
   fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers,
   console_utf8,
+  qjsp_line_editor,
   tests_config,
   file_utils,
   qjsp_module_loader, http_helpers, http_async_helpers, fs_watch_helpers,
@@ -111,6 +112,119 @@ begin
   finally
     jsonData.Free;
   end;
+end;
+
+function JsonGetStringArray(const Obj: TJSONObject; const Name: string): TStringDynArray;
+var
+  data: TJSONData;
+  arr: TJSONArray;
+  i: integer;
+  item: TJSONData;
+begin
+  SetLength(Result, 0);
+  if Obj = nil then
+    Exit;
+  data := Obj.Find(Name);
+  if (data = nil) or (not (data is TJSONArray)) then
+    Exit;
+  arr := TJSONArray(data);
+  if arr.Count <= 0 then
+    Exit;
+  SetLength(Result, arr.Count);
+  for i := 0 to arr.Count - 1 do
+  begin
+    item := arr.Items[i];
+    if (item <> nil) and (item.JSONType = jtString) then
+      Result[i] := item.AsString
+    else
+      Result[i] := '';
+  end;
+end;
+
+function ReadConfigJsonObject(const FileName: string; DebugLevel: integer): TJSONObject; forward;
+function JsonGetString(const Obj: TJSONObject; const Name: string; const DefaultValue: string): string; forward;
+function JsonGetInt(const Obj: TJSONObject; const Name: string; const DefaultValue: integer): integer; forward;
+function JsonGetQWord(const Obj: TJSONObject; const Name: string; const DefaultValue: QWord): QWord; forward;
+
+procedure LoadSpawnPolicyFromConfig(const FileName: string);
+var
+  rootObj: TJSONObject;
+  settingsData: TJSONData;
+  settingsObj: TJSONObject;
+  profileName: string;
+  spawnData: TJSONData;
+  spawnObj: TJSONObject;
+  timeoutDefaultMs: QWord;
+  maxOutputDefaultKb: QWord;
+  maxConcurrent: integer;
+  roots: TStringDynArray;
+  envNames: TStringDynArray;
+begin
+  profileName := 'dev_repl';
+  timeoutDefaultMs := 30000;
+  maxOutputDefaultKb := 256;
+  maxConcurrent := 0;
+  SetLength(roots, 0);
+  SetLength(envNames, 0);
+
+  rootObj := ReadConfigJsonObject(FileName, 0);
+  if rootObj = nil then
+  begin
+    qjsp_spawn_shim.SetSpawnDefaultTimeoutMs(timeoutDefaultMs);
+    qjsp_spawn_shim.SetSpawnDefaultMaxOutputKb(maxOutputDefaultKb);
+    qjsp_spawn_shim.SetSpawnMaxConcurrent(maxConcurrent);
+    SetLength(roots, 0);
+    qjsp_spawn_shim.SetSpawnAllowedCwdRoots(roots);
+    SetLength(envNames, 0);
+    qjsp_spawn_shim.SetSpawnEnvAllowlist(envNames);
+    Exit;
+  end;
+
+  try
+    settingsData := rootObj.Find('settings');
+    if (settingsData <> nil) and (settingsData is TJSONObject) then
+    begin
+      settingsObj := TJSONObject(settingsData);
+      profileName := LowerCase(JsonGetString(settingsObj, 'profile', profileName));
+    end;
+
+    if profileName = 'prod_automation' then
+    begin
+      timeoutDefaultMs := 5000;
+      maxOutputDefaultKb := 64;
+      maxConcurrent := 2;
+    end
+    else
+    begin
+      timeoutDefaultMs := 30000;
+      maxOutputDefaultKb := 256;
+      maxConcurrent := 0;
+    end;
+
+    spawnData := rootObj.Find('spawn');
+    if (spawnData <> nil) and (spawnData is TJSONObject) then
+    begin
+      spawnObj := TJSONObject(spawnData);
+      timeoutDefaultMs := JsonGetQWord(spawnObj, 'timeout_ms_default', timeoutDefaultMs);
+      maxOutputDefaultKb := JsonGetQWord(spawnObj, 'max_output_kb_default', maxOutputDefaultKb);
+      maxConcurrent := JsonGetInt(spawnObj, 'max_concurrent', maxConcurrent);
+      roots := JsonGetStringArray(spawnObj, 'allowed_cwd_roots');
+      envNames := JsonGetStringArray(spawnObj, 'env_allowlist');
+    end
+    else
+    begin
+      SetLength(roots, 0);
+      SetLength(envNames, 0);
+    end;
+  finally
+    rootObj.Free;
+  end;
+
+  qjsp_spawn_shim.SetSpawnDefaultTimeoutMs(timeoutDefaultMs);
+  qjsp_spawn_shim.SetSpawnDefaultMaxOutputKb(maxOutputDefaultKb);
+  qjsp_spawn_shim.SetSpawnMaxConcurrent(maxConcurrent);
+  qjsp_spawn_shim.SetSpawnAllowedCwdRoots(roots);
+  qjsp_spawn_shim.SetSpawnEnvAllowlist(envNames);
 end;
 
 function ReadConfigJsonObject(const FileName: string; DebugLevel: integer): TJSONObject;
@@ -235,6 +349,166 @@ begin
     except
       Result := DefaultValue;
     end;
+  end;
+end;
+
+procedure LoadBoundaryPolicyFromConfig(const FileName: string);
+var
+  rootObj: TJSONObject;
+  spawnData: TJSONData;
+  spawnObj: TJSONObject;
+  httpData: TJSONData;
+  httpObj: TJSONObject;
+  fsData: TJSONData;
+  fsObj: TJSONObject;
+  spawnEnabled: boolean;
+  httpEnabled: boolean;
+  fsEnabled: boolean;
+  httpAllowedHosts: TStringDynArray;
+  httpTimeoutDefaultMs: integer;
+  httpTimeoutMaxMs: integer;
+  httpMaxBodyDefaultKb: integer;
+  httpMaxBodyMaxKb: integer;
+  fsAllowedRoots: TStringDynArray;
+  fsMaxWatchers: integer;
+  fsThrottleMs: QWord;
+begin
+  spawnEnabled := True;
+  httpEnabled := True;
+  fsEnabled := True;
+
+  SetLength(httpAllowedHosts, 0);
+  httpTimeoutDefaultMs := 0;
+  httpTimeoutMaxMs := 0;
+  httpMaxBodyDefaultKb := 0;
+  httpMaxBodyMaxKb := 0;
+
+  SetLength(fsAllowedRoots, 0);
+  fsMaxWatchers := 0;
+  fsThrottleMs := 0;
+
+  rootObj := ReadConfigJsonObject(FileName, 0);
+  if rootObj = nil then
+  begin
+    qjsp_spawn_shim.SetSpawnEnabled(spawnEnabled);
+    http_helpers.SetHttpEnabled(httpEnabled);
+    http_async_helpers.SetHttpAsyncEnabled(httpEnabled);
+    fs_watch_helpers.SetFsWatchEnabled(fsEnabled);
+
+    http_helpers.SetHttpAllowedHosts(httpAllowedHosts);
+    http_helpers.SetHttpDefaultTimeoutMs(httpTimeoutDefaultMs);
+    http_helpers.SetHttpMaxTimeoutMs(httpTimeoutMaxMs);
+    http_helpers.SetHttpDefaultMaxBodyKb(httpMaxBodyDefaultKb);
+    http_helpers.SetHttpMaxBodyKb(httpMaxBodyMaxKb);
+
+    http_async_helpers.SetHttpAsyncAllowedHosts(httpAllowedHosts);
+    http_async_helpers.SetHttpAsyncDefaultTimeoutMs(httpTimeoutDefaultMs);
+    http_async_helpers.SetHttpAsyncMaxTimeoutMs(httpTimeoutMaxMs);
+    http_async_helpers.SetHttpAsyncDefaultMaxBodyKb(httpMaxBodyDefaultKb);
+    http_async_helpers.SetHttpAsyncMaxBodyKb(httpMaxBodyMaxKb);
+
+    fs_watch_helpers.SetFsWatchAllowedRoots(fsAllowedRoots);
+    fs_watch_helpers.SetFsWatchMaxWatchers(fsMaxWatchers);
+    fs_watch_helpers.SetFsWatchThrottleMs(fsThrottleMs);
+    Exit;
+  end;
+
+  try
+    spawnData := rootObj.Find('spawn');
+    if (spawnData <> nil) and (spawnData is TJSONObject) then
+    begin
+      spawnObj := TJSONObject(spawnData);
+      spawnEnabled := JsonGetBoolean(spawnObj, 'enabled', spawnEnabled);
+    end;
+
+    httpData := rootObj.Find('http');
+    if (httpData <> nil) and (httpData is TJSONObject) then
+    begin
+      httpObj := TJSONObject(httpData);
+      httpEnabled := JsonGetBoolean(httpObj, 'enabled', httpEnabled);
+      httpAllowedHosts := JsonGetStringArray(httpObj, 'allowed_hosts');
+      httpTimeoutDefaultMs := JsonGetInt(httpObj, 'timeout_ms', httpTimeoutDefaultMs);
+      httpTimeoutMaxMs := JsonGetInt(httpObj, 'timeout_ms_max', httpTimeoutMaxMs);
+      httpMaxBodyDefaultKb := JsonGetInt(httpObj, 'max_body_kb', httpMaxBodyDefaultKb);
+      httpMaxBodyMaxKb := JsonGetInt(httpObj, 'max_body_kb_max', httpMaxBodyMaxKb);
+    end;
+
+    fsData := rootObj.Find('fs_watch');
+    if (fsData <> nil) and (fsData is TJSONObject) then
+    begin
+      fsObj := TJSONObject(fsData);
+      fsEnabled := JsonGetBoolean(fsObj, 'enabled', fsEnabled);
+      fsAllowedRoots := JsonGetStringArray(fsObj, 'allowed_roots');
+      fsMaxWatchers := JsonGetInt(fsObj, 'max_watchers', fsMaxWatchers);
+      fsThrottleMs := JsonGetQWord(fsObj, 'throttle_ms', fsThrottleMs);
+    end;
+  finally
+    rootObj.Free;
+  end;
+
+  qjsp_spawn_shim.SetSpawnEnabled(spawnEnabled);
+  http_helpers.SetHttpEnabled(httpEnabled);
+  http_async_helpers.SetHttpAsyncEnabled(httpEnabled);
+  fs_watch_helpers.SetFsWatchEnabled(fsEnabled);
+
+  http_helpers.SetHttpAllowedHosts(httpAllowedHosts);
+  http_helpers.SetHttpDefaultTimeoutMs(httpTimeoutDefaultMs);
+  http_helpers.SetHttpMaxTimeoutMs(httpTimeoutMaxMs);
+  http_helpers.SetHttpDefaultMaxBodyKb(httpMaxBodyDefaultKb);
+  http_helpers.SetHttpMaxBodyKb(httpMaxBodyMaxKb);
+
+  http_async_helpers.SetHttpAsyncAllowedHosts(httpAllowedHosts);
+  http_async_helpers.SetHttpAsyncDefaultTimeoutMs(httpTimeoutDefaultMs);
+  http_async_helpers.SetHttpAsyncMaxTimeoutMs(httpTimeoutMaxMs);
+  http_async_helpers.SetHttpAsyncDefaultMaxBodyKb(httpMaxBodyDefaultKb);
+  http_async_helpers.SetHttpAsyncMaxBodyKb(httpMaxBodyMaxKb);
+
+  fs_watch_helpers.SetFsWatchAllowedRoots(fsAllowedRoots);
+  fs_watch_helpers.SetFsWatchMaxWatchers(fsMaxWatchers);
+  fs_watch_helpers.SetFsWatchThrottleMs(fsThrottleMs);
+end;
+
+procedure ReadBoundaryPolicyFlagsFromConfig(const FileName: string;
+  out SpawnEnabled: boolean; out HttpEnabled: boolean; out FsWatchEnabled: boolean);
+var
+  rootObj: TJSONObject;
+  spawnData: TJSONData;
+  spawnObj: TJSONObject;
+  httpData: TJSONData;
+  httpObj: TJSONObject;
+  fsData: TJSONData;
+  fsObj: TJSONObject;
+begin
+  SpawnEnabled := True;
+  HttpEnabled := True;
+  FsWatchEnabled := True;
+
+  rootObj := ReadConfigJsonObject(FileName, 0);
+  if rootObj = nil then
+    Exit;
+  try
+    spawnData := rootObj.Find('spawn');
+    if (spawnData <> nil) and (spawnData is TJSONObject) then
+    begin
+      spawnObj := TJSONObject(spawnData);
+      SpawnEnabled := JsonGetBoolean(spawnObj, 'enabled', SpawnEnabled);
+    end;
+
+    httpData := rootObj.Find('http');
+    if (httpData <> nil) and (httpData is TJSONObject) then
+    begin
+      httpObj := TJSONObject(httpData);
+      HttpEnabled := JsonGetBoolean(httpObj, 'enabled', HttpEnabled);
+    end;
+
+    fsData := rootObj.Find('fs_watch');
+    if (fsData <> nil) and (fsData is TJSONObject) then
+    begin
+      fsObj := TJSONObject(fsData);
+      FsWatchEnabled := JsonGetBoolean(fsObj, 'enabled', FsWatchEnabled);
+    end;
+  finally
+    rootObj.Free;
   end;
 end;
 
@@ -887,6 +1161,57 @@ begin
   end;
 end;
 
+function ListReplModeNames: string;
+var
+  i: integer;
+begin
+  Result := '';
+  for i := 0 to High(ReplModes) do
+  begin
+    if Result <> '' then
+      Result := Result + ', ';
+    Result := Result + ReplModes[i].Name;
+  end;
+  if Result = '' then
+    Result := '(none)';
+end;
+
+const
+  HostDotCommands: array[0..19] of string = (
+    '.help', '.menu', '.config', '.load',
+    '.import', '.reload', '.dump', '.dumpflags',
+    '.build', '.qar', '.tool', '.verify',
+    '.lib', '.test', '.debug', '.guard',
+    '.mode', '.mem', '.gc', '.js'
+  );
+
+function IsHostDotCommand(const s: string): boolean;
+var
+  t: string;
+  cmd: string;
+  p: SizeInt;
+  i: integer;
+begin
+  t := Trim(LowerCase(s));
+  Result := False;
+  if (t = '') or (t[1] <> '.') then
+    Exit;
+
+  // Extract command name (up to first space)
+  p := Pos(' ', t);
+  if p > 0 then
+    cmd := Copy(t, 1, p - 1)
+  else
+    cmd := t;
+
+  // Host-reserved dot-commands (handled by qjsp.pas)
+  for i := Low(HostDotCommands) to High(HostDotCommands) do
+    if cmd = HostDotCommands[i] then
+      Exit(True);
+
+  Result := (cmd = '.exit') or (cmd = '.quit');
+end;
+
 procedure LoadReplModesFromFile(const FileName: string; DebugLevel: integer);
 var
   json_content: string;
@@ -986,6 +1311,9 @@ var
   ExampleConfigs: TExampleConfigs;
   ExamplesConfigFile: string;
   config_file_override: string;
+  daemon_mode: boolean;
+  daemon_in_file: string;
+  daemon_out_file: string;
   lib_add_specs: TStringList;
   lib_rm_prefixes: TStringList;
   qar_meta: TStringList;
@@ -1022,6 +1350,13 @@ var
   f: TextFile;
   // For working directory management
   old_dir, script_dir, script_path, test_path, test_key, test_file: string;
+  daemon_job_line: string;
+  daemon_result_line: string;
+  daemon_in: TextFile;
+  daemon_out: TextFile;
+  daemon_has_in: boolean;
+  daemon_has_out: boolean;
+  daemon_failed: integer;
   // For QAR pre-registration
   ret: cint;
   is_module: boolean;
@@ -1125,6 +1460,9 @@ var
   cmdName: string;
   modeLine: string;
   isOn: boolean;
+  policySpawnEnabled: boolean;
+  policyHttpEnabled: boolean;
+  policyFsWatchEnabled: boolean;
   // QAR keygen
   keygen_seed: TEd25519Seed;
   keygen_pk: TEd25519PublicKey;
@@ -1231,7 +1569,7 @@ begin
   Move(tmp[4 - n], outb[Length(outb) - n], n);
 end;
 
-function BuildPkcs8Ed25519Pem(const seed32: TBytes): string;
+function GenerateEd25519PrivateKeyPem(const seed32: TBytes): string;
 // RFC 8410 PrivateKeyInfo:
 // SEQUENCE { INTEGER 0, SEQUENCE { OID 1.3.101.112 }, OCTET STRING (OCTET STRING seed32) }
 const
@@ -1302,6 +1640,55 @@ begin
   Result := Result + '-----END PRIVATE KEY-----' + LineEnding;
 end;
 
+function DrainPendingJobs(ctx: PJSContext): cint;
+var
+  job_result: cint;
+  pending_ctx: PJSContext;
+begin
+  Result := 0;
+  if ctx = nil then
+    Exit;
+
+  pending_ctx := nil;
+  repeat
+    job_result := JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx);
+    if job_result < 0 then
+    begin
+      if pending_ctx <> nil then
+        js_std_dump_error(pending_ctx)
+      else
+        js_std_dump_error(ctx);
+      Result := job_result;
+      Exit;
+    end;
+  until job_result = 0;
+end;
+
+function RunExecutionPipeline(ctx: PJSContext; run_std_loop: boolean): boolean;
+var
+  loop_result: cint;
+begin
+  Result := False;
+  if ctx = nil then
+    Exit;
+
+  if DrainPendingJobs(ctx) < 0 then
+    Exit;
+
+  SpawnPoll(ctx);
+  if run_std_loop then
+  begin
+    loop_result := js_std_loop(ctx);
+    if loop_result <> 0 then
+    begin
+      js_std_dump_error(ctx);
+      Exit;
+    end;
+  end;
+
+  Result := True;
+end;
+
 // Run a JS file (non-interactive mode)
 function RunScriptFile(ctx: PJSContext; const filename: string): boolean;
 var
@@ -1311,8 +1698,6 @@ var
   old_dir, script_dir: string;
   is_module: boolean;
   result_val: JSValue;
-  job_result, loop_result: cint;
-  pending_ctx: PJSContext;
 begin
   Result := False;
 
@@ -1378,35 +1763,10 @@ begin
   end
   else
   begin
-    job_result := 0;
-    pending_ctx := nil;
-    repeat
-      job_result := JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx);
-      if job_result < 0 then
-      begin
-        if pending_ctx <> nil then
-          js_std_dump_error(pending_ctx)
-        else
-          js_std_dump_error(ctx);
-        Break;
-      end;
-    until job_result = 0;
-
-    if job_result >= 0 then
+    if RunExecutionPipeline(ctx, True) then
     begin
-      SpawnPoll(ctx);
-      loop_result := js_std_loop(ctx);
-      if loop_result <> 0 then
-      begin
-        js_std_dump_error(ctx);
-        JS_FreeValue(ctx, result_val);
-        Result := False;
-      end
-      else
-      begin
-        Flush(Output);
-        Result := True;
-      end;
+      Flush(Output);
+      Result := True;
     end
     else
       Result := False;
@@ -1420,8 +1780,6 @@ var
   eval_flags: cint;
   is_module: boolean;
   result_val: JSValue;
-  job_result, loop_result: cint;
-  pending_ctx: PJSContext;
 begin
   Result := False;
 
@@ -1444,37 +1802,213 @@ begin
     Exit;
   end;
 
-  job_result := 0;
-  pending_ctx := nil;
-  if eval_flags = JS_EVAL_TYPE_MODULE then
+  if not RunExecutionPipeline(ctx, True) then
   begin
-    repeat
-      job_result := JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx);
-      if job_result < 0 then
-      begin
-        if pending_ctx <> nil then
-          js_std_dump_error(pending_ctx)
-        else
-          js_std_dump_error(ctx);
-        Break;
-      end;
-    until job_result = 0;
-  end;
-
-  if job_result >= 0 then
-  begin
-    SpawnPoll(ctx);
-    loop_result := js_std_loop(ctx);
-    if loop_result <> 0 then
-    begin
-      js_std_dump_error(ctx);
-      JS_FreeValue(ctx, result_val);
-      Exit;
-    end;
+    JS_FreeValue(ctx, result_val);
+    Exit;
   end;
 
   JS_FreeValue(ctx, result_val);
   Result := True;
+end;
+
+function JsonEscape(const s: string): string;
+var
+  i: Integer;
+  ch: Char;
+begin
+  Result := '';
+  for i := 1 to Length(s) do
+  begin
+    ch := s[i];
+    case ch of
+      '"': Result := Result + '\\"';
+      '\': Result := Result + '\\\\';
+      #8: Result := Result + '\\b';
+      #9: Result := Result + '\\t';
+      #10: Result := Result + '\\n';
+      #12: Result := Result + '\\f';
+      #13: Result := Result + '\\r';
+    else
+      if Ord(ch) < 32 then
+        Result := Result + '\\u' + IntToHex(Ord(ch), 4)
+      else
+        Result := Result + ch;
+    end;
+  end;
+end;
+
+function JsTryGetJobResultString(ctx: PJSContext; out outStr: string): boolean;
+var
+  globalObj: JSValue;
+  v: JSValue;
+  p: PChar;
+begin
+  Result := False;
+  outStr := '';
+  if ctx = nil then
+    Exit;
+
+  globalObj := JS_GetGlobalObject(ctx);
+  v := JS_GetPropertyStr(ctx, globalObj, PChar('__job_result'));
+  JS_FreeValue(ctx, globalObj);
+
+  if (JS_IsUndefined(v) <> 0) or (JS_IsNull(v) <> 0) then
+  begin
+    JS_FreeValue(ctx, v);
+    Exit;
+  end;
+
+  p := JS_ToCString(ctx, v);
+  if p <> nil then
+  begin
+    outStr := string(p);
+    JS_FreeCString(ctx, p);
+    Result := True;
+  end;
+  JS_FreeValue(ctx, v);
+end;
+
+function RunDaemonJobOnce(const ExamplesConfigFile: string; const jobJson: string; out resultJson: string): boolean;
+var
+  rt: PJSRuntime;
+  ctx: PJSContext;
+  old_dir: string;
+  script_dir: string;
+  jsonData: TJSONData;
+  jobObj: TJSONObject;
+  jobId: string;
+  codeStr: string;
+  scriptFile: string;
+  ok: boolean;
+  jobResultStr: string;
+begin
+  Result := False;
+  resultJson := '';
+
+  rt := nil;
+  ctx := nil;
+  jsonData := nil;
+  jobId := '';
+  codeStr := '';
+  scriptFile := '';
+  jobResultStr := '';
+
+  try
+    try
+      jsonData := GetJSON(jobJson);
+    except
+      on E: Exception do
+      begin
+        resultJson := '{"ok":false,"error":"invalid_job_json: ' + JsonEscape(E.Message) + '"}';
+        Exit;
+      end;
+    end;
+    if (jsonData = nil) or (not (jsonData is TJSONObject)) then
+    begin
+      if jsonData <> nil then
+        jsonData.Free;
+      resultJson := '{"ok":false,"error":"invalid_job_json: expected object"}';
+      Exit;
+    end;
+    jobObj := TJSONObject(jsonData);
+    try
+      jobId := jobObj.Get('id', '');
+      codeStr := jobObj.Get('code', '');
+      scriptFile := jobObj.Get('script', '');
+    finally
+      jsonData.Free;
+      jsonData := nil;
+    end;
+
+    rt := JS_NewRuntime;
+    if rt = nil then
+    begin
+      resultJson := '{"ok":false,"id":"' + JsonEscape(jobId) + '","error":"Failed to create JS runtime"}';
+      Exit;
+    end;
+
+    JS_SetMemoryLimit(rt, 64 * 1024 * 1024);
+    JS_SetCanBlock(rt, True);
+
+    ctx := JS_NewContext(rt);
+    if ctx = nil then
+    begin
+      resultJson := '{"ok":false,"id":"' + JsonEscape(jobId) + '","error":"Failed to create JS context"}';
+      Exit;
+    end;
+
+    js_init_module_std(ctx, 'std');
+    js_init_module_std(ctx, 'qjs:std');
+    js_init_module_os(ctx, 'os');
+    js_init_module_os(ctx, 'qjs:os');
+    js_init_module_bjson(ctx, 'bjson');
+    js_init_module_bjson(ctx, 'qjs:bjson');
+
+    RegisterZipModuleShims(ctx);
+    RegisterSpawnModuleShims(ctx);
+    RegisterCryptoModuleShims(ctx);
+
+    js_std_init_handlers(rt);
+    ApplyDebugSettings(rt);
+
+    JS_SetModuleLoaderFunc(rt, nil, @qjsp_module_loader.qjsp_module_loader, nil);
+    js_std_add_helpers(ctx, 0, nil);
+
+    LoadQjspMountsFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
+    LoadReplModesFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
+    LoadBoundaryPolicyFromConfig(ExamplesConfigFile);
+    LoadSpawnPolicyFromConfig(ExamplesConfigFile);
+
+    qar_helpers.RegisterQarHelpers(ctx);
+    dll_helpers.RegisterDllHelpers(ctx);
+    compression_helpers.RegisterCompressionHelpers(ctx);
+    http_helpers.RegisterHttpHelpers(ctx);
+    http_async_helpers.RegisterHttpAsyncHelpers(ctx);
+    fs_watch_helpers.RegisterFsWatchHelpers(ctx);
+
+    old_dir := GetCurrentDir;
+    try
+      script_dir := ExtractFilePath(ExpandFileName(ParamStr(0)));
+      script_dir := ExpandFileName(IncludeTrailingPathDelimiter(script_dir) + '..');
+      try
+        SetCurrentDir(script_dir);
+      except
+      end;
+
+      ok := True;
+      if scriptFile <> '' then
+        ok := RunScriptFile(ctx, scriptFile)
+      else
+        ok := RunEvalCode(ctx, '<daemon_job>', codeStr);
+    finally
+      try
+        SetCurrentDir(old_dir);
+      except
+      end;
+    end;
+
+    if ok then
+    begin
+      if JsTryGetJobResultString(ctx, jobResultStr) then
+        resultJson := '{"ok":true,"id":"' + JsonEscape(jobId) + '","result":"' + JsonEscape(jobResultStr) + '"}'
+      else
+        resultJson := '{"ok":true,"id":"' + JsonEscape(jobId) + '"}';
+      Result := True;
+    end
+    else
+    begin
+      resultJson := '{"ok":false,"id":"' + JsonEscape(jobId) + '","error":"job_failed"}';
+      Result := False;
+    end;
+  finally
+    if rt <> nil then
+      js_std_free_handlers(rt);
+    if ctx <> nil then
+      JS_FreeContext(ctx);
+    if rt <> nil then
+      JS_FreeRuntime(rt);
+  end;
 end;
 
 label
@@ -1485,6 +2019,9 @@ begin
 
   ExamplesConfigFile := DefaultExamplesConfigFile;
   config_file_override := '';
+  daemon_mode := False;
+  daemon_in_file := '';
+  daemon_out_file := '';
   lib_add_specs := TStringList.Create;
   lib_rm_prefixes := TStringList.Create;
   qar_meta := TStringList.Create;
@@ -1538,7 +2075,7 @@ begin
   ActiveReplMode := '';
   ImportedReplModes := TStringList.Create;
   ImportedReplModes.CaseSensitive := False;
-  
+
   // Resolve --config early so we can load persistent settings before parsing other flags
   for i := 1 to ParamCount do
   begin
@@ -1553,6 +2090,9 @@ begin
     config_dirty, ReplGuardMode, GuardExplicit, ActiveReplMode,
     dump_flags_explicit, dump_flags_value);
 
+  LoadBoundaryPolicyFromConfig(ExamplesConfigFile);
+  LoadSpawnPolicyFromConfig(ExamplesConfigFile);
+
   // Parse command line arguments
   i := 1;
   while i <= ParamCount do
@@ -1566,6 +2106,30 @@ begin
         Halt(1);
       end;
       ExamplesConfigFile := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--daemon') then
+    begin
+      daemon_mode := True;
+    end
+    else if (ParamStr(i) = '--daemon-in') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing filename for --daemon-in');
+        Halt(1);
+      end;
+      daemon_in_file := ParamStr(i);
+    end
+    else if (ParamStr(i) = '--daemon-out') then
+    begin
+      Inc(i);
+      if i > ParamCount then
+      begin
+        WriteLn('Error: Missing filename for --daemon-out');
+        Halt(1);
+      end;
+      daemon_out_file := ParamStr(i);
     end
     else if (ParamStr(i) = '--lib-ls') then
     begin
@@ -2463,7 +3027,75 @@ begin
         Halt(0);
     end;
   end;
-  
+
+  if daemon_mode then
+  begin
+    daemon_failed := 0;
+    daemon_has_in := False;
+    daemon_has_out := False;
+
+    if daemon_in_file <> '' then
+    begin
+      AssignFile(daemon_in, daemon_in_file);
+      Reset(daemon_in);
+      daemon_has_in := True;
+    end;
+
+    if daemon_out_file <> '' then
+    begin
+      AssignFile(daemon_out, daemon_out_file);
+      Rewrite(daemon_out);
+      daemon_has_out := True;
+    end;
+
+    try
+      while True do
+      begin
+        daemon_job_line := '';
+        if daemon_has_in then
+        begin
+          if EOF(daemon_in) then
+            Break;
+          ReadLn(daemon_in, daemon_job_line);
+        end
+        else
+        begin
+          if EOF(Input) then
+            Break;
+          ReadLn(daemon_job_line);
+        end;
+
+        daemon_job_line := Trim(daemon_job_line);
+        if daemon_job_line = '' then
+          Continue;
+
+        if not RunDaemonJobOnce(ExamplesConfigFile, daemon_job_line, daemon_result_line) then
+          Inc(daemon_failed);
+
+        if daemon_has_out then
+        begin
+          WriteLn(daemon_out, daemon_result_line);
+          Flush(daemon_out);
+        end
+        else
+        begin
+          WriteLn(daemon_result_line);
+          Flush(Output);
+        end;
+      end;
+    finally
+      if daemon_has_in then
+        CloseFile(daemon_in);
+      if daemon_has_out then
+        CloseFile(daemon_out);
+    end;
+
+    if daemon_failed > 0 then
+      Halt(1)
+    else
+      Halt(0);
+  end;
+
   if not run_script_mode then
   begin
     WriteLn(GetAppIntroLine);
@@ -2573,10 +3205,7 @@ RestartRuntime:
     else
     begin
       JS_FreeValue(ctx, result_val);
-      pending_ctx := nil;
-      while JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx) > 0 do
-      begin
-      end;
+      RunExecutionPipeline(ctx, False);
     end;
   finally
     try
@@ -2606,10 +3235,7 @@ RestartRuntime:
     else
     begin
       JS_FreeValue(ctx, result_val);
-      pending_ctx := nil;
-      while JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx) > 0 do
-      begin
-      end;
+      RunExecutionPipeline(ctx, False);
     end;
   end;
 
@@ -2707,6 +3333,63 @@ RestartRuntime:
 
       if script = '' then
         Continue;
+
+      // P1: Host-level Unicode line editor (Pascal) for sh mode.
+      // Intercept vi/nano/edit <file> and run editor directly (no JS/raw console dependency).
+      if (ActiveReplMode <> '') and SameText(ActiveReplMode, 'sh') and (Length(script) > 0) and (script[1] <> '.') then
+      begin
+        cmdLine := Trim(script);
+        if (Copy(LowerCase(cmdLine), 1, 3) = 'vi ') or (Copy(LowerCase(cmdLine), 1, 5) = 'nano ') or (Copy(LowerCase(cmdLine), 1, 5) = 'edit ') then
+        begin
+          cmdArgs := TStringList.Create;
+          try
+            cmdArgs.Delimiter := ' ';
+            cmdArgs.StrictDelimiter := True;
+            cmdArgs.DelimitedText := cmdLine;
+            if cmdArgs.Count >= 2 then
+            begin
+              RunUnicodeLineEditor(cmdArgs[1]);
+              Flush(Output);
+              Continue;
+            end
+            else
+            begin
+              WriteLn('Usage: vi <file>  (aliases: nano, edit)');
+              Flush(Output);
+              Continue;
+            end;
+          finally
+            cmdArgs.Free;
+          end;
+        end;
+      end;
+
+      // When a REPL mode is active, forward any non-host dot-command to the mode handler.
+      // This avoids hardcoding plugin/editor commands in the host.
+      if (ActiveReplMode <> '') and (Length(script) > 0) and (script[1] = '.') then
+      begin
+        if (not IsHostDotCommand(script)) and FindReplModeConfig(ActiveReplMode, replCfg) then
+        begin
+          if ImportedReplModes.IndexOf(replCfg.Name) < 0 then
+          begin
+            file_content :=
+              'import * as ' + replCfg.GlobalName + ' from ' + QuotedStr(replCfg.ModuleName) + ';' + LineEnding +
+              'globalThis[' + QuotedStr(replCfg.GlobalName) + '] = ' + replCfg.GlobalName + ';' + LineEnding;
+
+            if RunEvalCode(ctx, '<repl_mode_import>', file_content) then
+              ImportedReplModes.Add(replCfg.Name)
+            else
+            begin
+              WriteLn('Error: failed to import ', replCfg.ModuleName);
+              Flush(Output);
+              Continue;
+            end;
+          end;
+
+          shellJs := replCfg.GlobalName + '.' + replCfg.ReplFunction + '(' + QuotedStr(script) + ')';
+          script := shellJs;
+        end;
+      end;
 
       if (script[1] <> '.') then
       begin
@@ -3040,6 +3723,8 @@ RestartRuntime:
               if not FindReplModeConfig(cmdName, replCfg) then
               begin
                 WriteLn('Error: unknown REPL mode: ', cmdName);
+                WriteLn('Config file: ', ExamplesConfigFile);
+                WriteLn('Available modes: ', ListReplModeNames);
                 Flush(Output);
                 Continue;
               end;
@@ -3076,24 +3761,34 @@ RestartRuntime:
             Continue;
           end;
 
-          if ImportedReplModes.IndexOf(replCfg.Name) < 0 then
+          // If the line has already been wrapped (e.g. editor dot-commands passed through
+          // to the mode handler earlier in the loop), do not wrap it again.
+          if Pos(replCfg.GlobalName + '.' + replCfg.ReplFunction + '(', script) = 1 then
           begin
-            file_content :=
-              'import * as ' + replCfg.GlobalName + ' from ' + QuotedStr(replCfg.ModuleName) + ';' + LineEnding +
-              'globalThis[' + QuotedStr(replCfg.GlobalName) + '] = ' + replCfg.GlobalName + ';' + LineEnding;
+            // keep as-is
+          end
+          else
+          begin
 
-            if RunEvalCode(ctx, '<repl_mode_import>', file_content) then
-              ImportedReplModes.Add(replCfg.Name)
-            else
+            if ImportedReplModes.IndexOf(replCfg.Name) < 0 then
             begin
-              WriteLn('Error: failed to import ', replCfg.ModuleName);
-              Flush(Output);
-              Continue;
-            end;
-          end;
+              file_content :=
+                'import * as ' + replCfg.GlobalName + ' from ' + QuotedStr(replCfg.ModuleName) + ';' + LineEnding +
+                'globalThis[' + QuotedStr(replCfg.GlobalName) + '] = ' + replCfg.GlobalName + ';' + LineEnding;
 
-          shellJs := replCfg.GlobalName + '.' + replCfg.ReplFunction + '(' + QuotedStr(script) + ')';
-          script := shellJs;
+              if RunEvalCode(ctx, '<repl_mode_import>', file_content) then
+                ImportedReplModes.Add(replCfg.Name)
+              else
+              begin
+                WriteLn('Error: failed to import ', replCfg.ModuleName);
+                Flush(Output);
+                Continue;
+              end;
+            end;
+
+            shellJs := replCfg.GlobalName + '.' + replCfg.ReplFunction + '(' + QuotedStr(script) + ')';
+            script := shellJs;
+          end;
         end;
 
         if (Copy(script, 1, 7) = '.guard ') or (script = '.guard') then
@@ -3349,6 +4044,7 @@ RestartRuntime:
             cmdName := LowerCase(cmdArgs[0]);
             if cmdName = 'show' then
             begin
+              ReadBoundaryPolicyFlagsFromConfig(ExamplesConfigFile, policySpawnEnabled, policyHttpEnabled, policyFsWatchEnabled);
               WriteLn('Config file: ', ExamplesConfigFile);
               WriteLn('settings.debug_level: ', qjs_log.DebugLevel);
               if qjs_log.LogShowTimestamp then
@@ -3366,10 +4062,25 @@ RestartRuntime:
               else
                 WriteLn('settings.mode: (off)');
 
-              if dump_flags_explicit then
-                WriteLn('settings.dump_flags: ', UIntToStr(QWord(dump_flags_value)))
+              if dump_flags_explicit and (dump_flags_value <> 0) then
+                WriteLn('settings.dump: on')
               else
-                WriteLn('settings.dump_flags: (not set)');
+                WriteLn('settings.dump: off');
+
+              if policySpawnEnabled then
+                WriteLn('spawn.enabled: on')
+              else
+                WriteLn('spawn.enabled: off');
+
+              if policyHttpEnabled then
+                WriteLn('http.enabled: on')
+              else
+                WriteLn('http.enabled: off');
+
+              if policyFsWatchEnabled then
+                WriteLn('fs_watch.enabled: on')
+              else
+                WriteLn('fs_watch.enabled: off');
             end
             else if (cmdName = 'set') and (cmdArgs.Count >= 3) then
             begin
@@ -3493,6 +4204,8 @@ RestartRuntime:
               LoadRuntimeAndHostSettingsFromConfig(ExamplesConfigFile,
                 config_dirty, ReplGuardMode, GuardExplicit, ActiveReplMode,
                 dump_flags_explicit, dump_flags_value);
+              LoadBoundaryPolicyFromConfig(ExamplesConfigFile);
+              LoadSpawnPolicyFromConfig(ExamplesConfigFile);
               ApplyDebugSettings(rt);
               if dump_flags_explicit then
                 JS_SetDumpFlags(rt, dump_flags_value);
@@ -3662,39 +4375,17 @@ RestartRuntime:
               end
               else
               begin
-                job_result := 0;
-                pending_ctx := nil;
                 if eval_flags = JS_EVAL_TYPE_MODULE then
                 begin
                   // Execute pending jobs (module initialization)
-                  repeat
-                    job_result := JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx);
-                    if job_result < 0 then
-                    begin
-                      if pending_ctx <> nil then
-                        js_std_dump_error(pending_ctx)
-                      else
-                        js_std_dump_error(ctx);
-                      Break;
-                    end;
-                  until job_result = 0;
                 end;
 
-                if job_result >= 0 then
+                if RunExecutionPipeline(ctx, True) then
                 begin
-                  SpawnPoll(ctx);
-                  loop_result := js_std_loop(ctx);
-                  if loop_result <> 0 then
-                  begin
-                    js_std_dump_error(ctx);
-                  end
-                  else
-                  begin
-                    // Flush output to ensure all console.log output is displayed
-                    Flush(Output);
-                    if qjs_log.DebugLevel > 0 then
-                      WriteLn('File loaded successfully');
-                  end;
+                  // Flush output to ensure all console.log output is displayed
+                  Flush(Output);
+                  if qjs_log.DebugLevel > 0 then
+                    WriteLn('File loaded successfully');
                   // Flush again after execution
                   Flush(Output);
                 end;
@@ -4703,6 +5394,13 @@ RestartRuntime:
           end;
         end;
 
+        if not RunExecutionPipeline(ctx, False) then
+        begin
+          if result_val.tag <> JS_TAG_UNDEFINED then
+            JS_FreeValue(ctx, result_val);
+          Continue;
+        end;
+
         // Print result if not undefined
         // Trong QuickJS, với JS_EVAL_TYPE_GLOBAL, expression sẽ trả về giá trị của nó
         // Kiểm tra cả tag và JS_IsUndefined để chắc chắn
@@ -4856,10 +5554,7 @@ RestartRuntime:
       else
       begin
         JS_FreeValue(ctx, result_val);
-        pending_ctx := nil;
-        while JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx) > 0 do
-        begin
-        end;
+        RunExecutionPipeline(ctx, False);
       end;
     except
       // ignore
@@ -4903,10 +5598,7 @@ RestartRuntime:
     else
     begin
       JS_FreeValue(ctx, result_val);
-      pending_ctx := nil;
-      while JS_ExecutePendingJob(JS_GetRuntime(ctx), @pending_ctx) > 0 do
-      begin
-      end;
+      RunExecutionPipeline(ctx, False);
     end;
   except
     // ignore

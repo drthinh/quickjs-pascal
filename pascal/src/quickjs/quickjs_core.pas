@@ -123,6 +123,7 @@ function JS_Eval(ctx: PJSContext; input: PChar; input_len: csize_t; filename: PC
 function JS_EvalFunction(ctx: PJSContext; func_obj: JSValueConst): JSValue; cdecl; external libqjs;
 
 // Exception helpers
+function JS_Throw(ctx: PJSContext; obj: JSValue): JSValue; cdecl; external libqjs;
 function JS_GetException(ctx: PJSContext): JSValue; cdecl; external libqjs;
 function JS_IsErrorValue(val: JSValueConst): cbool; cdecl; external libqjs name 'JS_IsError';
 function JS_IsError(ctx: PJSContext; val: JSValueConst): cint; cdecl; inline;

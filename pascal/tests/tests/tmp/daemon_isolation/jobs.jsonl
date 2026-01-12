@@ -1,0 +1,2 @@
+{"id":"job1","code":"globalThis.x = 123; globalThis.__job_result = String(globalThis.x);"}
+{"id":"job2","code":"globalThis.__job_result = String(globalThis.x || 0);"}

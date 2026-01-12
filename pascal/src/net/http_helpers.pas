@@ -8,12 +8,78 @@ uses
   SysUtils, Classes, ctypes,
   quickjs_types, quickjs_core,
   Windows,
-  qjs_log;
+  qjs_log, qjsp_host_errors;
 
 function js_http_request(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSValueConst): JSValue; cdecl;
 procedure RegisterHttpHelpers(ctx: PJSContext);
+procedure SetHttpEnabled(enabled: boolean);
+procedure SetHttpAllowedHosts(const hosts: array of string);
+procedure SetHttpDefaultTimeoutMs(defaultTimeoutMs: Integer);
+procedure SetHttpMaxTimeoutMs(maxTimeoutMs: Integer);
+procedure SetHttpDefaultMaxBodyKb(defaultMaxBodyKb: Integer);
+procedure SetHttpMaxBodyKb(maxBodyKb: Integer);
 
 implementation
+
+var
+  g_http_enabled: boolean = True;
+  g_http_allowed_hosts: TStringList;
+  g_http_default_timeout_ms: Integer = 0;
+  g_http_max_timeout_ms: Integer = 0;
+  g_http_default_max_body_kb: Integer = 0;
+  g_http_max_body_kb: Integer = 0;
+
+procedure SetHttpEnabled(enabled: boolean);
+begin
+  g_http_enabled := enabled;
+end;
+
+procedure SetHttpAllowedHosts(const hosts: array of string);
+var
+  i: integer;
+  s: string;
+begin
+  if g_http_allowed_hosts = nil then
+  begin
+    g_http_allowed_hosts := TStringList.Create;
+    g_http_allowed_hosts.CaseSensitive := False;
+  end;
+  g_http_allowed_hosts.Clear;
+  for i := 0 to High(hosts) do
+  begin
+    s := Trim(hosts[i]);
+    if s <> '' then
+      g_http_allowed_hosts.Add(LowerCase(s));
+  end;
+end;
+
+procedure SetHttpDefaultTimeoutMs(defaultTimeoutMs: Integer);
+begin
+  if defaultTimeoutMs < 0 then
+    defaultTimeoutMs := 0;
+  g_http_default_timeout_ms := defaultTimeoutMs;
+end;
+
+procedure SetHttpMaxTimeoutMs(maxTimeoutMs: Integer);
+begin
+  if maxTimeoutMs < 0 then
+    maxTimeoutMs := 0;
+  g_http_max_timeout_ms := maxTimeoutMs;
+end;
+
+procedure SetHttpDefaultMaxBodyKb(defaultMaxBodyKb: Integer);
+begin
+  if defaultMaxBodyKb < 0 then
+    defaultMaxBodyKb := 0;
+  g_http_default_max_body_kb := defaultMaxBodyKb;
+end;
+
+procedure SetHttpMaxBodyKb(maxBodyKb: Integer);
+begin
+  if maxBodyKb < 0 then
+    maxBodyKb := 0;
+  g_http_max_body_kb := maxBodyKb;
+end;
 
 type
   HINTERNET = Pointer;
@@ -281,9 +347,14 @@ var
   hdrList: TStringList;
   chunkSize: DWORD;
   totalRead: Int64;
+  hostLower: string;
+  maxBodyBytes: Integer;
 begin
   try
     Result := JS_EXCEPTION;
+
+    if not g_http_enabled then
+      Exit(QjspThrowHostError(ctx, QJSP_E_HTTP_DISABLED, 'http is disabled by host policy', 'http'));
 
     if argc < 2 then
     begin
@@ -416,6 +487,25 @@ begin
 
   asText := responseType = 'text';
 
+  if timeoutMs <= 0 then
+    timeoutMs := g_http_default_timeout_ms;
+  if (g_http_max_timeout_ms > 0) and (timeoutMs > g_http_max_timeout_ms) then
+    Exit(QjspThrowHostError(ctx, QJSP_E_HTTP_LIMIT_DENIED,
+      'timeoutMs exceeds host policy limit', 'http'));
+
+  if maxBytes <= 0 then
+  begin
+    if g_http_default_max_body_kb > 0 then
+      maxBytes := g_http_default_max_body_kb * 1024;
+  end;
+
+  if (g_http_max_body_kb > 0) then
+  begin
+    maxBodyBytes := g_http_max_body_kb * 1024;
+    if (maxBytes <= 0) or (maxBytes > maxBodyBytes) then
+      maxBytes := maxBodyBytes;
+  end;
+
   qjs_log.DebugMsg(0, 'HttpRequest: ' + UpperCase(method) + ' ' + url +
     ' timeoutMs=' + IntToStr(timeoutMs) +
     ' maxBytes=' + IntToStr(maxBytes) +
@@ -453,6 +543,13 @@ begin
 
     qjs_log.DebugMsg(1, 'HttpRequest: scheme=' + string(scheme) + ' host=' + string(hostName) +
       ' port=' + IntToStr(port) + ' path=' + string(urlPath));
+
+    if (g_http_allowed_hosts <> nil) and (g_http_allowed_hosts.Count > 0) then
+    begin
+      hostLower := LowerCase(string(hostName));
+      if g_http_allowed_hosts.IndexOf(hostLower) < 0 then
+        Exit(QjspThrowHostError(ctx, QJSP_E_HTTP_HOST_DENIED, 'host is not allowed by host policy', 'http'));
+    end;
 
     flags := 0;
     if (LowerCase(string(scheme)) = 'https') then

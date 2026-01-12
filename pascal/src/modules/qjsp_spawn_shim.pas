@@ -9,11 +9,17 @@ uses
 
 procedure RegisterSpawnModuleShims(ctx: PJSContext);
 procedure SpawnPoll(ctx: PJSContext);
+procedure SetSpawnEnabled(enabled: boolean);
+procedure SetSpawnMaxConcurrent(maxConcurrent: integer);
+procedure SetSpawnDefaultTimeoutMs(defaultTimeoutMs: QWord);
+procedure SetSpawnDefaultMaxOutputKb(defaultMaxOutputKb: QWord);
+procedure SetSpawnAllowedCwdRoots(const roots: array of string);
+procedure SetSpawnEnvAllowlist(const names: array of string);
 
 implementation
 
 uses
-  quickjs_core, quickjs_std, qjs_log, Process
+  quickjs_core, quickjs_std, qjs_log, Process, qjsp_host_errors
   {$IFDEF WINDOWS}
   , Windows
   {$ENDIF}
@@ -48,6 +54,20 @@ type
     ErrThread: TSpawnReaderThread;
     Lock: TRTLCriticalSection;
     Chunks: TList;
+    StartTick: QWord;
+    TimeoutMs: QWord;
+    MaxOutputBytes: QWord;
+    TotalOutBytes: QWord;
+    TotalErrBytes: QWord;
+    TruncatedOut: boolean;
+    TruncatedErr: boolean;
+    TimedOut: boolean;
+    Killed: boolean;
+    CmdLine: string;
+    Cwd: string;
+    {$IFDEF WINDOWS}
+    Job: HANDLE;
+    {$ENDIF}
     WaitPromise: JSValue;
     WaitResolve: JSValue;
     WaitReject: JSValue;
@@ -57,9 +77,62 @@ type
 var
   g_procs: TList;
   g_next_id: cint64 = 1;
+  g_spawn_enabled: boolean = True;
+  g_spawn_max_concurrent: integer = 0;
+  g_spawn_default_timeout_ms: QWord = 30000;
+  g_spawn_default_max_output_kb: QWord = 256;
+  g_spawn_allowed_cwd_roots: TStringList;
+  g_spawn_env_allowlist: TStringList;
+
+procedure SetSpawnEnabled(enabled: boolean);
+begin
+  g_spawn_enabled := enabled;
+end;
+
+procedure SetSpawnMaxConcurrent(maxConcurrent: integer);
+begin
+  if maxConcurrent < 0 then
+    maxConcurrent := 0;
+  g_spawn_max_concurrent := maxConcurrent;
+end;
+
+procedure SetSpawnDefaultTimeoutMs(defaultTimeoutMs: QWord);
+begin
+  g_spawn_default_timeout_ms := defaultTimeoutMs;
+end;
+
+procedure SetSpawnDefaultMaxOutputKb(defaultMaxOutputKb: QWord);
+begin
+  g_spawn_default_max_output_kb := defaultMaxOutputKb;
+end;
+
+procedure SetSpawnAllowedCwdRoots(const roots: array of string);
+var
+  i: integer;
+begin
+  if g_spawn_allowed_cwd_roots = nil then
+    g_spawn_allowed_cwd_roots := TStringList.Create;
+  g_spawn_allowed_cwd_roots.Clear;
+  for i := 0 to High(roots) do
+    if Trim(roots[i]) <> '' then
+      g_spawn_allowed_cwd_roots.Add(Trim(roots[i]));
+end;
+
+procedure SetSpawnEnvAllowlist(const names: array of string);
+var
+  i: integer;
+begin
+  if g_spawn_env_allowlist = nil then
+    g_spawn_env_allowlist := TStringList.Create;
+  g_spawn_env_allowlist.Clear;
+  for i := 0 to High(names) do
+    if Trim(names[i]) <> '' then
+      g_spawn_env_allowlist.Add(Trim(names[i]));
+end;
 
 procedure WriteBytesToStdOut(const buf: TBytes; n: SizeInt); forward;
 procedure WriteBytesToStdErr(const buf: TBytes; n: SizeInt); forward;
+procedure AuditSpawn(const sp: PSpawnProcRec; const exitCode: cint32); forward;
 
 function PopChunk(sp: PSpawnProcRec): PSpawnChunk;
 begin
@@ -116,6 +189,7 @@ var
   tmp: TBytes;
   n: SizeInt;
   avail: SizeInt;
+  allow_n: SizeInt;
 begin
   tmp := nil;
   SetLength(tmp, 8192);
@@ -149,10 +223,72 @@ begin
 
     if n > 0 then
     begin
-      if FKind = sckStdout then
-        WriteBytesToStdOut(tmp, n)
-      else
-        WriteBytesToStdErr(tmp, n);
+      allow_n := 0;
+      EnterCriticalSection(FOwner^.Lock);
+      try
+        if (FOwner^.MaxOutputBytes > 0) then
+        begin
+          if FKind = sckStdout then
+          begin
+            if not FOwner^.TruncatedOut then
+            begin
+              if FOwner^.TotalOutBytes >= FOwner^.MaxOutputBytes then
+              begin
+                FOwner^.TruncatedOut := True;
+                allow_n := 0;
+              end
+              else
+              begin
+                if QWord(n) > (FOwner^.MaxOutputBytes - FOwner^.TotalOutBytes) then
+                  allow_n := SizeInt(FOwner^.MaxOutputBytes - FOwner^.TotalOutBytes)
+                else
+                  allow_n := n;
+                FOwner^.TotalOutBytes := FOwner^.TotalOutBytes + QWord(allow_n);
+                if QWord(allow_n) < QWord(n) then
+                  FOwner^.TruncatedOut := True;
+              end;
+            end
+            else
+              allow_n := 0;
+          end
+          else
+          begin
+            if not FOwner^.TruncatedErr then
+            begin
+              if FOwner^.TotalErrBytes >= FOwner^.MaxOutputBytes then
+              begin
+                FOwner^.TruncatedErr := True;
+                allow_n := 0;
+              end
+              else
+              begin
+                if QWord(n) > (FOwner^.MaxOutputBytes - FOwner^.TotalErrBytes) then
+                  allow_n := SizeInt(FOwner^.MaxOutputBytes - FOwner^.TotalErrBytes)
+                else
+                  allow_n := n;
+                FOwner^.TotalErrBytes := FOwner^.TotalErrBytes + QWord(allow_n);
+                if QWord(allow_n) < QWord(n) then
+                  FOwner^.TruncatedErr := True;
+              end;
+            end
+            else
+              allow_n := 0;
+          end;
+        end
+        else
+        begin
+          allow_n := n;
+          if FKind = sckStdout then
+            FOwner^.TotalOutBytes := FOwner^.TotalOutBytes + QWord(n)
+          else
+            FOwner^.TotalErrBytes := FOwner^.TotalErrBytes + QWord(n);
+        end;
+      finally
+        LeaveCriticalSection(FOwner^.Lock);
+      end;
+
+      if allow_n > 0 then
+        PushChunk(FOwner, FKind, tmp, allow_n);
     end
     else
       Sleep(1);
@@ -162,6 +298,81 @@ end;
 {$IFDEF WINDOWS}
 var
   g_ctrl_handler_installed: boolean = False;
+
+type
+  JOBOBJECT_BASIC_LIMIT_INFORMATION = record
+    PerProcessUserTimeLimit: LARGE_INTEGER;
+    PerJobUserTimeLimit: LARGE_INTEGER;
+    LimitFlags: DWORD;
+    MinimumWorkingSetSize: SIZE_T;
+    MaximumWorkingSetSize: SIZE_T;
+    ActiveProcessLimit: DWORD;
+    Affinity: ULONG_PTR;
+    PriorityClass: DWORD;
+    SchedulingClass: DWORD;
+  end;
+
+  IO_COUNTERS = record
+    ReadOperationCount: ULONGLONG;
+    WriteOperationCount: ULONGLONG;
+    OtherOperationCount: ULONGLONG;
+    ReadTransferCount: ULONGLONG;
+    WriteTransferCount: ULONGLONG;
+    OtherTransferCount: ULONGLONG;
+  end;
+
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION = record
+    BasicLimitInformation: JOBOBJECT_BASIC_LIMIT_INFORMATION;
+    IoInfo: IO_COUNTERS;
+    ProcessMemoryLimit: SIZE_T;
+    JobMemoryLimit: SIZE_T;
+    PeakProcessMemoryUsed: SIZE_T;
+    PeakJobMemoryUsed: SIZE_T;
+  end;
+
+const
+  JobObjectExtendedLimitInformation = 9;
+  JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = $00002000;
+
+function CreateJobObjectW(lpJobAttributes: PSecurityAttributes; lpName: PWideChar): HANDLE; stdcall; external 'kernel32.dll' name 'CreateJobObjectW';
+function SetInformationJobObject(hJob: HANDLE; JobObjectInfoClass: DWORD; lpJobObjectInfo: Pointer; cbJobObjectInfoLength: DWORD): WINBOOL; stdcall; external 'kernel32.dll' name 'SetInformationJobObject';
+function AssignProcessToJobObject(hJob: HANDLE; hProcess: HANDLE): WINBOOL; stdcall; external 'kernel32.dll' name 'AssignProcessToJobObject';
+
+function WinCreateKillJob(out job: HANDLE): boolean;
+var
+  info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION;
+begin
+  Result := False;
+  job := CreateJobObjectW(nil, nil);
+  if job = 0 then
+    Exit;
+  FillChar(info, SizeOf(info), 0);
+  info.BasicLimitInformation.LimitFlags := JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+  if not SetInformationJobObject(job, JobObjectExtendedLimitInformation, @info, SizeOf(info)) then
+  begin
+    CloseHandle(job);
+    job := 0;
+    Exit;
+  end;
+  Result := True;
+end;
+
+function WinAssignProcessToJob(job: HANDLE; pid: DWORD): boolean;
+var
+  ph: HANDLE;
+begin
+  Result := False;
+  if (job = 0) or (pid = 0) then
+    Exit;
+  ph := OpenProcess(PROCESS_SET_QUOTA or PROCESS_TERMINATE, False, pid);
+  if ph = 0 then
+    Exit;
+  try
+    Result := AssignProcessToJobObject(job, ph);
+  finally
+    CloseHandle(ph);
+  end;
+end;
 
 function WinTaskKill(pid: DWORD; force: boolean): boolean;
 var
@@ -280,6 +491,7 @@ var
   i: integer;
   sp: PSpawnProcRec;
   ch: PSpawnChunk;
+  exitCode: cint32;
 begin
   if g_procs = nil then
     Exit;
@@ -288,6 +500,16 @@ begin
     sp := PSpawnProcRec(g_procs[i]);
     if (sp <> nil) and (sp^.Id = id) then
     begin
+      exitCode := 0;
+      if sp^.P <> nil then
+      begin
+        try
+          exitCode := sp^.P.ExitStatus;
+        except
+        end;
+      end;
+      AuditSpawn(sp, exitCode);
+
       if sp^.OutThread <> nil then
       begin
         try
@@ -321,7 +543,10 @@ begin
         repeat
           ch := PopChunk(sp);
           if ch <> nil then
+          begin
+            Finalize(ch^);
             Dispose(ch);
+          end;
         until ch = nil;
         sp^.Chunks.Free;
         sp^.Chunks := nil;
@@ -343,6 +568,14 @@ begin
       sp^.WaitReject := JS_UNDEFINED;
       sp^.WaitAttachedCtx := nil;
 
+      {$IFDEF WINDOWS}
+      if sp^.Job <> 0 then
+      begin
+        CloseHandle(sp^.Job);
+        sp^.Job := 0;
+      end;
+      {$ENDIF}
+
       if sp^.P <> nil then
         sp^.P.Free;
       Dispose(sp);
@@ -350,6 +583,50 @@ begin
       Exit;
     end;
   end;
+end;
+
+procedure AuditSpawn(const sp: PSpawnProcRec; const exitCode: cint32);
+var
+  durMs: QWord;
+  pidVal: int64;
+  flags: string;
+begin
+  if (sp = nil) then
+    Exit;
+  durMs := 0;
+  if sp^.StartTick <> 0 then
+    durMs := GetTickCount64 - sp^.StartTick;
+  pidVal := 0;
+  if sp^.P <> nil then
+  begin
+    try
+      pidVal := sp^.P.ProcessID;
+    except
+    end;
+  end;
+
+  flags := '';
+  if sp^.TimedOut then
+    flags := flags + ' timedOut';
+  if sp^.Killed then
+    flags := flags + ' killed';
+  if sp^.TruncatedOut or sp^.TruncatedErr then
+    flags := flags + ' truncated';
+  flags := Trim(flags);
+
+  qjs_log.LogMsg(llInfo, 'spawn',
+    'id=' + IntToStr(sp^.Id) +
+    ' pid=' + IntToStr(pidVal) +
+    ' code=' + IntToStr(exitCode) +
+    ' durationMs=' + IntToStr(durMs) +
+    ' timeoutMs=' + IntToStr(sp^.TimeoutMs) +
+    ' maxOutputBytes=' + IntToStr(sp^.MaxOutputBytes) +
+    ' outBytes=' + IntToStr(sp^.TotalOutBytes) +
+    ' errBytes=' + IntToStr(sp^.TotalErrBytes) +
+    ' cwd="' + sp^.Cwd + '"' +
+    ' cmd="' + sp^.CmdLine + '"' +
+    ' flags="' + flags + '"'
+  );
 end;
 
 procedure WriteBytesToStdOut(const buf: TBytes; n: SizeInt);
@@ -418,7 +695,24 @@ var
   v: JSValue;
   b: cint;
   shellCmd: string;
+  timeoutMs: QWord;
+  maxOutputKb: QWord;
+  tmpI64: cint64;
+  cwdAbs: string;
+  rootAbs: string;
+  cwdAbsCmp: string;
+  rootAbsCmp: string;
+  rootOk: boolean;
+  allowName: string;
+  allowValue: string;
 begin
+  if not g_spawn_enabled then
+    Exit(QjspThrowHostError(ctx, QJSP_E_SPAWN_DISABLED, 'spawn is disabled by host policy', 'spawn'));
+
+  if (g_spawn_max_concurrent > 0) and (g_procs <> nil) and (g_procs.Count >= g_spawn_max_concurrent) then
+    Exit(QjspThrowHostError(ctx, QJSP_E_SPAWN_CONCURRENCY_LIMIT,
+      'spawn concurrency limit exceeded (max_concurrent=' + IntToStr(g_spawn_max_concurrent) + ')', 'spawn'));
+
   if argc < 1 then
     Exit(JS_ThrowTypeError(ctx, PChar('spawn expects argv array')));
 
@@ -494,10 +788,101 @@ begin
           inheritStdio := True;
       end;
       JS_FreeValue(ctx, v);
+
+      timeoutMs := g_spawn_default_timeout_ms;
+      v := JS_GetPropertyStr(ctx, optsVal, PChar('timeoutMs'));
+      if JS_IsException(v) = 0 then
+      begin
+        if (JS_IsUndefined(v) = 0) and (JS_IsNull(v) = 0) then
+        begin
+          tmpI64 := 0;
+          if JS_ToInt64(ctx, @tmpI64, v) = 0 then
+          begin
+            if tmpI64 < 0 then
+              tmpI64 := 0;
+            timeoutMs := QWord(tmpI64);
+          end;
+        end;
+      end;
+      JS_FreeValue(ctx, v);
+
+      maxOutputKb := g_spawn_default_max_output_kb;
+      v := JS_GetPropertyStr(ctx, optsVal, PChar('maxOutputKb'));
+      if JS_IsException(v) = 0 then
+      begin
+        if (JS_IsUndefined(v) = 0) and (JS_IsNull(v) = 0) then
+        begin
+          tmpI64 := 0;
+          if JS_ToInt64(ctx, @tmpI64, v) = 0 then
+          begin
+            if tmpI64 < 0 then
+              tmpI64 := 0;
+            maxOutputKb := QWord(tmpI64);
+          end;
+        end;
+      end;
+      JS_FreeValue(ctx, v);
+    end;
+
+    if JS_IsObject(optsVal) = 0 then
+    begin
+      timeoutMs := g_spawn_default_timeout_ms;
+      maxOutputKb := g_spawn_default_max_output_kb;
     end;
 
     if (cwdStr <> '') and (cwdStr <> 'undefined') then
+    begin
+      // CWD jail: only enforce for explicit cwd requests.
+      if (g_spawn_allowed_cwd_roots <> nil) and (g_spawn_allowed_cwd_roots.Count > 0) then
+      begin
+        cwdAbs := ExpandFileName(cwdStr);
+        rootOk := False;
+        for tmpI64 := 0 to g_spawn_allowed_cwd_roots.Count - 1 do
+        begin
+          rootAbs := ExpandFileName(g_spawn_allowed_cwd_roots[integer(tmpI64)]);
+          rootAbsCmp := rootAbs;
+          cwdAbsCmp := cwdAbs;
+          if (rootAbsCmp <> '') and (rootAbsCmp[Length(rootAbsCmp)] <> PathDelim) then
+            rootAbsCmp := rootAbsCmp + PathDelim;
+          if (cwdAbsCmp <> '') and (cwdAbsCmp[Length(cwdAbsCmp)] <> PathDelim) then
+            cwdAbsCmp := cwdAbsCmp + PathDelim;
+          {$IFDEF WINDOWS}
+          if SameText(Copy(cwdAbsCmp, 1, Length(rootAbsCmp)), rootAbsCmp) then
+            rootOk := True;
+          {$ELSE}
+          if Copy(cwdAbsCmp, 1, Length(rootAbsCmp)) = rootAbsCmp then
+            rootOk := True;
+          {$ENDIF}
+          if rootOk then
+            Break;
+        end;
+        if not rootOk then
+          Exit(QjspThrowHostError(ctx, QJSP_E_SPAWN_CWD_DENIED,
+            'spawn cwd is denied by host policy: "' + cwdStr + '"', 'spawn'));
+      end;
+
       p.CurrentDirectory := cwdStr;
+    end;
+
+    // Environment scrubbing (best-effort): if allowlist is configured, only pass
+    // those variables to the child process.
+    if (g_spawn_env_allowlist <> nil) and (g_spawn_env_allowlist.Count > 0) then
+    begin
+      try
+        p.Environment.Clear;
+        for tmpI64 := 0 to g_spawn_env_allowlist.Count - 1 do
+        begin
+          allowName := g_spawn_env_allowlist[integer(tmpI64)];
+          if Trim(allowName) = '' then
+            Continue;
+          allowValue := SysUtils.GetEnvironmentVariable(allowName);
+          if allowValue <> '' then
+            p.Environment.Add(allowName + '=' + allowValue);
+        end;
+      except
+        // If FPC TProcess.Environment isn't available in this build, skip.
+      end;
+    end;
 
     if inheritStdio then
       p.Options := []
@@ -587,6 +972,23 @@ begin
     sp^.Id := g_next_id;
     Inc(g_next_id);
     sp^.P := p;
+    sp^.StartTick := GetTickCount64;
+    sp^.TimeoutMs := timeoutMs;
+    sp^.MaxOutputBytes := maxOutputKb * 1024;
+    sp^.TotalOutBytes := 0;
+    sp^.TotalErrBytes := 0;
+    sp^.TruncatedOut := False;
+    sp^.TruncatedErr := False;
+    sp^.TimedOut := False;
+    sp^.Killed := False;
+    sp^.Cwd := p.CurrentDirectory;
+    if len64 = -1 then
+      sp^.CmdLine := shellCmd
+    else
+      sp^.CmdLine := p.Executable;
+    {$IFDEF WINDOWS}
+    sp^.Job := 0;
+    {$ENDIF}
 
     InitCriticalSection(sp^.Lock);
     sp^.Chunks := TList.Create;
@@ -608,6 +1010,14 @@ begin
 
     {$IFDEF WINDOWS}
     EnsureCtrlHandler;
+    if WinCreateKillJob(sp^.Job) then
+    begin
+      if not WinAssignProcessToJob(sp^.Job, DWORD(p.ProcessID)) then
+      begin
+        CloseHandle(sp^.Job);
+        sp^.Job := 0;
+      end;
+    end;
     {$ENDIF}
 
     obj := JS_NewObject(ctx);
@@ -628,6 +1038,9 @@ var
   sp: PSpawnProcRec;
   sig: cint32;
 begin
+  if not g_spawn_enabled then
+    Exit(QjspThrowHostError(ctx, QJSP_E_SPAWN_DISABLED, 'spawn is disabled by host policy', 'spawn'));
+
   if argc < 1 then
     Exit(JS_ThrowTypeError(ctx, PChar('kill expects id')));
   if JS_ToInt64(ctx, @id, argv[0]) < 0 then
@@ -641,6 +1054,14 @@ begin
     JS_ToInt32(ctx, @sig, argv[1]);
   try
     {$IFDEF WINDOWS}
+    sp^.Killed := True;
+    if sp^.Job <> 0 then
+    begin
+      CloseHandle(sp^.Job);
+      sp^.Job := 0;
+    end
+    else
+    begin
     case sig of
       2:
         begin
@@ -657,6 +1078,7 @@ begin
         WinTaskKill(DWORD(sp^.P.ProcessID), False);
       end;
     end;
+    end;
     {$ENDIF}
     if sig = 9 then
       sp^.P.Terminate(1)
@@ -671,14 +1093,12 @@ function js_wait(ctx: PJSContext; this_val: JSValueConst; argc: cint; argv: PJSV
 var
   id: cint64;
   sp: PSpawnProcRec;
-  outBuf: TBytes;
-  errBuf: TBytes;
-  n: SizeInt;
   obj: JSValue;
   exitCode: cint32;
 begin
-  outBuf := nil;
-  errBuf := nil;
+  if not g_spawn_enabled then
+    Exit(QjspThrowHostError(ctx, QJSP_E_SPAWN_DISABLED, 'spawn is disabled by host policy', 'spawn'));
+
   if argc < 1 then
     Exit(JS_ThrowTypeError(ctx, PChar('wait expects id')));
   if JS_ToInt64(ctx, @id, argv[0]) < 0 then
@@ -687,71 +1107,23 @@ begin
   if (sp = nil) or (sp^.P = nil) then
     Exit(JS_ThrowTypeError(ctx, PChar('wait: invalid process id')));
 
-  if (poUsePipes in sp^.P.Options) then
-  begin
-    SetLength(outBuf, 8192);
-    SetLength(errBuf, 8192);
-  end;
-
   try
     while not sp^.P.WaitOnExit(10) do
     begin
-      if (poUsePipes in sp^.P.Options) then
-      begin
-        while sp^.P.Output.NumBytesAvailable > 0 do
-        begin
-          n := sp^.P.Output.Read(outBuf[0], Length(outBuf));
-          if n > 0 then
-            WriteBytesToStdOut(outBuf, n)
-          else
-            Break;
-        end;
-
-        if not (poStderrToOutPut in sp^.P.Options) then
-        begin
-          while sp^.P.Stderr.NumBytesAvailable > 0 do
-          begin
-            n := sp^.P.Stderr.Read(errBuf[0], Length(errBuf));
-            if n > 0 then
-              WriteBytesToStdErr(errBuf, n)
-            else
-              Break;
-          end;
-        end;
-      end;
+      SpawnPoll(ctx);
     end;
-
-    if (poUsePipes in sp^.P.Options) then
-    begin
-      while sp^.P.Output.NumBytesAvailable > 0 do
-      begin
-        n := sp^.P.Output.Read(outBuf[0], Length(outBuf));
-        if n > 0 then
-          WriteBytesToStdOut(outBuf, n)
-        else
-          Break;
-      end;
-
-      if not (poStderrToOutPut in sp^.P.Options) then
-      begin
-        while sp^.P.Stderr.NumBytesAvailable > 0 do
-        begin
-          n := sp^.P.Stderr.Read(errBuf[0], Length(errBuf));
-          if n > 0 then
-            WriteBytesToStdErr(errBuf, n)
-          else
-            Break;
-        end;
-      end;
-    end;
-
     exitCode := sp^.P.ExitStatus;
+
+    if sp^.TimedOut then
+      exitCode := -1;
   finally
     RemoveProcById(id);
   end;
 
   obj := JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, obj, PChar('code'), JS_NewInt32(ctx, exitCode));
+  JS_SetPropertyStr(ctx, obj, PChar('timedOut'), JS_NewBool(ctx, Ord(sp^.TimedOut)));
+  JS_SetPropertyStr(ctx, obj, PChar('truncated'), JS_NewBool(ctx, Ord(sp^.TruncatedOut or sp^.TruncatedErr)));
   Result := obj;
 end;
 
@@ -762,6 +1134,9 @@ var
   resolving_funcs: array[0..1] of JSValue;
   promise: JSValue;
 begin
+  if not g_spawn_enabled then
+    Exit(QjspThrowHostError(ctx, QJSP_E_SPAWN_DISABLED, 'spawn is disabled by host policy', 'spawn'));
+
   if argc < 1 then
     Exit(JS_ThrowTypeError(ctx, PChar('waitAsync expects id')));
   if JS_ToInt64(ctx, @id, argv[0]) < 0 then
@@ -828,6 +1203,8 @@ var
   ch: PSpawnChunk;
   exitCode: cint32;
   obj, arg, rv: JSValue;
+  nowTick: QWord;
+  do_kill: boolean;
 begin
   if (ctx = nil) or (g_procs = nil) then
     Exit;
@@ -838,13 +1215,50 @@ begin
     if (sp = nil) or (sp^.P = nil) then
       Continue;
 
+    nowTick := GetTickCount64;
+    do_kill := False;
+    if (sp^.TimeoutMs > 0) and (sp^.StartTick > 0) and (nowTick - sp^.StartTick >= sp^.TimeoutMs) then
+    begin
+      EnterCriticalSection(sp^.Lock);
+      try
+        if not sp^.TimedOut then
+        begin
+          sp^.TimedOut := True;
+          do_kill := True;
+        end;
+      finally
+        LeaveCriticalSection(sp^.Lock);
+      end;
+    end;
+
+    if do_kill then
+    begin
+      {$IFDEF WINDOWS}
+      if sp^.Job <> 0 then
+      begin
+        CloseHandle(sp^.Job);
+        sp^.Job := 0;
+      end
+      else
+        WinKillProcessTree(DWORD(sp^.P.ProcessID));
+      {$ENDIF}
+      try
+        sp^.P.Terminate(1);
+      except
+      end;
+    end;
+
     repeat
       ch := PopChunk(sp);
       if ch = nil then
         Break;
       try
-        // Chunks are printed by reader threads. Only dispose here.
+        if ch^.Kind = sckStdout then
+          WriteBytesToStdOut(ch^.Data, ch^.Len)
+        else
+          WriteBytesToStdErr(ch^.Data, ch^.Len);
       finally
+        Finalize(ch^);
         Dispose(ch);
       end;
     until False;
@@ -853,10 +1267,15 @@ begin
     begin
       exitCode := sp^.P.ExitStatus;
 
+      if sp^.TimedOut then
+        exitCode := -1;
+
       if (sp^.WaitAttachedCtx = ctx) and (JS_IsUndefined(sp^.WaitPromise) = 0) then
       begin
         obj := JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, obj, PChar('code'), JS_NewInt32(ctx, exitCode));
+        JS_SetPropertyStr(ctx, obj, PChar('timedOut'), JS_NewBool(ctx, Ord(sp^.TimedOut)));
+        JS_SetPropertyStr(ctx, obj, PChar('truncated'), JS_NewBool(ctx, Ord(sp^.TruncatedOut or sp^.TruncatedErr)));
         arg := obj;
         rv := JS_Call(ctx, sp^.WaitResolve, JS_UNDEFINED, 1, @arg);
         if JS_IsException(rv) <> 0 then

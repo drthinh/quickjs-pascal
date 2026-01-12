@@ -149,6 +149,17 @@ Ngoài `settings`, `qjsp_config.json` còn được dùng cho:
 - `libraries`: các mounts cho module loader (xem `.lib ...`).
 - `tests` / `examples`: danh sách test enable/disable (xem `.test ...`).
 
+Ngoài ra file config còn có thể chứa các block policy/runtime khác (tùy build), ví dụ:
+
+- `spawn`: policy cho module spawn (`qjsp:os/spawn.js`).
+- `http`: policy cho HTTP helpers.
+- `fs_watch`: policy cho filesystem watcher.
+
+Xem thêm:
+
+- `qdocs/DAEMON_MODE.md` (daemon runner và test isolation)
+- `qdocs/STDJ_SH.md` và `qdocs/REPL_SH_EDITOR.md` (shell mode + editor)
+
 ## 7. Ghi chú dump flags
 
 Nếu bạn set `dump_flags` khác 0 nhưng đọc lại vẫn ra 0, nhiều khả năng `libqjs` đang build không bật `ENABLE_DUMPS`.

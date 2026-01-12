@@ -1,18 +1,52 @@
 {
+  "settings": {
+    "profile": "prod_automation"
+  },
   "libraries" : {
     "java" : "js/libs/java",
     "sh" : "js/libs/sh"
   },
-  "repl_modes" : {
-    "sh" : {
-      "module" : "lib:sh",
-      "global" : "sh",
-      "replFunction" : "repl",
-      "prompt" : "sh> "
-    }
+  "repl_modes": {
+  "sh": {
+    "module": "lib:sh",
+    "global": "sh",
+    "replFunction": "repl",
+    "prompt": "sh> "
+  }
+  },
+  "spawn": {
+    "max_concurrent": 1,
+    "timeout_ms_default": 5000,
+    "max_output_kb_default": 64,
+    "allowed_cwd_roots": [".\\tests\\tmp"],
+    "env_allowlist": ["PATH", "ComSpec", "SystemRoot", "WINDIR", "TEMP", "TMP"]
+  },
+  "http": {
+    "enabled": true,
+    "allowed_hosts": ["example.com"],
+    "timeout_ms": 2000,
+    "timeout_ms_max": 5000,
+    "max_body_kb": 32,
+    "max_body_kb_max": 64
+  },
+  "fs_watch": {
+    "enabled": true,
+    "allowed_roots": [".\\tests\\tmp"],
+    "max_watchers": 1,
+    "throttle_ms": 200
   },
   "tests" : {
     "async_test.js" : true,
-    "java_test.js" : true
+    "java_test.js" : true,
+    "spawn_timeout_test.js" : true,
+    "spawn_output_limit_test.js" : true,
+    "spawn_kill_tree_test.js" : true,
+    "spawn_cwd_jail_test.js": true,
+    "spawn_concurrency_limit_test.js": true,
+    "spawn_env_scrub_test.js": true,
+    "spawn_profile_defaults_test.js": true,
+    "http_policy_test.js": true,
+    "fs_watch_policy_test.js": true,
+    "daemon_isolation_test.js": true
   }
 }

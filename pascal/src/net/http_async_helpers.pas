@@ -8,11 +8,77 @@ uses
   SysUtils, Classes, ctypes, SyncObjs,
   quickjs_types, quickjs_core,
   Windows,
-  qjs_log;
+  qjs_log, qjsp_host_errors;
 
 procedure RegisterHttpAsyncHelpers(ctx: PJSContext);
+procedure SetHttpAsyncEnabled(enabled: boolean);
+procedure SetHttpAsyncAllowedHosts(const hosts: array of string);
+procedure SetHttpAsyncDefaultTimeoutMs(defaultTimeoutMs: Integer);
+procedure SetHttpAsyncMaxTimeoutMs(maxTimeoutMs: Integer);
+procedure SetHttpAsyncDefaultMaxBodyKb(defaultMaxBodyKb: Integer);
+procedure SetHttpAsyncMaxBodyKb(maxBodyKb: Integer);
 
 implementation
+
+var
+  g_http_async_enabled: boolean = True;
+  g_http_async_allowed_hosts: TStringList;
+  g_http_async_default_timeout_ms: Integer = 0;
+  g_http_async_max_timeout_ms: Integer = 0;
+  g_http_async_default_max_body_kb: Integer = 0;
+  g_http_async_max_body_kb: Integer = 0;
+
+procedure SetHttpAsyncEnabled(enabled: boolean);
+begin
+  g_http_async_enabled := enabled;
+end;
+
+procedure SetHttpAsyncAllowedHosts(const hosts: array of string);
+var
+  i: integer;
+  s: string;
+begin
+  if g_http_async_allowed_hosts = nil then
+  begin
+    g_http_async_allowed_hosts := TStringList.Create;
+    g_http_async_allowed_hosts.CaseSensitive := False;
+  end;
+  g_http_async_allowed_hosts.Clear;
+  for i := 0 to High(hosts) do
+  begin
+    s := Trim(hosts[i]);
+    if s <> '' then
+      g_http_async_allowed_hosts.Add(LowerCase(s));
+  end;
+end;
+
+procedure SetHttpAsyncDefaultTimeoutMs(defaultTimeoutMs: Integer);
+begin
+  if defaultTimeoutMs < 0 then
+    defaultTimeoutMs := 0;
+  g_http_async_default_timeout_ms := defaultTimeoutMs;
+end;
+
+procedure SetHttpAsyncMaxTimeoutMs(maxTimeoutMs: Integer);
+begin
+  if maxTimeoutMs < 0 then
+    maxTimeoutMs := 0;
+  g_http_async_max_timeout_ms := maxTimeoutMs;
+end;
+
+procedure SetHttpAsyncDefaultMaxBodyKb(defaultMaxBodyKb: Integer);
+begin
+  if defaultMaxBodyKb < 0 then
+    defaultMaxBodyKb := 0;
+  g_http_async_default_max_body_kb := defaultMaxBodyKb;
+end;
+
+procedure SetHttpAsyncMaxBodyKb(maxBodyKb: Integer);
+begin
+  if maxBodyKb < 0 then
+    maxBodyKb := 0;
+  g_http_async_max_body_kb := maxBodyKb;
+end;
 
 type
   HINTERNET = Pointer;
@@ -259,6 +325,7 @@ var
   s: RawByteString;
   asText: Boolean;
   chunkSize: DWORD;
+  hostLower: string;
 begin
   qjs_log.DebugMsg(0, 'HttpRequestAsync(worker): ' + UpperCase(method) + ' ' + url +
     ' timeoutMs=' + IntToStr(timeoutMs) +
@@ -304,6 +371,17 @@ begin
 
     qjs_log.DebugMsg(1, 'HttpRequestAsync(worker): scheme=' + string(scheme) + ' host=' + string(hostName) +
       ' port=' + IntToStr(port) + ' path=' + string(urlPath));
+
+    if (g_http_async_allowed_hosts <> nil) and (g_http_async_allowed_hosts.Count > 0) then
+    begin
+      hostLower := LowerCase(string(hostName));
+      if g_http_async_allowed_hosts.IndexOf(hostLower) < 0 then
+      begin
+        Result.Ok := False;
+        Result.ErrorMsg := QJSP_E_HTTP_HOST_DENIED + ': host is not allowed by host policy';
+        Exit;
+      end;
+    end;
 
     flags := 0;
     if (LowerCase(string(scheme)) = 'https') then
@@ -739,6 +817,7 @@ var
   followVal: JSValue;
   respTypeVal: JSValue;
   maxBytes: Integer;
+  maxBodyBytes: Integer;
   maxVal: JSValue;
   resolving_funcs: array[0..1] of JSValue;
   promise: JSValue;
@@ -750,6 +829,9 @@ var
   bodyValTmp: JSValue;
 begin
   try
+    if not g_http_async_enabled then
+      Exit(QjspThrowHostError(ctx, QJSP_E_HTTP_DISABLED, 'http is disabled by host policy', 'http'));
+
     if argc < 2 then
       Exit(JS_ThrowTypeError(ctx, PChar('HttpRequestAsync(method, url, headers?, body?, options?)')));
 
@@ -872,6 +954,25 @@ begin
         Move(abPtr^, Pointer(bodyRaw)^, abSize);
       end;
     end;
+  end;
+
+  if timeoutMs <= 0 then
+    timeoutMs := g_http_async_default_timeout_ms;
+  if (g_http_async_max_timeout_ms > 0) and (timeoutMs > g_http_async_max_timeout_ms) then
+    Exit(QjspThrowHostError(ctx, QJSP_E_HTTP_LIMIT_DENIED,
+      'timeoutMs exceeds host policy limit', 'http'));
+
+  if maxBytes <= 0 then
+  begin
+    if g_http_async_default_max_body_kb > 0 then
+      maxBytes := g_http_async_default_max_body_kb * 1024;
+  end;
+
+  if (g_http_async_max_body_kb > 0) then
+  begin
+    maxBodyBytes := g_http_async_max_body_kb * 1024;
+    if (maxBytes <= 0) or (maxBytes > maxBodyBytes) then
+      maxBytes := maxBodyBytes;
   end;
 
   promise := JS_NewPromiseCapability(ctx, @resolving_funcs[0]);

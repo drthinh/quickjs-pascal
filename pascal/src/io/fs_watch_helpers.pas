@@ -6,15 +6,61 @@ interface
 
 uses
   SysUtils, Classes, ctypes,
-  quickjs_types, quickjs_core
+  quickjs_types, quickjs_core, qjsp_host_errors
   {$IFDEF WINDOWS}
   , Windows
   {$ENDIF}
   ;
 
 procedure RegisterFsWatchHelpers(ctx: PJSContext);
+procedure SetFsWatchEnabled(enabled: boolean);
+procedure SetFsWatchAllowedRoots(const roots: array of string);
+procedure SetFsWatchMaxWatchers(maxWatchers: integer);
+procedure SetFsWatchThrottleMs(throttleMs: QWord);
 
 implementation
+
+var
+  g_fs_watch_enabled: boolean = True;
+  g_fs_watch_allowed_roots: TStringList;
+  g_fs_watch_max_watchers: integer = 0;
+  g_fs_watch_throttle_ms: QWord = 0;
+
+procedure SetFsWatchEnabled(enabled: boolean);
+begin
+  g_fs_watch_enabled := enabled;
+end;
+
+procedure SetFsWatchAllowedRoots(const roots: array of string);
+var
+  i: integer;
+  s: string;
+begin
+  if g_fs_watch_allowed_roots = nil then
+  begin
+    g_fs_watch_allowed_roots := TStringList.Create;
+    g_fs_watch_allowed_roots.CaseSensitive := False;
+  end;
+  g_fs_watch_allowed_roots.Clear;
+  for i := 0 to High(roots) do
+  begin
+    s := Trim(roots[i]);
+    if s <> '' then
+      g_fs_watch_allowed_roots.Add(s);
+  end;
+end;
+
+procedure SetFsWatchMaxWatchers(maxWatchers: integer);
+begin
+  if maxWatchers < 0 then
+    maxWatchers := 0;
+  g_fs_watch_max_watchers := maxWatchers;
+end;
+
+procedure SetFsWatchThrottleMs(throttleMs: QWord);
+begin
+  g_fs_watch_throttle_ms := throttleMs;
+end;
 
 {$IFDEF WINDOWS}
 type
@@ -51,6 +97,7 @@ type
     recursive: Boolean;
     hDir: THandle;
     thread: TThread;
+    last_emit_tick: QWord;
   end;
 
   TWatchThread = class(TThread)
@@ -109,6 +156,37 @@ begin
   finally
     LeaveCriticalSection(QueueCS);
   end;
+end;
+
+function IsDirAllowedByPolicy(const dirAbs: string): Boolean;
+var
+  i: Integer;
+  rootAbs: string;
+  rootCmp: string;
+  dirCmp: string;
+begin
+  Result := True;
+  if (g_fs_watch_allowed_roots = nil) or (g_fs_watch_allowed_roots.Count <= 0) then
+    Exit;
+
+  dirCmp := ExpandFileName(dirAbs);
+  {$IFDEF WINDOWS}
+  dirCmp := LowerCase(StringReplace(dirCmp, '/', PathDelim, [rfReplaceAll]));
+  {$ENDIF}
+
+  for i := 0 to g_fs_watch_allowed_roots.Count - 1 do
+  begin
+    rootAbs := ExpandFileName(g_fs_watch_allowed_roots[i]);
+    rootCmp := rootAbs;
+    {$IFDEF WINDOWS}
+    rootCmp := LowerCase(StringReplace(rootCmp, '/', PathDelim, [rfReplaceAll]));
+    {$ENDIF}
+    if (rootCmp <> '') and (rootCmp[Length(rootCmp)] <> PathDelim) then
+      rootCmp := rootCmp + PathDelim;
+    if (rootCmp <> '') and (Copy(dirCmp, 1, Length(rootCmp)) = rootCmp) then
+      Exit(True);
+  end;
+  Result := False;
 end;
 
 function QueueDrain: TWatchEventArray;
@@ -186,6 +264,8 @@ var
   ev: TWatchEvent;
   fileName: UnicodeString;
   notifyFilter: DWORD;
+  w: PWatch;
+  nowTick: QWord;
 begin
   notifyFilter := FILE_NOTIFY_CHANGE_FILE_NAME or FILE_NOTIFY_CHANGE_DIR_NAME or
                   FILE_NOTIFY_CHANGE_LAST_WRITE or FILE_NOTIFY_CHANGE_SIZE;
@@ -219,7 +299,24 @@ begin
       ev.watch_id := FWatch^.id;
       ev.action := p^.Action;
       ev.path := fileName;
-      QueuePush(ev);
+
+      w := FWatch;
+      if (w <> nil) and (g_fs_watch_throttle_ms > 0) then
+      begin
+        nowTick := GetTickCount64;
+        if (w^.last_emit_tick <> 0) and ((nowTick - w^.last_emit_tick) < g_fs_watch_throttle_ms) then
+        begin
+        end
+        else
+        begin
+          w^.last_emit_tick := nowTick;
+          QueuePush(ev);
+        end;
+      end
+      else
+      begin
+        QueuePush(ev);
+      end;
 
       if p^.NextEntryOffset = 0 then
         Break;
@@ -235,8 +332,12 @@ var
   recursive: Boolean;
   h: THandle;
   wptr: PWatch;
+  dirAbs8: string;
 begin
   try
+    if not g_fs_watch_enabled then
+      Exit(QjspThrowHostError(ctx, QJSP_E_FSWATCH_DISABLED, 'fs_watch is disabled by host policy', 'fs_watch'));
+
     if argc < 1 then
       Exit(JS_ThrowTypeError(ctx, PChar('WatchDir expects 1 argument: dir')));
 
@@ -252,6 +353,13 @@ begin
   recursive := True;
   if argc >= 2 then
     recursive := JS_ToBool(ctx, argv[1]) <> 0;
+
+  dirAbs8 := UTF8Encode(dirW);
+  if not IsDirAllowedByPolicy(string(dirAbs8)) then
+    Exit(QjspThrowHostError(ctx, QJSP_E_FSWATCH_ROOT_DENIED, 'watch root is not allowed by host policy', 'fs_watch'));
+
+  if (g_fs_watch_max_watchers > 0) and (Watches <> nil) and (Watches.Count >= g_fs_watch_max_watchers) then
+    Exit(QjspThrowHostError(ctx, QJSP_E_FSWATCH_LIMIT, 'max watchers limit reached', 'fs_watch'));
 
   h := CreateFileW(PWideChar(dirW),
     FILE_LIST_DIRECTORY,
@@ -272,6 +380,7 @@ begin
   wptr^.recursive := recursive;
   wptr^.hDir := h;
   wptr^.thread := TWatchThread.Create(wptr);
+  wptr^.last_emit_tick := 0;
 
   if Watches = nil then
     Watches := TList.Create;
@@ -292,6 +401,9 @@ var
   w: PWatch;
 begin
   try
+    if not g_fs_watch_enabled then
+      Exit(QjspThrowHostError(ctx, QJSP_E_FSWATCH_DISABLED, 'fs_watch is disabled by host policy', 'fs_watch'));
+
     if argc < 1 then
       Exit(JS_ThrowTypeError(ctx, PChar('CloseWatch expects 1 argument: id')));
 
@@ -324,6 +436,9 @@ var
   actionStr: PChar;
 begin
   try
+    if not g_fs_watch_enabled then
+      Exit(QjspThrowHostError(ctx, QJSP_E_FSWATCH_DISABLED, 'fs_watch is disabled by host policy', 'fs_watch'));
+
     evs := QueueDrain;
     arr := JS_NewArray(ctx);
 

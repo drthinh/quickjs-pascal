@@ -61,6 +61,14 @@ REPL adapter:
 - `repl(line)`
   - Dùng trong `qjsp.exe` khi bật `.sh on`: map input line thành builtin/pipeline/system command.
 
+## Editor (vi/nano/edit) trong sh mode
+
+Trong `qjsp.exe`, khi đang ở `sh>` mode, các lệnh `vi <file>`, `nano <file>`, `edit <file>` sẽ được host intercept và chạy editor Pascal line-based (Unicode/IME-friendly).
+
+Xem chi tiết:
+
+- `qdocs/REPL_SH_EDITOR.md`
+
 ## Builtin commands hỗ trợ trong pipeline
 
 Builtin router nằm ở `qjsp:sh/builtins.js` và được `repl()` dùng cho pipe/redirect.
