@@ -19,3 +19,10 @@ export { FilterInputStream } from "qjsp:java/io/filterinputstream.js";
 export { FilterOutputStream } from "qjsp:java/io/filteroutputstream.js";
 export { PrintStream } from "qjsp:java/io/printstream.js";
 export { RandomAccessFile } from "qjsp:java/io/randomaccessfile.js";
+
+export { Reader } from "qjsp:java/io/reader.js";
+export { Writer } from "qjsp:java/io/writer.js";
+export { StringReader } from "qjsp:java/io/stringreader.js";
+export { InputStreamReader } from "qjsp:java/io/inputstreamreader.js";
+export { BufferedReader } from "qjsp:java/io/bufferedreader.js";
+export { StdinInputStream, StdoutOutputStream, StderrOutputStream } from "qjsp:java/io/stdio.js";

@@ -16,6 +16,7 @@ export { Float } from "qjsp:java/lang/float.js";
 export { Double } from "qjsp:java/lang/double.js";
 export { Character } from "qjsp:java/lang/character.js";
 export { StringBuffer } from "qjsp:java/lang/stringbuffer.js";
+export { StringBuilder } from "qjsp:java/lang/stringbuilder.js";
 export { NullPointerException } from "qjsp:java/lang/nullpointerexception.js";
 export { IllegalArgumentException } from "qjsp:java/lang/illegalargumentexception.js";
 export { IndexOutOfBoundsException } from "qjsp:java/lang/indexoutofboundsexception.js";

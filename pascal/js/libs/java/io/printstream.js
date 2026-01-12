@@ -1,5 +1,4 @@
 import { OutputStream } from "qjsp:java/io/outputstream.js";
-import { System } from "qjsp:java/lang/system.js";
 
 function _isOutputStreamLike(v) {
   return v != null &&
@@ -46,7 +45,7 @@ export class PrintStream {
   println(x) {
     if (this._closed) throw new Error("PrintStream is closed");
     if (arguments.length > 0) this._writeString(_str(x));
-    this._writeString(System.lineSeparator());
+    this._writeString("\n");
     if (this._autoFlush) this.flush();
   }
 

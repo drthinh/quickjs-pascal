@@ -18,3 +18,5 @@ export { HashSet } from "qjsp:java/util/hashset.js";
 export { PriorityQueue } from "qjsp:java/util/priorityqueue.js";
 export { TreeMap } from "qjsp:java/util/treemap.js";
 export { TreeSet } from "qjsp:java/util/treeset.js";
+export { LinkedList } from "qjsp:java/util/linkedlist.js";
+export { Scanner } from "qjsp:java/util/scanner.js";

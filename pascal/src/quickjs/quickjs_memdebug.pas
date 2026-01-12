@@ -66,6 +66,7 @@ procedure JS_SetDumpFlags(rt: PJSRuntime; flags: cuint64); cdecl; external libqj
 function JS_GetDumpFlags(rt: PJSRuntime): cuint64; cdecl; external libqjs;
 
 procedure DumpRuntimeMemoryUsageToConsole(rt: PJSRuntime);
+procedure EnableBasicDebugDumps(rt: PJSRuntime);
 procedure EnableAllDebugDumps(rt: PJSRuntime);
 procedure DisableAllDebugDumps(rt: PJSRuntime);
 
@@ -92,6 +93,14 @@ var
   flags: cuint64;
 begin
   flags := cuint64(JS_DUMP_BYTECODE_FINAL or JS_DUMP_BYTECODE_PASS2 or JS_DUMP_BYTECODE_PASS3 or JS_DUMP_BYTECODE_SPECIAL or JS_DUMP_FREE or JS_DUMP_GC or JS_DUMP_REACHABLE or JS_DUMP_MEM);
+  JS_SetDumpFlags(rt, flags);
+end;
+
+procedure EnableBasicDebugDumps(rt: PJSRuntime);
+var
+  flags: cuint64;
+begin
+  flags := cuint64(JS_DUMP_BYTECODE_FINAL or JS_DUMP_GC or JS_DUMP_MEM);
   JS_SetDumpFlags(rt, flags);
 end;
 

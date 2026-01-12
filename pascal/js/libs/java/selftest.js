@@ -11,6 +11,8 @@ import { Collections } from "qjsp:java/util/collections.js";
 import { PriorityQueue } from "qjsp:java/util/priorityqueue.js";
 import { TreeMap } from "qjsp:java/util/treemap.js";
 import { TreeSet } from "qjsp:java/util/treeset.js";
+import { LinkedList } from "qjsp:java/util/linkedlist.js";
+import { Scanner } from "qjsp:java/util/scanner.js";
 import { URI } from "qjsp:java/net/uri.js";
 import { URL } from "qjsp:java/net/url.js";
 import { URLEncoder } from "qjsp:java/net/urlencoder.js";
@@ -21,6 +23,10 @@ import * as Nio from "qjsp:java/nio/index.js";
 import { ZipFile } from "qjsp:java/util/zip/ZipFile.js";
 import { Instant } from "qjsp:java/time/instant.js";
 import { Duration } from "qjsp:java/time/duration.js";
+import { LocalDate } from "qjsp:java/time/localdate.js";
+import { LocalTime } from "qjsp:java/time/localtime.js";
+import { LocalDateTime } from "qjsp:java/time/localdatetime.js";
+import { DateTimeFormatter } from "qjsp:java/time/datetimeformatter.js";
 import { CompletableFuture } from "qjsp:java/util/concurrent/CompletableFuture.js";
 import { File } from "qjsp:java/io/file.js";
 import { ByteArrayInputStream } from "qjsp:java/io/bytearrayinputstream.js";
@@ -35,6 +41,9 @@ import { FilterInputStream } from "qjsp:java/io/filterinputstream.js";
 import { FilterOutputStream } from "qjsp:java/io/filteroutputstream.js";
 import { PrintStream } from "qjsp:java/io/printstream.js";
 import { RandomAccessFile } from "qjsp:java/io/randomaccessfile.js";
+import { StringReader } from "qjsp:java/io/stringreader.js";
+import { BufferedReader } from "qjsp:java/io/bufferedreader.js";
+import { InputStreamReader } from "qjsp:java/io/inputstreamreader.js";
 import { Object as JObject } from "qjsp:java/lang/object.js";
 import { String as JString } from "qjsp:java/lang/string.js";
 import { Math as JMath } from "qjsp:java/lang/math.js";
@@ -48,6 +57,7 @@ import { Long } from "qjsp:java/lang/long.js";
 import { Double } from "qjsp:java/lang/double.js";
 import { Character } from "qjsp:java/lang/character.js";
 import { StringBuffer } from "qjsp:java/lang/stringbuffer.js";
+import { StringBuilder } from "qjsp:java/lang/stringbuilder.js";
 import { NumberFormatException } from "qjsp:java/lang/numberformatexception.js";
 
 function _assert(cond, msg) {
@@ -112,6 +122,74 @@ export async function runJavaSelfTest(opts) {
     ok("java.lang (Object/String/Math/Throwable)");
   } catch (e) {
     fail("java.lang (Object/String/Math/Throwable)", e);
+  }
+
+  // java.lang.StringBuilder
+  try {
+    const sb = new StringBuilder("a");
+    sb.append(1).append("b");
+    _eq(sb.toString(), "a1b", "StringBuilder.append");
+    sb.insert(1, "X");
+    _eq(sb.toString(), "aX1b", "StringBuilder.insert");
+    sb.delete(1, 2);
+    _eq(sb.toString(), "a1b", "StringBuilder.delete");
+    ok("java.lang.StringBuilder");
+  } catch (e) {
+    fail("java.lang.StringBuilder", e);
+  }
+
+  // java.util.LinkedList
+  try {
+    const ll = new LinkedList();
+    ll.add(1);
+    ll.addFirst(0);
+    ll.addLast(2);
+    _eq(ll.size(), 3, "LinkedList.size");
+    _eq(ll.getFirst(), 0, "LinkedList.getFirst");
+    _eq(ll.getLast(), 2, "LinkedList.getLast");
+    _eq(ll.removeFirst(), 0, "LinkedList.removeFirst");
+    _eq(ll.removeLast(), 2, "LinkedList.removeLast");
+    _eq(ll.getFirst(), 1, "LinkedList after removes");
+    ok("java.util.LinkedList");
+  } catch (e) {
+    fail("java.util.LinkedList", e);
+  }
+
+  // java.time Local* + DateTimeFormatter
+  try {
+    const d = LocalDate.of(2026, 1, 12);
+    const t = LocalTime.of(13, 5, 9);
+    const dt = LocalDateTime.of(d, t);
+    _eq(d.toString(), "2026-01-12", "LocalDate.toString");
+    _eq(t.toString(), "13:05:09", "LocalTime.toString");
+    _eq(dt.toString(), "2026-01-12T13:05:09", "LocalDateTime.toString");
+    _eq(DateTimeFormatter.ISO_LOCAL_DATE.format(d), "2026-01-12", "DateTimeFormatter.ISO_LOCAL_DATE");
+    _eq(DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(dt), "2026-01-12T13:05:09", "DateTimeFormatter.ISO_LOCAL_DATE_TIME");
+    ok("java.time (LocalDate/LocalTime/LocalDateTime/DateTimeFormatter)");
+  } catch (e) {
+    fail("java.time (LocalDate/LocalTime/LocalDateTime/DateTimeFormatter)", e);
+  }
+
+  // java.io Reader/BufferedReader/InputStreamReader + java.util.Scanner
+  try {
+    const sr = new StringReader("a\nbb\r\nccc");
+    const br = new BufferedReader(sr);
+    _eq(br.readLine(), "a", "BufferedReader.readLine 1");
+    _eq(br.readLine(), "bb", "BufferedReader.readLine 2");
+    _eq(br.readLine(), "ccc", "BufferedReader.readLine 3");
+    _eq(br.readLine(), null, "BufferedReader.readLine eof");
+
+    const enc = new TextEncoder();
+    const u8 = enc.encode("10 20\n30\n");
+    const bais = new ByteArrayInputStream(u8);
+    const isr = new InputStreamReader(bais);
+    const sc = new Scanner(isr);
+    _eq(sc.nextInt(), 10, "Scanner.nextInt 10");
+    _eq(sc.nextInt(), 20, "Scanner.nextInt 20");
+    _eq(sc.nextInt(), 30, "Scanner.nextInt 30");
+    ok("java.io.Reader + java.util.Scanner");
+  } catch (e) {
+    fail("java.io.Reader + java.util.Scanner", e);
   }
 
   // java.lang wrappers/exceptions

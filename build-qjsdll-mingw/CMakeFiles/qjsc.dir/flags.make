@@ -6,5 +6,5 @@ C_DEFINES = -DBUILD_SHARED_LIBS -DQJS_BUILD_LIBC -DWIN32_LEAN_AND_MEAN -D_GNU_SO
 
 C_INCLUDES = @CMakeFiles/qjsc.dir/includes_C.rsp
 
-C_FLAGS = -Os -DNDEBUG -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables -fno-unwind-tables -std=gnu11 -fvisibility=hidden -Wall -Werror -Wextra -Wformat=2 -Wno-implicit-fallthrough -Wno-sign-compare -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-but-set-variable -Wno-unused-result -Wno-stringop-truncation -Wno-array-bounds -funsigned-char
+C_FLAGS = -Os -DNDEBUG -DENABLE_DUMPS -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables -fno-unwind-tables -std=gnu11 -fvisibility=hidden -Wall -Werror -Wextra -Wformat=2 -Wno-implicit-fallthrough -Wno-sign-compare -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-but-set-variable -Wno-unused-result -Wno-stringop-truncation -Wno-array-bounds -funsigned-char
 

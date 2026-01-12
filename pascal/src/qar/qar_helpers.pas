@@ -313,10 +313,8 @@ begin
       begin
         if qjs_log.DebugLevel > 0 then
         begin
-          WriteLn('[QAR] Bytecode load failed for module "', nameNoPrefix, '". Rebuilding from source...');
+          qjs_log.LogMsg(llDebug, 'QAR', 'Bytecode load failed for module "' + nameNoPrefix + '". Rebuilding from source...');
           js_std_dump_error(ctx);
-          Flush(Output);
-          Flush(StdErr);
         end;
         exc := JS_GetException(ctx);
         JS_FreeValue(ctx, exc);
@@ -427,17 +425,14 @@ begin
   // Debug: function được gọi
   if qjs_log.DebugLevel > 0 then
   begin
-    WriteLn('[LoadLibrary] Function called with argc=', argc);
-    Flush(Output);
-    Flush(StdErr);
+    qjs_log.LogMsg(llDebug, 'LoadLibrary', 'Function called with argc=' + IntToStr(argc));
   end;
   
   if argc < 1 then
   begin
     if qjs_log.DebugLevel > 0 then
     begin
-      WriteLn('[LoadLibrary] Error: argc < 1');
-      Flush(Output);
+      qjs_log.LogMsg(llDebug, 'LoadLibrary', 'Error: argc < 1');
     end;
     Result := JS_ThrowTypeError(ctx, PChar('LoadLibrary expects at least 1 argument'));
     Exit;
@@ -448,8 +443,7 @@ begin
   begin
     if qjs_log.DebugLevel > 0 then
     begin
-      WriteLn('[LoadLibrary] Error: JS_ToCString returned nil');
-      Flush(Output);
+      qjs_log.LogMsg(llDebug, 'LoadLibrary', 'Error: JS_ToCString returned nil');
     end;
     Result := JS_EXCEPTION;
     Exit;
@@ -467,8 +461,7 @@ begin
     begin
       if qjs_log.DebugLevel > 0 then
       begin
-        WriteLn('[LoadLibrary] Error: JS_ToCString for prefix returned nil');
-        Flush(Output);
+        qjs_log.LogMsg(llDebug, 'LoadLibrary', 'Error: JS_ToCString for prefix returned nil');
       end;
       Result := JS_EXCEPTION;
       Exit;
@@ -478,11 +471,9 @@ begin
   // Try to find QAR file in multiple locations
   if qjs_log.DebugLevel > 0 then
   begin
-    WriteLn('[LoadLibrary] Looking for QAR file: ', filename_str);
-    WriteLn('[LoadLibrary] Current working directory: ', GetCurrentDir);
-    WriteLn('[LoadLibrary] CurrentScriptDir: ', CurrentScriptDir);
-    Flush(Output);
-    Flush(StdErr);
+    qjs_log.LogMsg(llDebug, 'LoadLibrary', 'Looking for QAR file: ' + filename_str);
+    qjs_log.LogMsg(llTrace, 'LoadLibrary', 'Current working directory: ' + GetCurrentDir);
+    qjs_log.LogMsg(llTrace, 'LoadLibrary', 'CurrentScriptDir: ' + CurrentScriptDir);
   end;
   
   found_path := FindQarFile(filename_str);
@@ -497,14 +488,12 @@ begin
         search_paths := search_paths + ', ' + CurrentScriptDir;
       search_paths := search_paths + ', ' + ExtractFileDir(ParamStr(0));
       
-      WriteLn('Error: QAR file not found: ', filename_str);
-      WriteLn('  ', search_paths);
-      WriteLn('  Current working directory: ', GetCurrentDir);
+      qjs_log.LogMsg(llDebug, 'LoadLibrary', 'Error: QAR file not found: ' + filename_str);
+      qjs_log.LogMsg(llTrace, 'LoadLibrary', '  ' + search_paths);
+      qjs_log.LogMsg(llTrace, 'LoadLibrary', '  Current working directory: ' + GetCurrentDir);
       if CurrentScriptDir <> '' then
-        WriteLn('  Script directory: ', CurrentScriptDir);
-      WriteLn('  Executable directory: ', ExtractFileDir(ParamStr(0)));
-      Flush(Output);
-      Flush(StdErr);
+        qjs_log.LogMsg(llTrace, 'LoadLibrary', '  Script directory: ' + CurrentScriptDir);
+      qjs_log.LogMsg(llTrace, 'LoadLibrary', '  Executable directory: ' + ExtractFileDir(ParamStr(0)));
     end;
     
     if prefix <> nil then
@@ -516,8 +505,7 @@ begin
   
   if qjs_log.DebugLevel > 0 then
   begin
-    WriteLn('[LoadLibrary] Found QAR file at: ', found_path);
-    Flush(Output);
+    qjs_log.LogMsg(llDebug, 'LoadLibrary', 'Found QAR file at: ' + found_path);
   end;
 
   // Register with found path
@@ -528,20 +516,18 @@ begin
   begin
     if ret < 0 then
     begin
-      WriteLn('Error: Failed to register QAR file: ', found_path);
-      WriteLn('  (Original path: ', filename_str, ')');
-      Flush(Output);
+      qjs_log.LogMsg(llDebug, 'LoadLibrary', 'Error: Failed to register QAR file: ' + found_path);
+      qjs_log.LogMsg(llTrace, 'LoadLibrary', '  (Original path: ' + filename_str + ')');
     end
     else
     begin
-      WriteLn('Successfully registered QAR file: ', found_path);
+      qjs_log.LogMsg(llDebug, 'LoadLibrary', 'Successfully registered QAR file: ' + found_path);
       if found_path <> filename_str then
-        WriteLn('  (Resolved from: ', filename_str, ')');
+        qjs_log.LogMsg(llTrace, 'LoadLibrary', '  (Resolved from: ' + filename_str + ')');
       if prefix <> nil then
-        WriteLn('  (Using prefix: "', prefix, '" - import with "', prefix, 'module.js")')
+        qjs_log.LogMsg(llTrace, 'LoadLibrary', '  (Using prefix: "' + string(prefix) + '" - import with "' + string(prefix) + 'module.js")')
       else
-        WriteLn('  (No prefix - modules will be searched in all registered QAR files)');
-      Flush(Output);
+        qjs_log.LogMsg(llTrace, 'LoadLibrary', '  (No prefix - modules will be searched in all registered QAR files)');
     end;
   end;
 
@@ -596,12 +582,14 @@ begin
   
   if found_path = '' then
   begin
-    WriteLn('Error: QAR file not found: ', filename_str);
-    WriteLn('  Searched in: ', GetCurrentDir);
-    if CurrentScriptDir <> '' then
-      WriteLn('  Script dir: ', CurrentScriptDir);
-    WriteLn('  Exe dir: ', ExtractFileDir(ParamStr(0)));
-    Flush(Output);
+    if qjs_log.DebugLevel > 0 then
+    begin
+      qjs_log.LogMsg(llDebug, 'GetQarInfo', 'Error: QAR file not found: ' + filename_str);
+      qjs_log.LogMsg(llTrace, 'GetQarInfo', '  Searched in: ' + GetCurrentDir);
+      if CurrentScriptDir <> '' then
+        qjs_log.LogMsg(llTrace, 'GetQarInfo', '  Script dir: ' + CurrentScriptDir);
+      qjs_log.LogMsg(llTrace, 'GetQarInfo', '  Exe dir: ' + ExtractFileDir(ParamStr(0)));
+    end;
     Result := JS_ThrowTypeError(ctx, PChar('QAR file not found: ' + filename_str));
     Exit;
   end;
@@ -609,8 +597,10 @@ begin
   qar := qar_open(PChar(found_path));
   if qar = nil then
   begin
-    WriteLn('Error: Failed to open QAR file: ', found_path);
-    Flush(Output);
+    if qjs_log.DebugLevel > 0 then
+    begin
+      qjs_log.LogMsg(llDebug, 'GetQarInfo', 'Error: Failed to open QAR file: ' + found_path);
+    end;
     Result := JS_ThrowTypeError(ctx, PChar('Failed to open QAR file'));
     Exit;
   end;
@@ -782,10 +772,8 @@ begin
     begin
       if qjs_log.DebugLevel > 0 then
       begin
-        WriteLn('[QAR] Bytecode load failed for entry. Rebuilding from source...');
+        qjs_log.LogMsg(llDebug, 'QAR', 'Bytecode load failed for entry. Rebuilding from source...');
         js_std_dump_error(ctx);
-        Flush(Output);
-        Flush(StdErr);
       end;
       exc := JS_GetException(ctx);
       JS_FreeValue(ctx, exc);
@@ -1257,8 +1245,7 @@ begin
 
   if qjs_log.DebugLevel > 1 then
   begin
-    WriteLn('[DEBUG] module_loader: request "', module_name_str, '"');
-    Flush(Output);
+    qjs_log.LogMsg(llTrace, 'module_loader', 'request "' + module_name_str + '"');
   end;
 
   // First try registered QARs (both prefixed and non-prefixed module names)
@@ -1290,12 +1277,11 @@ begin
   begin
     basename := Copy(module_name_str, last_slash + 1, Length(module_name_str));
     if qjs_log.DebugLevel > 0 then
-      WriteLn('[DEBUG] Trying basename only: "', basename, '"');
+      qjs_log.LogMsg(llDebug, 'module_loader', 'Trying basename only: "' + basename + '"');
     if qjs_log.DebugLevel > 0 then
     begin
-      WriteLn('[WARNING] Using basename fallback - if multiple QAR files contain "', basename, '",');
-      WriteLn('          the first one found will be used. Consider using prefixes to avoid conflicts.');
-      Flush(Output);
+      qjs_log.LogMsg(llWarn, 'module_loader', 'Using basename fallback - if multiple QAR files contain "' + basename + '",');
+      qjs_log.LogMsg(llWarn, 'module_loader', '          the first one found will be used. Consider using prefixes to avoid conflicts.');
     end;
     m := TryLoadModuleFromRegisteredQars(ctx, basename);
     if m <> nil then
@@ -1362,18 +1348,18 @@ var
   script: string;
   result_val: JSValue;
 begin
-  WriteLn('=== Example: Loading QAR file ===');
-  WriteLn('Loading QAR file: ', qar_filename);
+  qjs_log.LogMsg(llInfo, 'QAR', '=== Example: Loading QAR file ===');
+  qjs_log.LogMsg(llInfo, 'QAR', 'Loading QAR file: ' + qar_filename);
 
   // Register QAR file
   ret := RegisterQarFile(qar_filename, '');
   if ret < 0 then
   begin
-    WriteLn('Failed to register QAR file');
+    qjs_log.LogMsg(llError, 'QAR', 'Failed to register QAR file');
     Exit;
   end;
 
-  WriteLn('QAR file registered successfully');
+  qjs_log.LogMsg(llInfo, 'QAR', 'QAR file registered successfully');
 
   // Example: Execute JavaScript that imports from QAR
   script := 'import * as math from ''./qar_test_lib/math.js''; ' +
@@ -1382,7 +1368,7 @@ begin
   result_val := JS_Eval(ctx, PChar(script), QWord(Length(script)), PChar('test.js'), JS_EVAL_TYPE_MODULE);
   if JS_IsException(result_val) <> 0 then
   begin
-    WriteLn('Error executing script:');
+    qjs_log.LogMsg(llError, 'QAR', 'Error executing script:');
     js_std_dump_error(ctx);
   end
   else
@@ -1403,18 +1389,18 @@ var
   manifest_len: csize_t;
   version: PChar;
 begin
-  WriteLn('=== Example: Reading QAR file info ===');
-  WriteLn('Opening QAR file: ', qar_filename);
+  qjs_log.LogMsg(llInfo, 'QAR', '=== Example: Reading QAR file info ===');
+  qjs_log.LogMsg(llInfo, 'QAR', 'Opening QAR file: ' + qar_filename);
 
   qar := qar_open(PChar(qar_filename));
   if qar = nil then
   begin
-    WriteLn('Failed to open QAR file');
+    qjs_log.LogMsg(llError, 'QAR', 'Failed to open QAR file');
     Exit;
   end;
 
   entry_count := qar_get_entry_count(qar);
-  WriteLn('Entry count: ', entry_count);
+  qjs_log.LogMsg(llInfo, 'QAR', 'Entry count: ' + IntToStr(entry_count));
 
   for i := 0 to entry_count - 1 do
   begin
@@ -1424,23 +1410,23 @@ begin
       entry_path := qar_entry_get_path(entry);
       entry_type := qar_entry_get_type(entry);
       if entry_type <> 0 then
-        WriteLn('  Entry ', i, ': ', entry_path, ' (module)')
+        qjs_log.LogMsg(llInfo, 'QAR', '  Entry ' + IntToStr(i) + ': ' + string(entry_path) + ' (module)')
       else
-        WriteLn('  Entry ', i, ': ', entry_path, ' (script)');
+        qjs_log.LogMsg(llInfo, 'QAR', '  Entry ' + IntToStr(i) + ': ' + string(entry_path) + ' (script)');
     end;
   end;
 
   manifest := qar_get_manifest(qar, @manifest_len);
   if manifest <> nil then
   begin
-    WriteLn('Manifest (', manifest_len, ' bytes):');
-    WriteLn(Copy(manifest, 1, manifest_len));
+    qjs_log.LogMsg(llInfo, 'QAR', 'Manifest (' + IntToStr(manifest_len) + ' bytes):');
+    qjs_log.LogMsg(llInfo, 'QAR', Copy(manifest, 1, manifest_len));
   end;
 
   version := qar_get_quickjs_version(qar);
   if version <> nil then
   begin
-    WriteLn('QuickJS version: ', version);
+    qjs_log.LogMsg(llInfo, 'QAR', 'QuickJS version: ' + string(version));
   end;
 
   qar_close(qar);
@@ -1456,21 +1442,21 @@ var
   obj: JSValue;
   eval_flags: cint;
 begin
-  WriteLn('=== Example: Executing QAR entry ===');
-  WriteLn('Opening QAR file: ', qar_filename);
-  WriteLn('Entry path: ', entry_path);
+  qjs_log.LogMsg(llInfo, 'QAR', '=== Example: Executing QAR entry ===');
+  qjs_log.LogMsg(llInfo, 'QAR', 'Opening QAR file: ' + qar_filename);
+  qjs_log.LogMsg(llInfo, 'QAR', 'Entry path: ' + entry_path);
 
   qar := qar_open(PChar(qar_filename));
   if qar = nil then
   begin
-    WriteLn('Failed to open QAR file');
+    qjs_log.LogMsg(llError, 'QAR', 'Failed to open QAR file');
     Exit;
   end;
 
   entry := qar_find_entry(qar, PChar(entry_path));
   if entry = nil then
   begin
-    WriteLn('Entry not found');
+    qjs_log.LogMsg(llError, 'QAR', 'Entry not found');
     qar_close(qar);
     Exit;
   end;
@@ -1478,7 +1464,7 @@ begin
   // Load entry data
   if qar_entry_load_data(qar, entry) < 0 then
   begin
-    WriteLn('Failed to load entry data');
+    qjs_log.LogMsg(llError, 'QAR', 'Failed to load entry data');
     qar_close(qar);
     Exit;
   end;
@@ -1487,12 +1473,12 @@ begin
   bytecode := qar_entry_get_bytecode(entry, @bytecode_len);
   if bytecode = nil then
   begin
-    WriteLn('Failed to get bytecode');
+    qjs_log.LogMsg(llError, 'QAR', 'Failed to get bytecode');
     qar_close(qar);
     Exit;
   end;
 
-  WriteLn('Bytecode size: ', bytecode_len, ' bytes');
+  qjs_log.LogMsg(llInfo, 'QAR', 'Bytecode size: ' + IntToStr(bytecode_len) + ' bytes');
 
   // Read and execute bytecode
   eval_flags := JS_READ_OBJ_BYTECODE or JS_READ_OBJ_REFERENCE;
@@ -1500,7 +1486,7 @@ begin
 
   if JS_IsException(obj) <> 0 then
   begin
-    WriteLn('Error reading bytecode:');
+    qjs_log.LogMsg(llError, 'QAR', 'Error reading bytecode:');
     js_std_dump_error(ctx);
     qar_close(qar);
     Exit;
@@ -1510,30 +1496,30 @@ begin
   if qar_entry_get_type(entry) <> 0 then
   begin
     // It's a module
-    WriteLn('Loading as module...');
+    qjs_log.LogMsg(llInfo, 'QAR', 'Loading as module...');
     if js_module_set_import_meta(ctx, obj, cbool(1), cbool(0)) < 0 then
     begin
-      WriteLn('Failed to set import meta');
+      qjs_log.LogMsg(llError, 'QAR', 'Failed to set import meta');
       JS_FreeValue(ctx, obj);
       qar_close(qar);
       Exit;
     end;
-    WriteLn('Module loaded successfully');
+    qjs_log.LogMsg(llInfo, 'QAR', 'Module loaded successfully');
     JS_FreeValue(ctx, obj);
   end
   else
   begin
     // It's a script, evaluate it
-    WriteLn('Executing as script...');
+    qjs_log.LogMsg(llInfo, 'QAR', 'Executing as script...');
     obj := JS_EvalFunction(ctx, obj);
     if JS_IsException(obj) <> 0 then
     begin
-      WriteLn('Error executing script:');
+      qjs_log.LogMsg(llError, 'QAR', 'Error executing script:');
       js_std_dump_error(ctx);
     end
     else
     begin
-      WriteLn('Script executed successfully');
+      qjs_log.LogMsg(llInfo, 'QAR', 'Script executed successfully');
       JS_FreeValue(ctx, obj);
     end;
   end;

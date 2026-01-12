@@ -12,7 +12,7 @@ type
 
 var
   LogLevel: TLogLevel = llWarn;
-  LogShowTimestamp: boolean = False;
+  LogShowTimestamp: boolean = True;
 
 procedure SetLogLevel(const ALevel: TLogLevel);
 procedure SetLogLevelFromDebugLevel(const ADebugLevel: integer);

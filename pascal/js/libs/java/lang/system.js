@@ -1,6 +1,8 @@
 import * as os from "qjs:os";
 import * as env from "qjsp:os/env.js";
 import * as sys from "qjsp:os/system.js";
+import { PrintStream } from "qjsp:java/io/printstream.js";
+import { StdinInputStream, StdoutOutputStream, StderrOutputStream } from "qjsp:java/io/stdio.js";
 
 function _lineSeparator() {
   return sys.platform === "win32" ? "\r\n" : "\n";
@@ -38,6 +40,9 @@ function _nanoTime() {
 }
 
 export const System = Object.freeze({
+  in: new StdinInputStream(),
+  out: new PrintStream(new StdoutOutputStream(), true),
+  err: new PrintStream(new StderrOutputStream(), true),
   currentTimeMillis() {
     return Date.now();
   },

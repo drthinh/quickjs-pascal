@@ -44,8 +44,10 @@ end;
 
 procedure ApplyDebugSettings(rt: PJSRuntime);
 begin
-  if qjs_log.DebugLevel > 1 then
+  if qjs_log.DebugLevel >= 4 then
     EnableAllDebugDumps(rt)
+  else if qjs_log.DebugLevel >= 3 then
+    EnableBasicDebugDumps(rt)
   else
     DisableAllDebugDumps(rt);
 
@@ -157,6 +159,212 @@ begin
     Write(f, jsonStr);
   finally
     CloseFile(f);
+  end;
+end;
+
+type
+  TReplGuardMode = (rgStrict, rgFriendly);
+
+function EnsureChildObject(Parent: TJSONObject; const Name: string): TJSONObject;
+var
+  data: TJSONData;
+begin
+  Result := nil;
+  if Parent = nil then
+    Exit;
+  data := Parent.Find(Name);
+  if (data <> nil) and (data is TJSONObject) then
+    Exit(TJSONObject(data));
+  if data <> nil then
+    Parent.Delete(Parent.IndexOfName(Name));
+  Result := TJSONObject.Create;
+  Parent.Add(Name, Result);
+end;
+
+function JsonGetString(const Obj: TJSONObject; const Name: string; const DefaultValue: string): string;
+var
+  data: TJSONData;
+begin
+  Result := DefaultValue;
+  if Obj = nil then
+    Exit;
+  data := Obj.Find(Name);
+  if (data <> nil) and (data.JSONType = jtString) then
+    Result := data.AsString;
+end;
+
+function JsonGetBoolean(const Obj: TJSONObject; const Name: string; const DefaultValue: boolean): boolean;
+var
+  data: TJSONData;
+begin
+  Result := DefaultValue;
+  if Obj = nil then
+    Exit;
+  data := Obj.Find(Name);
+  if (data <> nil) and (data.JSONType = jtBoolean) then
+    Result := data.AsBoolean;
+end;
+
+function JsonGetInt(const Obj: TJSONObject; const Name: string; const DefaultValue: integer): integer;
+var
+  data: TJSONData;
+begin
+  Result := DefaultValue;
+  if Obj = nil then
+    Exit;
+  data := Obj.Find(Name);
+  if (data <> nil) and (data.JSONType = jtNumber) then
+    Result := data.AsInteger;
+end;
+
+function JsonGetQWord(const Obj: TJSONObject; const Name: string; const DefaultValue: QWord): QWord;
+var
+  data: TJSONData;
+begin
+  Result := DefaultValue;
+  if Obj = nil then
+    Exit;
+  data := Obj.Find(Name);
+  if (data <> nil) and ((data.JSONType = jtNumber) or (data.JSONType = jtString)) then
+  begin
+    try
+      if data.JSONType = jtString then
+        Result := StrToQWord(Trim(data.AsString))
+      else
+        Result := QWord(data.AsInt64);
+    except
+      Result := DefaultValue;
+    end;
+  end;
+end;
+
+procedure LoadRuntimeAndHostSettingsFromConfig(const FileName: string;
+  var ConfigDirty: boolean;
+  var ReplGuardMode: TReplGuardMode; var GuardExplicit: boolean;
+  var ActiveReplMode: string;
+  var DumpFlagsExplicit: boolean; var DumpFlagsValue: cuint64);
+var
+  rootObj: TJSONObject;
+  settingsData: TJSONData;
+  settingsObj: TJSONObject;
+  debugLevel: integer;
+  tsOn: boolean;
+  guardMode: string;
+  modeName: string;
+  dumpFlags: QWord;
+begin
+  rootObj := ReadConfigJsonObject(FileName, 0);
+  if rootObj = nil then
+    Exit;
+  try
+    settingsData := rootObj.Find('settings');
+    if (settingsData = nil) or (not (settingsData is TJSONObject)) then
+      Exit;
+    settingsObj := TJSONObject(settingsData);
+
+    debugLevel := JsonGetInt(settingsObj, 'debug_level', -1);
+    if (debugLevel >= 0) and (debugLevel <= 4) then
+      qjs_log.SetLogLevelFromDebugLevel(debugLevel);
+
+    tsOn := JsonGetBoolean(settingsObj, 'log_timestamp', qjs_log.LogShowTimestamp);
+    qjs_log.LogShowTimestamp := tsOn;
+
+    guardMode := LowerCase(JsonGetString(settingsObj, 'guard', ''));
+    if guardMode <> '' then
+    begin
+      if guardMode = 'strict' then
+        ReplGuardMode := rgStrict
+      else if guardMode = 'friendly' then
+        ReplGuardMode := rgFriendly;
+      GuardExplicit := True;
+    end;
+
+    modeName := JsonGetString(settingsObj, 'mode', '');
+    if modeName <> '' then
+      ActiveReplMode := modeName;
+
+    dumpFlags := JsonGetQWord(settingsObj, 'dump_flags', QWord(0));
+    if dumpFlags <> 0 then
+    begin
+      DumpFlagsExplicit := True;
+      DumpFlagsValue := cuint64(dumpFlags);
+    end
+    else if (settingsObj.Find('dump_flags') <> nil) then
+    begin
+      DumpFlagsExplicit := True;
+      DumpFlagsValue := 0;
+    end;
+  finally
+    rootObj.Free;
+  end;
+end;
+
+procedure SaveRuntimeAndHostSettingsToConfig(const FileName: string;
+  const ReplGuardMode: TReplGuardMode; const GuardExplicit: boolean;
+  const ActiveReplMode: string;
+  const DumpFlagsExplicit: boolean; const DumpFlagsValue: cuint64);
+var
+  rootObj: TJSONObject;
+  settingsObj: TJSONObject;
+begin
+  rootObj := ReadConfigJsonObject(FileName, qjs_log.DebugLevel);
+  if rootObj = nil then
+    rootObj := TJSONObject.Create;
+  try
+    if rootObj.Find('config_version') = nil then
+      rootObj.Add('config_version', 1);
+
+    settingsObj := EnsureChildObject(rootObj, 'settings');
+    if settingsObj <> nil then
+    begin
+      if settingsObj.IndexOfName('debug_level') >= 0 then
+        settingsObj.Integers['debug_level'] := qjs_log.DebugLevel
+      else
+        settingsObj.Add('debug_level', qjs_log.DebugLevel);
+
+      if settingsObj.IndexOfName('log_timestamp') >= 0 then
+        settingsObj.Booleans['log_timestamp'] := qjs_log.LogShowTimestamp
+      else
+        settingsObj.Add('log_timestamp', qjs_log.LogShowTimestamp);
+
+      if GuardExplicit then
+      begin
+        if ReplGuardMode = rgStrict then
+        begin
+          if settingsObj.IndexOfName('guard') >= 0 then
+            settingsObj.Strings['guard'] := 'strict'
+          else
+            settingsObj.Add('guard', 'strict');
+        end
+        else
+        begin
+          if settingsObj.IndexOfName('guard') >= 0 then
+            settingsObj.Strings['guard'] := 'friendly'
+          else
+            settingsObj.Add('guard', 'friendly');
+        end;
+      end;
+
+      if ActiveReplMode <> '' then
+      begin
+        if settingsObj.IndexOfName('mode') >= 0 then
+          settingsObj.Strings['mode'] := ActiveReplMode
+        else
+          settingsObj.Add('mode', ActiveReplMode);
+      end;
+
+      if DumpFlagsExplicit then
+      begin
+        if settingsObj.IndexOfName('dump_flags') >= 0 then
+          settingsObj.Int64s['dump_flags'] := Int64(QWord(DumpFlagsValue))
+        else
+          settingsObj.Add('dump_flags', Int64(QWord(DumpFlagsValue)));
+      end;
+    end;
+
+    WriteConfigJsonObject(FileName, rootObj);
+  finally
+    rootObj.Free;
   end;
 end;
 
@@ -651,8 +859,6 @@ begin
 end;
 
 type
-  TReplGuardMode = (rgStrict, rgFriendly);
-
   TReplModeConfig = record
     Name: string;
     ModuleName: string;
@@ -787,6 +993,11 @@ var
   qar_tool: string;
   lib_ls_mode: boolean;
   lib_changed: boolean;
+  config_dirty: boolean;
+  dump_flags_explicit: boolean;
+  dump_flags_value: cuint64;
+  cmdKey: string;
+  cmdValue: string;
   eq_pos: SizeInt;
   spec_pfx: string;
   spec_folder: string;
@@ -868,6 +1079,11 @@ var
   eval_filename: string;
   qar_temp_dir: string;
   qar_tmp_out: string;
+  qar_tmp_in: string;
+  qar_tmp_out_entry: string;
+  qar_tmp_in_entry: string;
+  qar_tmp_content: string;
+  cmdPrefixLen: integer;
   out_path: string;
   remove_found: boolean;
   do_minify: boolean;
@@ -1278,6 +1494,9 @@ begin
   qar_tool := '';
   lib_ls_mode := False;
   lib_changed := False;
+  config_dirty := False;
+  dump_flags_explicit := False;
+  dump_flags_value := 0;
 
   // Check for build QAR mode
   build_mode := False;
@@ -1320,6 +1539,20 @@ begin
   ImportedReplModes := TStringList.Create;
   ImportedReplModes.CaseSensitive := False;
   
+  // Resolve --config early so we can load persistent settings before parsing other flags
+  for i := 1 to ParamCount do
+  begin
+    if (ParamStr(i) = '--config') and (i < ParamCount) then
+    begin
+      ExamplesConfigFile := ParamStr(i + 1);
+      Break;
+    end;
+  end;
+
+  LoadRuntimeAndHostSettingsFromConfig(ExamplesConfigFile,
+    config_dirty, ReplGuardMode, GuardExplicit, ActiveReplMode,
+    dump_flags_explicit, dump_flags_value);
+
   // Parse command line arguments
   i := 1;
   while i <= ParamCount do
@@ -1426,9 +1659,9 @@ begin
       begin
         try
           qjs_log.SetLogLevelFromDebugLevel(StrToInt(ParamStr(i)));
-          if (qjs_log.DebugLevel < 0) or (qjs_log.DebugLevel > 2) then
+          if (qjs_log.DebugLevel < 0) or (qjs_log.DebugLevel > 4) then
           begin
-            WriteLn('Warning: Debug level must be 0-2, using 1');
+            WriteLn('Warning: Debug level must be 0-4, using 1');
             qjs_log.SetLogLevelFromDebugLevel(1);
           end;
         except
@@ -2295,6 +2528,9 @@ RestartRuntime:
 
   ApplyDebugSettings(rt);
 
+  if dump_flags_explicit then
+    JS_SetDumpFlags(rt, dump_flags_value);
+
   LoadQjspMountsFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
   LoadReplModesFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
 
@@ -2440,16 +2676,18 @@ RestartRuntime:
     if (ActiveReplMode = '') then
     begin
       WriteLn('Commands:');
-      WriteLn('  .help | help                - Detailed help');
-      WriteLn('  .menu | menu                - Quick command menu');
+      WriteLn('  .help                       - Detailed help');
+      WriteLn('  .menu                       - Quick command menu');
+      WriteLn('  .config ...                 - Persistent settings (show/set/unset/save/reload/reset)');
       WriteLn('  .load <file.js>             - Load & run a JS file');
       WriteLn('  .import <module> [name]     - Import ESM module and bind to global');
       WriteLn('  .reload                     - Reload JS runtime (recreate context/runtime)');
+      WriteLn('  .dump <0|on|off|n>           - QuickJS dump flags (bytecode/memory/GC)');
       WriteLn('  .build <out.qar> <inputs..> - Build QAR from JS files/folder');
       WriteLn('  .qar / .tool / .verify      - QAR tooling commands');
       WriteLn('  .lib ...                    - Manage libraries (mounts)');
       WriteLn('  .test ...                   - Run/manage example tests');
-      WriteLn('  .debug [on|off|0|1|2]       - Toggle debug');
+      WriteLn('  .debug [on|off|0|1|2|3|4]   - Toggle debug');
       WriteLn('  .guard [strict|friendly]    - REPL crash guard mode');
       WriteLn('  .mode <name> on|off         - Toggle REPL mode (plugin-driven)');
       WriteLn('  .mem                        - Runtime memory usage');
@@ -2470,14 +2708,102 @@ RestartRuntime:
       if script = '' then
         Continue;
 
-      if (script = '.menu') or (script = 'menu') then
+      if (script[1] <> '.') then
       begin
+        if (script = 'help') then
+        begin
+          WriteLn('Hint: use ".help"');
+          Flush(Output);
+          Continue;
+        end;
+        if (script = 'menu') then
+        begin
+          WriteLn('Hint: use ".menu"');
+          Flush(Output);
+          Continue;
+        end;
+        if (script = 'reload') then
+        begin
+          WriteLn('Hint: use ".reload"');
+          Flush(Output);
+          Continue;
+        end;
+        if (script = 'js') then
+        begin
+          WriteLn('Hint: use ".js"');
+          Flush(Output);
+          Continue;
+        end;
+        if (script = 'gc') then
+        begin
+          WriteLn('Hint: use ".gc"');
+          Flush(Output);
+          Continue;
+        end;
+        if (script = 'mem') then
+        begin
+          WriteLn('Hint: use ".mem"');
+          Flush(Output);
+          Continue;
+        end;
+        if (script = 'dump') or (script = 'dumpflags') then
+        begin
+          WriteLn('Hint: use ".dump"');
+          Flush(Output);
+          Continue;
+        end;
+        if (script = 'debug') then
+        begin
+          WriteLn('Hint: use ".debug"');
+          Flush(Output);
+          Continue;
+        end;
+        if (script = 'ts') then
+        begin
+          WriteLn('Hint: use ".ts"');
+          Flush(Output);
+          Continue;
+        end;
+        if (script = 'guard') then
+        begin
+          WriteLn('Hint: use ".guard"');
+          Flush(Output);
+          Continue;
+        end;
+        if (script = 'mode') or (Copy(script, 1, 5) = 'mode ') then
+        begin
+          WriteLn('Hint: use ".mode"');
+          Flush(Output);
+          Continue;
+        end;
+      end;
+
+      if (script = '.menu') then
+      begin
+        dumpFlags := JS_GetDumpFlags(rt);
+        if (dumpFlags = 0) then
+          modeLine := 'off'
+        else
+          modeLine := UIntToStr(QWord(dumpFlags));
+
+        if ReplGuardMode = rgStrict then
+          cmdName := 'strict'
+        else
+          cmdName := 'friendly';
+
+        if ActiveReplMode <> '' then
+          cmdLine := ActiveReplMode
+        else
+          cmdLine := 'off';
+
         if ActiveReplMode <> '' then
         begin
           WriteLn('Menu (', ActiveReplMode, ')');
           WriteLn('============');
+          WriteLn('  Status: debug:', qjs_log.DebugLevel, '; dump:', modeLine, '; ts:', BoolToStr(qjs_log.LogShowTimestamp, True), '; guard:', cmdName, '; mode:', cmdLine);
           WriteLn('  .js                         - Back to js>');
           WriteLn('  .reload                     - Reload JS runtime');
+          WriteLn('  .config ...                 - Persistent settings');
           WriteLn('  .help                       - Full help');
           WriteLn('  .menu                       - This menu');
           WriteLn('  .exit/.quit                 - Exit program');
@@ -2486,9 +2812,11 @@ RestartRuntime:
         begin
           WriteLn('Menu');
           WriteLn('====');
-          WriteLn('  .load <file.js>             - Load & run a JS file');
-          WriteLn('  .import <module> [name]     - Import ESM module');
+          WriteLn('  Status: debug:', qjs_log.DebugLevel, '; dump:', modeLine, '; ts:', BoolToStr(qjs_log.LogShowTimestamp, True), '; guard:', cmdName, '; mode:', cmdLine);
           WriteLn('  .reload                     - Reload JS runtime');
+          WriteLn('  .gc                         - Run QuickJS garbage collector');
+          WriteLn('  .dump <0|on|off|n>           - QuickJS dump flags');
+          WriteLn('  .config ...                 - Persistent settings');
           WriteLn('  .mode <name> on|off         - Enable/disable mode (e.g. sh)');
           WriteLn('  .help                       - Full help');
           WriteLn('  .menu                       - This menu');
@@ -2498,14 +2826,14 @@ RestartRuntime:
         Continue;
       end;
 
-      if (script = '.reload') or (script = 'reload') then
+      if (script = '.reload') then
       begin
         reload_requested := True;
         Break;
       end;
 
       try
-        if (script = 'help') or (script = '.help') then
+        if (script = '.help') then
         begin
           if (ActiveReplMode <> '') and FindReplModeConfig(ActiveReplMode, replCfg) then
           begin
@@ -2540,14 +2868,30 @@ RestartRuntime:
           WriteLn('  - Type "exit" or "quit" to close the REPL.');
           WriteLn;
           WriteLn('REPL commands:');
-          WriteLn('  .help | help');
+          WriteLn('  .help');
           WriteLn('    Show this help.');
           WriteLn;
-          WriteLn('  .menu | menu');
+          WriteLn('  .menu');
           WriteLn('    Show a quick command menu.');
           WriteLn;
+
+          WriteLn('  .config show|set|unset|save|reload|reset');
+          WriteLn('    Manage persistent host/runtime settings stored in config/qjsp_config.json.');
+          WriteLn('    Example: .config set debug 1');
+          WriteLn('             .config save');
+          WriteLn;
+
           WriteLn('  .reload');
           WriteLn('    Reload JS runtime (recreate runtime/context + reload modules).');
+          WriteLn;
+          WriteLn('  .gc');
+          WriteLn('    Run QuickJS garbage collector (free unused JS objects sooner).');
+          WriteLn;
+          WriteLn('  .dump <0|on|off|n>');
+          WriteLn('    Set QuickJS dump flags (bitmask).');
+          WriteLn('    Alias: .dumpflags');
+          WriteLn('    Common flags: 1=bytecode(final), 2=bytecode(pass2), 32=gc, 128=mem');
+          WriteLn('    See: qdocs/DUMP_FLAGS.md');
           WriteLn;
           WriteLn('QAR security flags (CLI):');
           WriteLn('  --verify off|warn|strict');
@@ -2570,7 +2914,7 @@ RestartRuntime:
           WriteLn('  .mode sh on|off');
           WriteLn('    Toggle shell REPL mode. When ON, prompt becomes "sh>" and commands like');
           WriteLn('    "pwd", "ls", "cd <dir>", "which <cmd>" are mapped to qjsp:sh helpers.');
-          WriteLn('    Type ".js" (or "js") to return to JS prompt.');
+          WriteLn('    Type ".js" to return to JS prompt.');
           WriteLn;
           WriteLn('  .build <out.qar> <file1.js> [file2.js ...]');
           WriteLn('  .build <out.qar> <directory/>');
@@ -2617,7 +2961,7 @@ RestartRuntime:
           WriteLn('      enable <name>           - Enable a test');
           WriteLn('      disable <name>          - Disable a test');
           WriteLn;
-          WriteLn('  .debug [on|off|0|1|2]');
+          WriteLn('  .debug [on|off|0|1|2|3|4]');
           WriteLn('    Control debug output and runtime debug settings.');
           WriteLn;
           WriteLn('  .mem');
@@ -2669,7 +3013,7 @@ RestartRuntime:
             cmdArgs.StrictDelimiter := True;
             cmdArgs.DelimitedText := cmdLine;
 
-            if cmdArgs.Count < 2 then
+            if cmdArgs.Count < 1 then
             begin
               WriteLn('Usage: .mode <name> on | off');
               Flush(Output);
@@ -2677,7 +3021,12 @@ RestartRuntime:
             end;
 
             cmdName := cmdArgs[0];
-            modeLine := LowerCase(cmdArgs[1]);
+
+            if cmdArgs.Count >= 2 then
+              modeLine := LowerCase(cmdArgs[1])
+            else
+              modeLine := 'on';
+
             if (modeLine <> 'on') and (modeLine <> 'off') then
             begin
               WriteLn('Warning: Invalid .mode value, must be on or off');
@@ -2710,14 +3059,14 @@ RestartRuntime:
           Continue;
         end;
 
-        if (ActiveReplMode <> '') and ((script = '.js') or (script = 'js')) then
+        if (ActiveReplMode <> '') and (script = '.js') then
         begin
           ActiveReplMode := '';
           Flush(Output);
           Continue;
         end;
 
-        if ActiveReplMode <> '' then
+        if (ActiveReplMode <> '') and (Length(script) > 0) and (script[1] <> '.') then
         begin
           if not FindReplModeConfig(ActiveReplMode, replCfg) then
           begin
@@ -2797,24 +3146,48 @@ RestartRuntime:
 
         if (Copy(script, 1, 4) = '.gc ') or (script = '.gc') then
         begin
-          JS_RunGC(rt);
-          if qjs_log.DebugLevel > 0 then
-            qjs_log.LogMsg(llInfo, 'gc', 'JS_RunGC executed');
+          WriteLn('GC: Run QuickJS garbage collector to reclaim unused JS objects.');
+          try
+            JS_RunGC(rt);
+            WriteLn('GC: success');
+            if qjs_log.DebugLevel > 0 then
+              qjs_log.LogMsg(llInfo, 'gc', 'JS_RunGC executed');
+          except
+            on E: Exception do
+            begin
+              WriteLn('GC: failed - ', E.Message);
+              if qjs_log.DebugLevel > 0 then
+                qjs_log.LogMsg(llError, 'gc', 'JS_RunGC failed: ' + E.Message);
+            end;
+          end;
           Flush(Output);
           Continue;
         end;
 
-        if (Copy(script, 1, 11) = '.dumpflags ') or (script = '.dumpflags') then
+        if (Copy(script, 1, 6) = '.dump ') or (script = '.dump') or (Copy(script, 1, 11) = '.dumpflags ') or (script = '.dumpflags') then
         begin
+          cmdPrefixLen := 0;
+          if Copy(script, 1, 11) = '.dumpflags ' then
+            cmdPrefixLen := 11
+          else if script = '.dumpflags' then
+            cmdPrefixLen := 9
+          else if Copy(script, 1, 6) = '.dump ' then
+            cmdPrefixLen := 5
+          else
+            cmdPrefixLen := 4;
+
           cmdLine := '';
-          if Length(script) > 11 then
-            cmdLine := Trim(Copy(script, 12, Length(script)));
+          if Length(script) > cmdPrefixLen then
+            cmdLine := Trim(Copy(script, cmdPrefixLen + 1, Length(script)));
 
           if cmdLine = '' then
           begin
             dumpFlags := JS_GetDumpFlags(rt);
             WriteLn('QuickJS dump flags: ', UIntToStr(QWord(dumpFlags)));
-            WriteLn('Usage: .dumpflags <0|number|on|off>');
+            WriteLn('Usage: .dump <0|on|off|number>');
+            WriteLn('Alias: .dumpflags');
+            WriteLn('Common flags: 1=bytecode(final), 2=bytecode(pass2), 32=gc, 128=mem');
+            WriteLn('See: qdocs/DUMP_FLAGS.md');
             Flush(Output);
           end
           else
@@ -2837,6 +3210,9 @@ RestartRuntime:
             end;
             JS_SetDumpFlags(rt, dumpFlags);
             dumpFlags := JS_GetDumpFlags(rt);
+            dump_flags_explicit := True;
+            dump_flags_value := dumpFlags;
+            config_dirty := True;
             WriteLn('QuickJS dump flags set to ', UIntToStr(QWord(dumpFlags)));
             if (dumpFlags = 0) and (cmdLine <> '0') and (cmdLine <> 'off') then
             begin
@@ -2880,6 +3256,7 @@ RestartRuntime:
               WriteLn('Log timestamp enabled')
             else
               WriteLn('Log timestamp disabled');
+            config_dirty := True;
             Flush(Output);
           end;
           Continue;
@@ -2894,7 +3271,7 @@ RestartRuntime:
           if cmdLine = '' then
           begin
             WriteLn('Current debug level: ', qjs_log.DebugLevel);
-            WriteLn('Usage: .debug on | off | 0 | 1 | 2');
+            WriteLn('Usage: .debug on | off | 0 | 1 | 2 | 3 | 4');
             Flush(Output);
           end
           else
@@ -2911,15 +3288,15 @@ RestartRuntime:
               try
                 newDebugLevel := StrToInt(cmdLine);
               except
-                WriteLn('Warning: Invalid debug level, must be 0, 1, or 2');
+                WriteLn('Warning: Invalid debug level, must be 0-4');
                 Flush(Output);
                 Continue;
               end;
             end;
 
-            if (newDebugLevel < 0) or (newDebugLevel > 2) then
+            if (newDebugLevel < 0) or (newDebugLevel > 4) then
             begin
-              WriteLn('Warning: Debug level must be between 0 and 2');
+              WriteLn('Warning: Debug level must be between 0 and 4');
               Flush(Output);
               Continue;
             end;
@@ -2933,11 +3310,216 @@ RestartRuntime:
             begin
               qjs_log.SetLogLevelFromDebugLevel(newDebugLevel);
               ApplyDebugSettings(rt);
+              if dump_flags_explicit then
+                JS_SetDumpFlags(rt, dump_flags_value);
               WriteLn('Debug level set to ', qjs_log.DebugLevel);
               Flush(Output);
             end;
           end;
 
+          Continue;
+        end;
+
+        if (Copy(script, 1, 8) = '.config ') or (script = '.config') then
+        begin
+          cmdLine := '';
+          if Length(script) > 8 then
+            cmdLine := Trim(Copy(script, 9, Length(script)));
+
+          if cmdLine = '' then
+          begin
+            WriteLn('Usage: .config <show|set|unset|save|reload|reset>');
+            Flush(Output);
+            Continue;
+          end;
+
+          cmdArgs := TStringList.Create;
+          try
+            cmdArgs.Delimiter := ' ';
+            cmdArgs.StrictDelimiter := True;
+            cmdArgs.DelimitedText := cmdLine;
+
+            if cmdArgs.Count = 0 then
+            begin
+              WriteLn('Usage: .config <show|set|unset|save|reload|reset>');
+              Flush(Output);
+              Continue;
+            end;
+
+            cmdName := LowerCase(cmdArgs[0]);
+            if cmdName = 'show' then
+            begin
+              WriteLn('Config file: ', ExamplesConfigFile);
+              WriteLn('settings.debug_level: ', qjs_log.DebugLevel);
+              if qjs_log.LogShowTimestamp then
+                WriteLn('settings.log_timestamp: on')
+              else
+                WriteLn('settings.log_timestamp: off');
+
+              if ReplGuardMode = rgStrict then
+                WriteLn('settings.guard: strict')
+              else
+                WriteLn('settings.guard: friendly');
+
+              if ActiveReplMode <> '' then
+                WriteLn('settings.mode: ', ActiveReplMode)
+              else
+                WriteLn('settings.mode: (off)');
+
+              if dump_flags_explicit then
+                WriteLn('settings.dump_flags: ', UIntToStr(QWord(dump_flags_value)))
+              else
+                WriteLn('settings.dump_flags: (not set)');
+            end
+            else if (cmdName = 'set') and (cmdArgs.Count >= 3) then
+            begin
+              cmdKey := LowerCase(cmdArgs[1]);
+              cmdValue := cmdArgs[2];
+              if cmdKey = 'debug' then
+              begin
+                try
+                  newDebugLevel := StrToInt(cmdValue);
+                except
+                  WriteLn('Warning: Invalid debug level, must be 0-4');
+                  Flush(Output);
+                  Continue;
+                end;
+                if (newDebugLevel < 0) or (newDebugLevel > 4) then
+                begin
+                  WriteLn('Warning: Debug level must be between 0 and 4');
+                  Flush(Output);
+                  Continue;
+                end;
+                qjs_log.SetLogLevelFromDebugLevel(newDebugLevel);
+                ApplyDebugSettings(rt);
+                if dump_flags_explicit then
+                  JS_SetDumpFlags(rt, dump_flags_value);
+                config_dirty := True;
+              end
+              else if (cmdKey = 'ts') or (cmdKey = 'timestamp') then
+              begin
+                cmdValue := LowerCase(cmdValue);
+                if cmdValue = 'on' then
+                  qjs_log.LogShowTimestamp := True
+                else if cmdValue = 'off' then
+                  qjs_log.LogShowTimestamp := False
+                else
+                begin
+                  WriteLn('Warning: Invalid value for ts, must be on/off');
+                  Flush(Output);
+                  Continue;
+                end;
+                config_dirty := True;
+              end
+              else if cmdKey = 'guard' then
+              begin
+                cmdValue := LowerCase(cmdValue);
+                if cmdValue = 'strict' then
+                  ReplGuardMode := rgStrict
+                else if cmdValue = 'friendly' then
+                  ReplGuardMode := rgFriendly
+                else
+                begin
+                  WriteLn('Warning: Invalid guard mode, must be strict/friendly');
+                  Flush(Output);
+                  Continue;
+                end;
+                GuardExplicit := True;
+                config_dirty := True;
+              end
+              else if cmdKey = 'mode' then
+              begin
+                ActiveReplMode := cmdValue;
+                config_dirty := True;
+              end
+              else if cmdKey = 'dump' then
+              begin
+                cmdValue := LowerCase(cmdValue);
+                if cmdValue = 'on' then
+                  dump_flags_value := cuint64($FFFFFFFFFFFFFFFF)
+                else if (cmdValue = 'off') or (cmdValue = '0') then
+                  dump_flags_value := 0
+                else
+                begin
+                  try
+                    dump_flags_value := cuint64(StrToQWord(cmdValue));
+                  except
+                    WriteLn('Warning: Invalid dump flags value');
+                    Flush(Output);
+                    Continue;
+                  end;
+                end;
+                dump_flags_explicit := True;
+                JS_SetDumpFlags(rt, dump_flags_value);
+                config_dirty := True;
+              end
+              else
+              begin
+                WriteLn('Unknown config key: ', cmdArgs[1]);
+              end;
+            end
+            else if (cmdName = 'unset') and (cmdArgs.Count >= 2) then
+            begin
+              cmdKey := LowerCase(cmdArgs[1]);
+              if cmdKey = 'mode' then
+              begin
+                ActiveReplMode := '';
+                config_dirty := True;
+              end
+              else if (cmdKey = 'dump') or (cmdKey = 'dump_flags') then
+              begin
+                dump_flags_explicit := False;
+                config_dirty := True;
+              end
+              else if cmdKey = 'guard' then
+              begin
+                GuardExplicit := False;
+                config_dirty := True;
+              end
+              else
+              begin
+                WriteLn('Unknown config key: ', cmdArgs[1]);
+              end;
+            end
+            else if cmdName = 'save' then
+            begin
+              SaveRuntimeAndHostSettingsToConfig(ExamplesConfigFile, ReplGuardMode, GuardExplicit,
+                ActiveReplMode, dump_flags_explicit, dump_flags_value);
+              config_dirty := False;
+              WriteLn('Config saved');
+            end
+            else if cmdName = 'reload' then
+            begin
+              LoadRuntimeAndHostSettingsFromConfig(ExamplesConfigFile,
+                config_dirty, ReplGuardMode, GuardExplicit, ActiveReplMode,
+                dump_flags_explicit, dump_flags_value);
+              ApplyDebugSettings(rt);
+              if dump_flags_explicit then
+                JS_SetDumpFlags(rt, dump_flags_value);
+              WriteLn('Config reloaded');
+            end
+            else if cmdName = 'reset' then
+            begin
+              qjs_log.SetLogLevelFromDebugLevel(0);
+              qjs_log.LogShowTimestamp := True;
+              GuardExplicit := False;
+              ReplGuardMode := rgFriendly;
+              ActiveReplMode := '';
+              dump_flags_explicit := False;
+              dump_flags_value := 0;
+              ApplyDebugSettings(rt);
+              config_dirty := True;
+              WriteLn('Config reset (not saved yet)');
+            end
+            else
+            begin
+              WriteLn('Usage: .config <show|set|unset|save|reload|reset>');
+            end;
+          finally
+            cmdArgs.Free;
+          end;
+
+          Flush(Output);
           Continue;
         end;
       
@@ -4293,6 +4875,13 @@ RestartRuntime:
   // Cleanup
   if qjs_log.DebugLevel > 1 then
     DumpRuntimeMemoryUsageToConsole(rt);
+
+  if not run_script_mode then
+  begin
+    if config_dirty then
+      SaveRuntimeAndHostSettingsToConfig(ExamplesConfigFile, ReplGuardMode, GuardExplicit,
+        ActiveReplMode, dump_flags_explicit, dump_flags_value);
+  end;
 
   try
     file_content :=
