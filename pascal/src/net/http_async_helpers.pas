@@ -723,7 +723,6 @@ var
   res: THttpResult;
   r: PAsyncResult;
   i: Integer;
-  errMsg: string;
 begin
   while not Terminated do
   begin
@@ -736,8 +735,6 @@ begin
         Sleep(100);
       Continue;
     end;
-
-    errMsg := '';
     qjs_log.DebugMsg(1, 'HttpRequestAsync(worker): start taskId=' + IntToStr(t^.Id));
     try
       res := DoHttpRequest(t^.Method, t^.Url, t^.Headers, t^.Body, t^.TimeoutMs, t^.FollowRedirects, t^.ResponseType, t^.MaxBytes);

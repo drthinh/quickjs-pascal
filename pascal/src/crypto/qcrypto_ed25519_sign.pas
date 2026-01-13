@@ -28,7 +28,6 @@ type
 
 const
   _0: array[0..15] of u8 = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
-  _9: array[0..31] of u8 = (9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
 
   gf0: gf = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
   gf1: gf = (1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
@@ -48,7 +47,7 @@ const
     0,0,0,0,0,0,0,$10
   );
 
-function vn(const x, y: array of u8; n: Integer): Integer; inline;
+function vn(const x, y: array of u8; n: Integer): Integer;
 var
   i: Integer;
   d: u32;
@@ -59,12 +58,12 @@ begin
   Result := (1 and ((d - 1) shr 8)) - 1;
 end;
 
-function crypto_verify_32(const x, y: array of u8): Integer; inline;
+function crypto_verify_32(const x, y: array of u8): Integer;
 begin
   Result := vn(x, y, 32);
 end;
 
-procedure set25519(out r: gf; const a: gf); inline;
+procedure set25519(out r: gf; const a: gf);
 var i: Integer;
 begin
   for i := 0 to 15 do r[i] := a[i];
@@ -458,26 +457,26 @@ end;
 procedure sha512(out outb: array of u8; const m: array of u8; mlen: u64);
 const
   K512: array[0..79] of u64 = (
-    $428a2f98d728ae22,$7137449123ef65cd,$b5c0fbcfec4d3b2f,$e9b5dba58189dbbc,
-    $3956c25bf348b538,$59f111f1b605d019,$923f82a4af194f9b,$ab1c5ed5da6d8118,
-    $d807aa98a3030242,$12835b0145706fbe,$243185be4ee4b28c,$550c7dc3d5ffb4e2,
-    $72be5d74f27b896f,$80deb1fe3b1696b1,$9bdc06a725c71235,$c19bf174cf692694,
-    $e49b69c19ef14ad2,$efbe4786384f25e3,$0fc19dc68b8cd5b5,$240ca1cc77ac9c65,
-    $2de92c6f592b0275,$4a7484aa6ea6e483,$5cb0a9dcbd41fbd4,$76f988da831153b5,
-    $983e5152ee66dfab,$a831c66d2db43210,$b00327c898fb213f,$bf597fc7beef0ee4,
-    $c6e00bf33da88fc2,$d5a79147930aa725,$06ca6351e003826f,$142929670a0e6e70,
-    $27b70a8546d22ffc,$2e1b21385c26c926,$4d2c6dfc5ac42aed,$53380d139d95b3df,
-    $650a73548baf63de,$766a0abb3c77b2a8,$81c2c92e47edaee6,$92722c851482353b,
-    $a2bfe8a14cf10364,$a81a664bbc423001,$c24b8b70d0f89791,$c76c51a30654be30,
-    $d192e819d6ef5218,$d69906245565a910,$f40e35855771202a,$106aa07032bbd1b8,
-    $19a4c116b8d2d0c8,$1e376c085141ab53,$2748774cdf8eeb99,$34b0bcb5e19b48a8,
-    $391c0cb3c5c95a63,$4ed8aa4ae3418acb,$5b9cca4f7763e373,$682e6ff3d6b2b8a3,
-    $748f82ee5defb2fc,$78a5636f43172f60,$84c87814a1f0ab72,$8cc702081a6439ec,
-    $90befffa23631e28,$a4506cebde82bde9,$bef9a3f7b2c67915,$c67178f2e372532b,
-    $ca273eceea26619c,$d186b8c721c0c207,$eada7dd6cde0eb1e,$f57d4f7fee6ed178,
-    $06f067aa72176fba,$0a637dc5a2c898a6,$113f9804bef90dae,$1b710b35131c471b,
-    $28db77f523047d84,$32caab7b40c72493,$3c9ebe0a15c9bebc,$431d67c49c100d4c,
-    $4cc5d4becb3e42b6,$597f299cfc657e2a,$5fcb6fab3ad6faec,$6c44198c4a475817
+    u64($428a2f98d728ae22),u64($7137449123ef65cd),u64($b5c0fbcfec4d3b2f),u64($e9b5dba58189dbbc),
+    u64($3956c25bf348b538),u64($59f111f1b605d019),u64($923f82a4af194f9b),u64($ab1c5ed5da6d8118),
+    u64($d807aa98a3030242),u64($12835b0145706fbe),u64($243185be4ee4b28c),u64($550c7dc3d5ffb4e2),
+    u64($72be5d74f27b896f),u64($80deb1fe3b1696b1),u64($9bdc06a725c71235),u64($c19bf174cf692694),
+    u64($e49b69c19ef14ad2),u64($efbe4786384f25e3),u64($0fc19dc68b8cd5b5),u64($240ca1cc77ac9c65),
+    u64($2de92c6f592b0275),u64($4a7484aa6ea6e483),u64($5cb0a9dcbd41fbd4),u64($76f988da831153b5),
+    u64($983e5152ee66dfab),u64($a831c66d2db43210),u64($b00327c898fb213f),u64($bf597fc7beef0ee4),
+    u64($c6e00bf33da88fc2),u64($d5a79147930aa725),u64($06ca6351e003826f),u64($142929670a0e6e70),
+    u64($27b70a8546d22ffc),u64($2e1b21385c26c926),u64($4d2c6dfc5ac42aed),u64($53380d139d95b3df),
+    u64($650a73548baf63de),u64($766a0abb3c77b2a8),u64($81c2c92e47edaee6),u64($92722c851482353b),
+    u64($a2bfe8a14cf10364),u64($a81a664bbc423001),u64($c24b8b70d0f89791),u64($c76c51a30654be30),
+    u64($d192e819d6ef5218),u64($d69906245565a910),u64($f40e35855771202a),u64($106aa07032bbd1b8),
+    u64($19a4c116b8d2d0c8),u64($1e376c085141ab53),u64($2748774cdf8eeb99),u64($34b0bcb5e19b48a8),
+    u64($391c0cb3c5c95a63),u64($4ed8aa4ae3418acb),u64($5b9cca4f7763e373),u64($682e6ff3d6b2b8a3),
+    u64($748f82ee5defb2fc),u64($78a5636f43172f60),u64($84c87814a1f0ab72),u64($8cc702081a6439ec),
+    u64($90befffa23631e28),u64($a4506cebde82bde9),u64($bef9a3f7b2c67915),u64($c67178f2e372532b),
+    u64($ca273eceea26619c),u64($d186b8c721c0c207),u64($eada7dd6cde0eb1e),u64($f57d4f7fee6ed178),
+    u64($06f067aa72176fba),u64($0a637dc5a2c898a6),u64($113f9804bef90dae),u64($1b710b35131c471b),
+    u64($28db77f523047d84),u64($32caab7b40c72493),u64($3c9ebe0a15c9bebc),u64($431d67c49c100d4c),
+    u64($4cc5d4becb3e42b6),u64($597f299cfc657e2a),u64($5fcb6fab3ad6faec),u64($6c44198c4a475817)
   );
 var
   h: array[0..7] of u64;
@@ -526,13 +525,13 @@ var
     Result := ROR64(x,19) xor ROR64(x,61) xor (x shr 6);
   end;
 
-  function ReadBE64(const bb: array of u8; idx: Integer): u64; inline;
+  function ReadBE64(const bb: array of u8; idx: Integer): u64;
   begin
     Result := (u64(bb[idx + 0]) shl 56) or (u64(bb[idx + 1]) shl 48) or (u64(bb[idx + 2]) shl 40) or (u64(bb[idx + 3]) shl 32) or
               (u64(bb[idx + 4]) shl 24) or (u64(bb[idx + 5]) shl 16) or (u64(bb[idx + 6]) shl 8) or u64(bb[idx + 7]);
   end;
 
-  procedure WriteBE64(out bb: array of u8; idx: Integer; v: u64); inline;
+  procedure WriteBE64(out bb: array of u8; idx: Integer; v: u64);
   begin
     bb[idx + 0] := u8(v shr 56);
     bb[idx + 1] := u8(v shr 48);
@@ -580,14 +579,14 @@ var
   end;
 
 begin
-  h[0] := $6a09e667f3bcc908;
-  h[1] := $bb67ae8584caa73b;
-  h[2] := $3c6ef372fe94f82b;
-  h[3] := $a54ff53a5f1d36f1;
-  h[4] := $510e527fade682d1;
-  h[5] := $9b05688c2b3e6c1f;
-  h[6] := $1f83d9abfb41bd6b;
-  h[7] := $5be0cd19137e2179;
+  h[0] := u64($6a09e667f3bcc908);
+  h[1] := u64($bb67ae8584caa73b);
+  h[2] := u64($3c6ef372fe94f82b);
+  h[3] := u64($a54ff53a5f1d36f1);
+  h[4] := u64($510e527fade682d1);
+  h[5] := u64($9b05688c2b3e6c1f);
+  h[6] := u64($1f83d9abfb41bd6b);
+  h[7] := u64($5be0cd19137e2179);
 
   off := 0;
   while off + 128 <= mlen do

@@ -52,13 +52,13 @@ export function fetch(input, init) {
 
   // Prefer real async primitive when available
   if (typeof globalThis.HttpRequestAsync === "function") {
+    if (globalThis.__qjspHttpInflight === void 0) globalThis.__qjspHttpInflight = 0;
+    globalThis.__qjspHttpInflight = (globalThis.__qjspHttpInflight | 0) + 1;
+
     acquirePump("net:http", () => {
       if (typeof globalThis.PumpHttpRequests !== "function") return;
-      try {
-        globalThis.PumpHttpRequests();
-      } catch (e) {
-      }
-    }, 10);
+      globalThis.PumpHttpRequests();
+    }, 0);
 
     return globalThis.HttpRequestAsync(method, u, headers, body, nativeOpts)
       .then(
@@ -73,10 +73,12 @@ export function fetch(input, init) {
       .then(
         (v) => {
           releasePump("net:http");
+          globalThis.__qjspHttpInflight = (globalThis.__qjspHttpInflight | 0) - 1;
           return v;
         },
         (e) => {
           releasePump("net:http");
+          globalThis.__qjspHttpInflight = (globalThis.__qjspHttpInflight | 0) - 1;
           throw e;
         }
       );

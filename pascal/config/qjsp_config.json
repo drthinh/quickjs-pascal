@@ -38,6 +38,9 @@
   "tests" : {
     "async_test.js" : true,
     "java_test.js" : true,
+    "repl_top_level_await_test.js" : true,
+    "repl_fetch_async_test.js" : true,
+    "repl_watch_open_close_test.js" : true,
     "spawn_timeout_test.js" : true,
     "spawn_output_limit_test.js" : true,
     "spawn_kill_tree_test.js" : true,

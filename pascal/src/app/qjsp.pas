@@ -21,15 +21,17 @@ uses
 
 const
   APP_AUTHOR = 'Nguyen Duc Thinh - dr.nguyenducthinh@gmail.com';
-  APP_VERSION = '1.0.0';
+  APP_VERSION_CONST = '1.0.0';
   APP_BUILD_DATE = {$I %DATE%};
   APP_BUILD_TIME = {$I %TIME%};
 
+var
+  APP_VERSION: string = APP_VERSION_CONST;
+
 function GetAppVersion: string;
 begin
-  if APP_VERSION <> '' then
-    Result := APP_VERSION
-  else
+  Result := APP_VERSION;
+  if Result = '' then
     Result := JS_GetVersion;
 end;
 
@@ -121,7 +123,7 @@ var
   i: integer;
   item: TJSONData;
 begin
-  SetLength(Result, 0);
+  Result := nil;
   if Obj = nil then
     Exit;
   data := Obj.Find(Name);
@@ -1331,6 +1333,7 @@ var
   spec_folder: string;
   rt: PJSRuntime;
   ctx: PJSContext;
+  globalObj: JSValue;
   ReplGuardMode: TReplGuardMode;
   GuardExplicit: boolean;
   script: string;
@@ -1584,6 +1587,12 @@ var
   b64: string;
   i: Integer;
 begin
+  der := nil;
+  inner := nil;
+  alg := nil;
+  pk := nil;
+  pkInner := nil;
+
   // AlgorithmIdentifier = SEQUENCE(OID)
   SetLength(alg, 0);
   SetLength(alg, Length(alg) + 1);
@@ -1794,6 +1803,9 @@ begin
   else
     eval_flags := JS_EVAL_TYPE_GLOBAL;
 
+  if not is_module then
+    eval_flags := eval_flags or JS_EVAL_FLAG_ASYNC;
+
   result_val := JS_Eval(ctx, PChar(code), QWord(Length(code)), PChar(source_name), eval_flags);
   if JS_IsException(result_val) <> 0 then
   begin
@@ -1873,6 +1885,7 @@ function RunDaemonJobOnce(const ExamplesConfigFile: string; const jobJson: strin
 var
   rt: PJSRuntime;
   ctx: PJSContext;
+  globalObj: JSValue;
   old_dir: string;
   script_dir: string;
   jsonData: TJSONData;
@@ -1954,6 +1967,10 @@ begin
 
     JS_SetModuleLoaderFunc(rt, nil, @qjsp_module_loader.qjsp_module_loader, nil);
     js_std_add_helpers(ctx, 0, nil);
+
+    globalObj := JS_GetGlobalObject(ctx);
+    JS_DefinePropertyValueStr(ctx, globalObj, PChar('__qjspDebugLevel'), JS_NewInt32(ctx, qjs_log.DebugLevel), JS_PROP_C_W_E);
+    JS_FreeValue(ctx, globalObj);
 
     LoadQjspMountsFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
     LoadReplModesFromFile(ExamplesConfigFile, qjs_log.DebugLevel);
@@ -2039,7 +2056,7 @@ begin
   build_mode := False;
   output_file := '';
   input_count := 0;
-  SetLength(input_files, 0);
+  input_files := nil;
   cat_mode := False;
   cat_file := '';
   qar_run_mode := False;
@@ -2062,7 +2079,7 @@ begin
   keep_temp := False;
   minify_safe := False;
   minify_script := '';
-  SetLength(minify_flags, 0);
+  minify_flags := nil;
   temp_stage_dir := '';
   run_script_mode := False;
   script_filename := '';
@@ -2741,6 +2758,7 @@ begin
           if qar_src_ptr = nil then
             Continue;
 
+          qar_src_bytes := nil;
           SetLength(qar_src_bytes, qar_src_len);
           if qar_src_len > 0 then
             Move(qar_src_ptr^, qar_src_bytes[0], qar_src_len);
@@ -2792,6 +2810,7 @@ begin
 
       if do_minify then
       begin
+        staged := nil;
         SetLength(staged, 1);
         build_inputs_stage := [qar_temp_dir];
         if not PrepareStagedInputs(minify_script, minify_flags, True, temp_stage_dir, build_inputs_stage, staged) then
@@ -2908,6 +2927,8 @@ begin
       run_script_mode := True;
       script_filename := eval_filename;
       script_argc := input_count + 1;
+      script_args := nil;
+      script_args_str := nil;
       SetLength(script_args, script_argc);
       SetLength(script_args_str, script_argc);
       script_args_str[0] := script_filename;
@@ -2929,6 +2950,8 @@ begin
     run_script_mode := True;
     script_filename := '<eval>';
     script_argc := input_count + 1;
+    script_args := nil;
+    script_args_str := nil;
     SetLength(script_args, script_argc);
     SetLength(script_args_str, script_argc);
 
@@ -2946,6 +2969,8 @@ begin
     run_script_mode := True;
     script_filename := input_files[0];
     script_argc := input_count;
+    script_args := nil;
+    script_args_str := nil;
     SetLength(script_args, script_argc);
     SetLength(script_args_str, script_argc);
     for i := 0 to script_argc - 1 do
@@ -3176,6 +3201,10 @@ RestartRuntime:
   else
     js_std_add_helpers(ctx, 0, nil);
 
+  globalObj := JS_GetGlobalObject(ctx);
+  JS_DefinePropertyValueStr(ctx, globalObj, PChar('__qjspDebugLevel'), JS_NewInt32(ctx, qjs_log.DebugLevel), JS_PROP_C_W_E);
+  JS_FreeValue(ctx, globalObj);
+
   // Ensure stdjs/ can be resolved regardless of where qjsp is launched from.
   // After restructuring, stdjs/ is a sibling of app/.
   old_dir := GetCurrentDir;
@@ -3263,6 +3292,7 @@ RestartRuntime:
   else
   begin
     // Load examples configuration
+    ExampleConfigs := nil;
     LoadExamplesConfigFromFile(ExampleConfigs, ExamplesConfigFile, qjs_log.DebugLevel);
     if qjs_log.DebugLevel > 0 then
       WriteLn('Debug level: ', qjs_log.DebugLevel);
@@ -4634,6 +4664,7 @@ RestartRuntime:
                 minify_safe := False;
                 omit_source := False;
                 minify_script := '';
+                qar_sign_key_file := '';
                 SetLength(minify_flags, 0);
                 SetLength(build_inputs_list, 0);
 
@@ -4649,6 +4680,11 @@ RestartRuntime:
                   end
                   else if (build_args[j] = '--no-source') or (build_args[j] = '--omit-source') then
                     omit_source := True
+                  else if (build_args[j] = '--sign-key') and (j + 1 <= build_args.Count - 1) then
+                  begin
+                    Inc(j);
+                    qar_sign_key_file := build_args[j];
+                  end
                   else if build_args[j] = '--keep-temp' then
                     keep_temp := True
                   else if (build_args[j] = '--minify-script') and (j + 1 <= build_args.Count - 1) then
@@ -5384,6 +5420,19 @@ RestartRuntime:
         if JS_IsPromise(result_val) <> 0 then
         begin
           result_val := js_std_await(ctx, result_val);
+          if (JS_IsException(result_val) = 0) and (JS_IsObject(result_val) <> 0) then
+          begin
+            original_val := JS_GetPropertyStr(ctx, result_val, PChar('value'));
+            if (JS_IsException(original_val) = 0) and (JS_IsUndefined(original_val) = 0) then
+            begin
+              JS_FreeValue(ctx, result_val);
+              result_val := original_val;
+            end
+            else
+            begin
+              JS_FreeValue(ctx, original_val);
+            end;
+          end;
           // Sau khi await, kiểm tra lại exception (Promise có thể reject)
           if JS_IsException(result_val) <> 0 then
           begin

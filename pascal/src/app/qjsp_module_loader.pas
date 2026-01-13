@@ -115,7 +115,6 @@ var
   mapped_name_fs_rt: string;
   mapped_name_qjs_rt: string;
   mapped_rel: string;
-  mapped_name_alt: string;
   exe_dir: string;
   pascal_root: string;
   old_dir: string;

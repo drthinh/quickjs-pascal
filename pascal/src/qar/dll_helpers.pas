@@ -51,14 +51,13 @@ implementation
 
 // Helper function to load dynamic library (cross-platform)
 function LoadDLL(const filename: string): {$IFDEF WINDOWS}THandle{$ELSE}Pointer{$ENDIF};
-var
-  lib_name: string;
 begin
   Result := {$IFDEF WINDOWS}0{$ELSE}nil{$ENDIF};
   
   {$IFDEF WINDOWS}
   Result := Windows.LoadLibrary(PChar(filename));
   {$ELSE}
+  var lib_name: string;
   {$IFDEF UNIX}
   // On Linux/Unix, try loading with different prefixes if needed
   lib_name := filename;

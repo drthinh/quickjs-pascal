@@ -329,6 +329,103 @@ Each item includes:
   - Result:
     - PASS
 
+### Phase 4 — stdjs/runtime hardening (REPL-first)
+
+Goal: keep the JS runtime layer minimal but strict. Prioritize REPL stability and predictable behavior, while preserving daemon/job isolation.
+
+#### P4-1 Runtime invariants + lifecycle contract
+
+- Scope:
+  - Make runtime initialization/shutdown behavior explicit and auditable.
+  - Ensure shutdown fully releases stdjs-owned resources.
+- Acceptance:
+  - `qjsp:runtime/globals.js` is safe to import multiple times (idempotent).
+  - `qjsp:runtime/index.js` remains minimal and stable.
+  - REPL reload calls `shutdown()` and no timers/pumps/watchers survive across restart.
+- Tests:
+  - Manual: REPL reload twice; verify no accumulation of watchers/timers and no crash.
+
+#### P4-2 Pump error policy (no silent failure)
+
+- Scope:
+  - Stop swallowing exceptions silently inside pump callbacks.
+  - Centralize pump error handling.
+- Acceptance:
+  - If a pump callback throws:
+    - Host does not crash.
+    - In debug mode, the error is observable (log or hook).
+  - Optional hook: `globalThis.__qjspOnPumpError(e, meta)`.
+- Tests:
+  - Add a pump whose callback throws; verify behavior matches policy.
+
+#### P4-3 Reduce idle CPU usage (keep minimal)
+
+- Scope:
+  - Avoid overly aggressive polling while REPL is idle.
+- Acceptance:
+  - Pump tick is not hardcoded to 10ms.
+  - Default tick is configurable (config or a constant) without breaking async operations.
+- Tests:
+  - Manual: measure idle CPU usage before/after.
+
+#### P4-4 Clarify REPL evaluation policy (GLOBAL vs MODULE)
+
+- Scope:
+  - Keep REPL in `JS_EVAL_TYPE_GLOBAL` for expression echo.
+  - Support top-level `await` using `JS_EVAL_FLAG_ASYNC` where applicable.
+- Acceptance:
+  - `1+2` prints `3` in REPL.
+  - `await Promise.resolve(7)` prints `7`.
+  - Errors are consistently reported via `js_std_dump_error`.
+
+#### P4-5 Minimal self-checks
+
+- Scope:
+  - Keep `selfCheckStdjs()` fast and deterministic.
+- Acceptance:
+  - Detect at least:
+    - case-collision under stdjs root (Windows).
+    - accidental self-import patterns.
+- Tests:
+  - Run self-check on startup in debug mode.
+
+#### P4-6 Monitoring checklist (post-merge)
+
+- Operational checklist:
+  - REPL idle CPU stays low.
+  - REPL reload does not leak:
+    - timers/intervals
+    - pumps
+    - fs watchers
+    - pending HTTP requests
+  - Debug mode visibility:
+    - pump errors are visible
+    - unhandled rejections are visible
+  - Daemon mode: run 500+ sequential jobs and observe stable memory/handles.
+
+- Notes:
+  - Added minimal runtime stats surface for manual verification:
+    - `qjsp:runtime/monitor.js` (`getRuntimeStats()`)
+    - `qjsp:runtime/pump.js` (`getPumpStats()`)
+    - Counters:
+      - `globalThis.__qjspWatchCount`
+      - `globalThis.__qjspHttpInflight`
+
+#### P4-7 Minimal test matrix additions
+
+- Add to Test Matrix:
+  - REPL: top-level await
+  - REPL: fetch async (if enabled)
+  - REPL: watcher open/close
+
+- Tests (manual via `.test`):
+  - Added:
+    - `pascal/tests/repl_top_level_await_test.js`
+    - `pascal/tests/repl_fetch_async_test.js`
+    - `pascal/tests/repl_watch_open_close_test.js`
+  - Result:
+    - PASS
+
 ---
 
 ## 6. Test Matrix (minimum)

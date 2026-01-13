@@ -368,30 +368,47 @@ export async function withTempDir(fn, opts) {
 }
 const _watchCallbacks = new Map();
 let _watchPumpAcquired = false;
+let _watchShutdownHookInstalled = false;
+
+function _shutdownAllWatches() {
+  const ids = Array.from(_watchCallbacks.keys());
+  for (const id of ids) {
+    _watchCallbacks.delete(id);
+    try {
+      if (typeof globalThis.CloseWatch === "function") globalThis.CloseWatch(id);
+    } catch (e) {
+    }
+  }
+  if (globalThis.__qjspWatchCount !== void 0) {
+    globalThis.__qjspWatchCount = 0;
+  }
+  try {
+    releasePump("io:watch");
+  } catch (e) {
+  }
+  _watchPumpAcquired = false;
+}
 
 function _ensureWatchPump() {
   if (_watchPumpAcquired) return;
   if (typeof globalThis.PumpWatchEvents !== "function") return;
 
   acquirePump("io:watch", () => {
-    let events;
-    try {
-      events = globalThis.PumpWatchEvents();
-    } catch (e) {
-      return;
-    }
+    const events = globalThis.PumpWatchEvents();
     if (!events || events.length === 0) return;
     for (const ev of events) {
       const cb = _watchCallbacks.get(ev.id);
       if (!cb) continue;
-      try {
-        cb(ev);
-      } catch (e) {
-      }
+      cb(ev);
     }
   }, 50);
 
   _watchPumpAcquired = true;
+
+  if (!_watchShutdownHookInstalled && Array.isArray(globalThis.__qjspRuntimeShutdownCallbacks)) {
+    globalThis.__qjspRuntimeShutdownCallbacks.push(_shutdownAllWatches);
+    _watchShutdownHookInstalled = true;
+  }
 }
 
 export function watch(dir, cb, opts) {
@@ -411,6 +428,9 @@ export function watch(dir, cb, opts) {
   _watchCallbacks.set(id, cb);
   _ensureWatchPump();
 
+  if (globalThis.__qjspWatchCount === void 0) globalThis.__qjspWatchCount = 0;
+  globalThis.__qjspWatchCount = (globalThis.__qjspWatchCount | 0) + 1;
+
   return {
     id,
     close() {
@@ -418,6 +438,11 @@ export function watch(dir, cb, opts) {
       try {
         globalThis.CloseWatch(id);
       } catch (e) {
+      }
+
+      if (globalThis.__qjspWatchCount !== void 0) {
+        globalThis.__qjspWatchCount = (globalThis.__qjspWatchCount | 0) - 1;
+        if ((globalThis.__qjspWatchCount | 0) < 0) globalThis.__qjspWatchCount = 0;
       }
 
       if (_watchCallbacks.size === 0) {

@@ -65,14 +65,14 @@ begin
   begin
     if tmp[i] = #10 then
     begin
-      Result.Add(UTF8ToString(line));
+      Result.Add(string(line));
       line := '';
     end
     else
       line := line + tmp[i];
   end;
   if line <> '' then
-    Result.Add(UTF8ToString(line))
+    Result.Add(string(line))
   else if (Length(tmp) > 0) and (tmp[Length(tmp)] = #10) then
     Result.Add('');
   if Result.Count = 0 then
@@ -87,7 +87,7 @@ begin
   Result := '';
   for i := 0 to lines.Count - 1 do
   begin
-    s := UTF8Encode(lines[i]);
+    s := UTF8String(lines[i]);
     Result := Result + s;
     if i < lines.Count - 1 then
       Result := Result + #10;
@@ -107,7 +107,6 @@ procedure RunUnicodeLineEditor(const FilePath: string);
 var
   p: string;
   lines: TStringList;
-  dirty: boolean;
   insertAt: integer;
   replaceMode: boolean;
   replaceIdx: integer;
@@ -127,7 +126,6 @@ var
 begin
   p := ExpandFileName(FilePath);
   lines := nil;
-  dirty := False;
   insertAt := 0;
   replaceMode := False;
   replaceIdx := -1;
@@ -172,7 +170,6 @@ begin
         if (replaceIdx >= 0) and (replaceIdx < lines.Count) then
         begin
           lines[replaceIdx] := input;
-          dirty := True;
           insertAt := replaceIdx + 1;
         end;
         replaceMode := False;
@@ -252,7 +249,6 @@ begin
         if verb = 'w' then
         begin
           WriteUtf8FileText(p, BuildTextFromLines(lines));
-          dirty := False;
           WriteLn('(written)');
           Continue;
         end;
@@ -260,7 +256,6 @@ begin
         if verb = 'wq' then
         begin
           WriteUtf8FileText(p, BuildTextFromLines(lines));
-          dirty := False;
           WriteLn('(written)');
           Exit;
         end;
@@ -294,7 +289,6 @@ begin
                 lines.Add('');
               if insertAt > lines.Count then
                 insertAt := lines.Count;
-              dirty := True;
               Continue;
             end;
           end;
@@ -352,26 +346,6 @@ begin
                 idx := n - 1;
             end;
           end;
-
-          if (idx < 0) or (idx >= lines.Count) then
-          begin
-            WriteLn('Error: invalid line number');
-            Continue;
-          end;
-
-          if (Pos(' ', arg) > 0) then
-          begin
-            lines[idx] := Trim(Copy(arg, Pos(' ', arg) + 1, Length(arg)));
-            dirty := True;
-            insertAt := idx + 1;
-            Continue;
-          end;
-
-          replaceMode := True;
-          replaceIdx := idx;
-          WriteLn(Format('%6d  %s', [idx + 1, lines[idx]]));
-          WriteLn('Replace line ', idx + 1, ':');
-          Continue;
         end;
 
         if verb = 's' then
@@ -414,7 +388,6 @@ begin
             Continue;
           end;
           lines[idx] := StringReplace(lines[idx], a1, a2, []);
-          dirty := True;
           WriteLn(Format('%6d  %s', [idx + 1, lines[idx]]));
           Continue;
         end;
@@ -425,7 +398,6 @@ begin
 
       lines.Insert(insertAt, input);
       Inc(insertAt);
-      dirty := True;
     end;
   finally
     if lines <> nil then

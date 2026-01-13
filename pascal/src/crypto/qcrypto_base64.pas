@@ -42,7 +42,8 @@ var
   outPos: Integer;
 begin
   Result := False;
-  SetLength(bytes, 0);
+  clean := '';
+  bytes := nil;
 
   // strip whitespace
   SetLength(clean, 0);

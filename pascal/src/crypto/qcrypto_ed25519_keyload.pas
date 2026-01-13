@@ -190,7 +190,7 @@ end;
 
 function ParsePkcs8Ed25519Seed(const der: TBytes; out seed: TEd25519Seed; out err: string): boolean;
 var
-  pos, tagPos, tagLen: Integer;
+  pos: Integer;
   tag: Byte;
   seqStart, seqLen: Integer;
   innerPos: Integer;

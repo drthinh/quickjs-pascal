@@ -933,7 +933,6 @@ var
   bopts: qar_tooling_backend.TQarBuildOptions;
   metaObj: JSValue;
   metaList: TStrings;
-  err: string;
 begin
   try
   if argc < 2 then

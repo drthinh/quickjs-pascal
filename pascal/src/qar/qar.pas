@@ -567,8 +567,6 @@ end;
 
 procedure TQarEntryList.Add(const path, filepath: string; bytecode: Pcuint8; bytecode_len: csize_t;
                             source: Pcuint8; source_len: csize_t; is_module: cint; is_asset: cint);
-var
-  entry: PQarBuildEntry;
 begin
   if FCount >= Length(FEntries) then
     SetLength(FEntries, Length(FEntries) + 10);
@@ -1549,7 +1547,6 @@ var
   sig: TEd25519Signature;
   payload: UTF8String;
   payloadBytes: TBytes;
-  payloadB64: string;
   sigPubB64: string;
   sigB64: string;
   sigOk: boolean;
@@ -1730,6 +1727,7 @@ begin
       end;
       
       built_at := FormatDateTime('yyyy"-"mm"-"dd"T"hh":"nn":"ss', Now);
+      qjs_version := string(JS_GetVersion);
 
       sigPubB64 := sig_pubkey_b64;
       sigB64 := sig_b64;
@@ -1774,7 +1772,6 @@ begin
         SetLength(payloadBytes, Length(payload));
         if Length(payloadBytes) > 0 then
           Move(payload[1], payloadBytes[0], Length(payloadBytes));
-        payloadB64 := Base64Encode(payloadBytes);
 
         sigOk := Ed25519Sign(payloadBytes, km.seed, km.pubkey, sig);
         if not sigOk then
@@ -1794,7 +1791,6 @@ begin
 
       // Create QAR file
       WriteLn('Creating QAR file: ', output_file);
-      qjs_version := string(JS_GetVersion);
       // Truyền thêm entry_main / entry_init vào manifest
       if CreateQar(output_file, list, qjs_version, entry_main, entry_init, created_by, tool, meta, built_at, sigPubB64, sigB64) < 0 then
       begin
