@@ -4,6 +4,7 @@ import { toU8 } from "qjsp:util/bytes.js";
 import * as path from "qjsp:io/path.js";
 import * as system from "qjsp:os/system.js";
 import { acquirePump, releasePump } from "qjsp:runtime/pump.js";
+import { QjspError, requireNative } from "qjsp:runtime/error.js";
 
 export function exists(path) {
   const [st, err] = os.stat(String(path));
@@ -18,13 +19,13 @@ export function stat(path) {
 
 export function readTextFile(path) {
   const v = std.loadFile(String(path), { binary: true });
-  if (v === null) throw new Error(`readTextFile: cannot read ${path}`);
+  if (v === null) throw new QjspError("QJSP_E_IO_READ_FAILED", `readTextFile: cannot read ${path}`, { path: String(path) });
   return new TextDecoder().decode(toU8(v));
 }
 
 export function readFile(path) {
   const v = std.loadFile(String(path), { binary: true });
-  if (v === null) throw new Error(`readFile: cannot read ${path}`);
+  if (v === null) throw new QjspError("QJSP_E_IO_READ_FAILED", `readFile: cannot read ${path}`, { path: String(path) });
   return toU8(v);
 }
 
@@ -88,7 +89,7 @@ export function writeFile(filePath, data) {
 
 export function mkdir(path, mode) {
   const ret = os.mkdir(String(path), mode === void 0 ? 0o777 : mode);
-  if (ret !== 0) throw new Error(`mkdir: failed ${path} (errno=${ret})`);
+  if (ret !== 0) throw new QjspError("QJSP_E_IO_MKDIR_FAILED", `mkdir: failed ${path} (errno=${ret})`, { path: String(path), errno: ret });
 }
 
 export function mkdirp(path, mode) {
@@ -117,23 +118,23 @@ export function mkdirp(path, mode) {
 
 export function readdir(path) {
   const [arr, err] = os.readdir(String(path));
-  if (err !== 0) throw new Error(`readdir: failed ${path} (errno=${err})`);
+  if (err !== 0) throw new QjspError("QJSP_E_IO_READDIR_FAILED", `readdir: failed ${path} (errno=${err})`, { path: String(path), errno: err });
   return arr;
 }
 
 export function remove(path) {
   const ret = os.remove(String(path));
-  if (ret !== 0) throw new Error(`remove: failed ${path} (errno=${ret})`);
+  if (ret !== 0) throw new QjspError("QJSP_E_IO_REMOVE_FAILED", `remove: failed ${path} (errno=${ret})`, { path: String(path), errno: ret });
 }
 
 export function rename(oldPath, newPath) {
   const ret = os.rename(String(oldPath), String(newPath));
-  if (ret !== 0) throw new Error(`rename: failed (errno=${ret})`);
+  if (ret !== 0) throw new QjspError("QJSP_E_IO_RENAME_FAILED", `rename: failed (errno=${ret})`, { oldPath: String(oldPath), newPath: String(newPath), errno: ret });
 }
 
 function _statOrThrow(p) {
   const [st, err] = os.stat(String(p));
-  if (err !== 0 || st == null) throw new Error(`stat: failed ${p} (errno=${err})`);
+  if (err !== 0 || st == null) throw new QjspError("QJSP_E_IO_STAT_FAILED", `stat: failed ${p} (errno=${err})`, { path: String(p), errno: err });
   return st;
 }
 
@@ -153,7 +154,7 @@ export function* walk(dir, opts) {
 
   const root = String(dir);
   const rootSt = _statOrThrow(root);
-  if (!_isDirStat(rootSt)) throw new Error(`walk: not a directory: ${root}`);
+  if (!_isDirStat(rootSt)) throw new QjspError("QJSP_E_IO_NOT_DIR", `walk: not a directory: ${root}`, { path: root });
 
   const stack = [root];
   while (stack.length) {
@@ -195,7 +196,7 @@ export function copyFile(src, dst) {
   const s = String(src);
   const d = String(dst);
   const v = std.loadFile(s, { binary: true });
-  if (v === null) throw new Error(`copyFile: cannot read ${s}`);
+  if (v === null) throw new QjspError("QJSP_E_IO_READ_FAILED", `copyFile: cannot read ${s}`, { path: s });
   mkdirp(path.dirname(d));
   std.writeFile(d, toU8(v));
 }
@@ -208,7 +209,7 @@ export function copyDir(srcDir, dstDir, opts) {
   const dstRoot = String(dstDir);
 
   const srcSt = _statOrThrow(srcRoot);
-  if (!_isDirStat(srcSt)) throw new Error(`copyDir: not a directory: ${srcRoot}`);
+  if (!_isDirStat(srcSt)) throw new QjspError("QJSP_E_IO_NOT_DIR", `copyDir: not a directory: ${srcRoot}`, { path: srcRoot });
 
   mkdirp(dstRoot);
 
@@ -220,7 +221,7 @@ export function copyDir(srcDir, dstDir, opts) {
       mkdirp(dstPath);
       continue;
     }
-    if (!overwrite && exists(dstPath)) throw new Error(`copyDir: destination exists: ${dstPath}`);
+    if (!overwrite && exists(dstPath)) throw new QjspError("QJSP_E_IO_DEST_EXISTS", `copyDir: destination exists: ${dstPath}`, { path: dstPath });
     copyFile(p0, dstPath);
   }
 }
@@ -350,7 +351,7 @@ export function mkdtemp(prefix, opts) {
     }
   }
 
-  throw new Error("mkdtemp: failed");
+  throw new QjspError("QJSP_E_IO_MKDTEMP_FAILED", "mkdtemp: failed");
 }
 
 export async function withTempDir(fn, opts) {
@@ -420,9 +421,8 @@ export function watch(dir, cb, opts) {
   dir = path.resolve(dir);
   if (system.platform === "win32") dir = dir.replace(/\//g, "\\");
 
-  if (typeof globalThis.WatchDir !== "function" || typeof globalThis.CloseWatch !== "function") {
-    throw new Error("watch: native watcher not available");
-  }
+  requireNative("watch", globalThis, "WatchDir");
+  requireNative("watch", globalThis, "CloseWatch");
 
   const id = globalThis.WatchDir(dir, recursive);
   _watchCallbacks.set(id, cb);

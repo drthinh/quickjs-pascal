@@ -12,11 +12,23 @@ if (platform !== "win32") {
 } else {
   const { fs, path } = io;
 
-  const cwd = (os.process && typeof os.process.cwd === "function") ? os.process.cwd() : ".";
-  const maybeRoot = (path.basename(cwd).toLowerCase() === "tests") ? path.dirname(cwd) : cwd;
+  function fileUrlToPath(u) {
+    const s = String(u || "");
+    if (!s.startsWith("file:")) return s;
+    let p = s.replace(/^file:\/\//i, "");
+    p = p.replace(/^\//, "");
+    try { p = decodeURIComponent(p); } catch (_) {}
+    p = p.replace(/\//g, "\\");
+    return p;
+  }
+
+  const scriptPath = fileUrlToPath(import.meta.url);
+  const scriptDir = scriptPath ? path.dirname(scriptPath) : ".";
+  // tests live under <pascalRoot>/tests
+  const pascalRoot = path.dirname(scriptDir);
 
   // Put all artifacts under tests/tmp to satisfy spawn cwd jail and fs_watch allowed roots.
-  const absBase = path.join(maybeRoot, "tests", "tmp", "daemon_isolation");
+  const absBase = path.join(pascalRoot, "tests", "tmp", "daemon_isolation");
   fs.rmrf(absBase);
   fs.mkdirp(absBase);
 
@@ -34,8 +46,38 @@ if (platform !== "win32") {
 
   fs.writeTextFile(jobsPath, job1 + "\n" + job2 + "\n");
 
-  const exe = path.join(maybeRoot, "bin", "qjsp.exe");
-  const cfg = path.join(maybeRoot, "config", "qjsp_config.json");
+  const exeArg0 = (os.process && Array.isArray(os.process.argv) && os.process.argv.length > 0)
+    ? String(os.process.argv[0])
+    : "";
+
+  const candidates = [];
+  // Preferred: <pascalRoot>/bin/qjsp.exe when pascalRoot is absolute
+  if (path.isAbsolute(pascalRoot)) {
+    candidates.push(path.join(pascalRoot, "bin", "qjsp.exe"));
+  }
+  // Fallbacks when runner path is tricky
+  if (exeArg0) {
+    // If argv[0] is "bin/qjsp.exe" and cwd is pascal/bin, using just basename works.
+    candidates.push(path.basename(exeArg0));
+    candidates.push(exeArg0);
+  }
+  candidates.push("qjsp.exe");
+
+  let exe = "";
+  for (const c of candidates) {
+    if (!c) continue;
+    try {
+      if (fs.exists(c)) {
+        exe = c;
+        break;
+      }
+    } catch (_) {
+    }
+  }
+  if (!exe) {
+    throw new Error("daemon_isolation_test: cannot locate qjsp.exe; tried: " + candidates.join(", "));
+  }
+  const cfg = path.join(pascalRoot, "config", "qjsp_config.json");
 
   const p = spawn([exe, "--config", cfg, "--daemon", "--daemon-in", jobsPath, "--daemon-out", outPath], {
     mergeStderr: true,

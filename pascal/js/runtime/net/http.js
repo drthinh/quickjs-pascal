@@ -1,4 +1,5 @@
 import { toU8 } from "qjsp:util/bytes.js";
+import { requireNative } from "qjsp:runtime/error.js";
 
 function headersToPairs(headers) {
   if (headers === void 0 || headers === null) return void 0;
@@ -37,9 +38,7 @@ export function request(method, url, ...args) {
   const body = options && options.body;
 
   // Global function injected by Pascal binding
-  if (typeof globalThis.HttpRequest !== "function") {
-    throw new Error("net:http.request: HttpRequest is not available (http_helpers not registered)");
-  }
+  requireNative("net:http.request", globalThis, "HttpRequest");
 
   const respType = options && options.responseType;
   const nativeOpts = {

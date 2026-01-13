@@ -304,6 +304,7 @@ var
   archive_size: cuint64;
   table_pos: Int64;
   secPath, secEntr, secData, secIndex: TQarV2Section;
+  secManf: TQarV2Section;
   secZero: TQarV2Section;
   i: Integer;
   entry: PQarBuildEntry;
@@ -327,6 +328,142 @@ var
   index_ei: array of cuint32;
   index_pid: array of cuint32;
   magic: array[0..3] of AnsiChar;
+  manifestStr: UTF8String;
+  manifestBytes: TBytes;
+
+  function BuildManifestJson: UTF8String;
+  var
+    root, entryPoints, entryObj, metaObj, sigObj: TJSONObject;
+    entries: TJSONArray;
+    k: integer;
+    payload: UTF8String;
+    payloadBytes: TBytes;
+    payloadB64: string;
+
+    function EscapeLine(const s: string): string;
+    begin
+      Result := StringReplace(s, #13, '', [rfReplaceAll]);
+      Result := StringReplace(Result, #10, '\n', [rfReplaceAll]);
+    end;
+
+    function BuildSigPayload: UTF8String;
+    var
+      j: integer;
+      e: PQarBuildEntry;
+      kindStr: string;
+      sb: UTF8String;
+    begin
+      sb := 'QAR-SIG-PAYLOAD\n';
+      sb := sb + 'format=qar\n';
+      sb := sb + 'manifest_version=2\n';
+      sb := sb + 'quickjs_version=' + EscapeLine(string(qjs_version)) + '\n';
+      sb := sb + 'built_at=' + EscapeLine(built_at) + '\n';
+      sb := sb + 'created_by=' + EscapeLine(created_by) + '\n';
+      sb := sb + 'tool=' + EscapeLine(tool) + '\n';
+      if (meta <> nil) and (meta.Count > 0) then
+      begin
+        for j := 0 to meta.Count - 1 do
+          if meta.Names[j] <> '' then
+            sb := sb + 'meta.' + EscapeLine(meta.Names[j]) + '=' + EscapeLine(meta.ValueFromIndex[j]) + '\n';
+      end;
+      sb := sb + 'entries=' + UTF8String(IntToStr(list.Count)) + '\n';
+      for j := 0 to list.Count - 1 do
+      begin
+        e := list.GetEntry(j);
+        sb := sb + 'entry.path=' + EscapeLine(e^.path) + '\n';
+        if e^.is_asset <> 0 then
+          kindStr := 'asset'
+        else if e^.is_module <> 0 then
+          kindStr := 'module'
+        else
+          kindStr := 'script';
+        sb := sb + 'entry.type=' + kindStr + '\n';
+        sb := sb + 'entry.sha256_source=' + EscapeLine(e^.sha256_source) + '\n';
+        sb := sb + 'entry.sha256_bytecode=' + EscapeLine(e^.sha256_bytecode) + '\n';
+      end;
+      Result := sb;
+    end;
+  begin
+    root := TJSONObject.Create;
+    try
+      root.Add('format', 'qar');
+      root.Add('version', 2);
+      root.Add('quickjs_version', string(qjs_version));
+      if created_by <> '' then
+        root.Add('created_by', created_by);
+      if tool <> '' then
+        root.Add('tool', tool);
+      if built_at <> '' then
+        root.Add('built_at', built_at);
+
+      if (meta <> nil) and (meta.Count > 0) then
+      begin
+        metaObj := TJSONObject.Create;
+        for k := 0 to meta.Count - 1 do
+        begin
+          if meta.Names[k] <> '' then
+            metaObj.Add(meta.Names[k], meta.ValueFromIndex[k]);
+        end;
+        if metaObj.Count > 0 then
+          root.Add('meta', metaObj)
+        else
+          metaObj.Free;
+      end;
+
+      if (entry_main <> '') or (entry_init <> '') then
+      begin
+        entryPoints := TJSONObject.Create;
+        if entry_main <> '' then
+          entryPoints.Add('main', entry_main);
+        if entry_init <> '' then
+          entryPoints.Add('init', entry_init);
+        root.Add('entry_points', entryPoints);
+      end;
+
+      entries := TJSONArray.Create;
+      for k := 0 to list.Count - 1 do
+      begin
+        entry := list.GetEntry(k);
+        entryObj := TJSONObject.Create;
+        entryObj.Add('path', entry^.path);
+        if entry^.is_asset <> 0 then
+          entryObj.Add('type', 'asset')
+        else if entry^.is_module <> 0 then
+          entryObj.Add('type', 'module')
+        else
+          entryObj.Add('type', 'script');
+        entryObj.Add('bytecode_size', Int64(entry^.bytecode_len));
+        entryObj.Add('source_size', Int64(entry^.source_len));
+        if entry^.sha256_bytecode <> '' then
+          entryObj.Add('sha256_bytecode', entry^.sha256_bytecode);
+        if entry^.sha256_source <> '' then
+          entryObj.Add('sha256_source', entry^.sha256_source);
+        entries.Add(entryObj);
+      end;
+      root.Add('entries', entries);
+
+      if (sig_pubkey_b64 <> '') and (sig_b64 <> '') then
+      begin
+        payload := BuildSigPayload;
+        SetLength(payloadBytes, Length(payload));
+        if Length(payloadBytes) > 0 then
+          Move(payload[1], payloadBytes[0], Length(payloadBytes));
+        payloadB64 := Base64Encode(payloadBytes);
+        if payloadB64 <> '' then
+          root.Add('sig_payload_b64', payloadB64);
+
+        sigObj := TJSONObject.Create;
+        sigObj.Add('alg', 'ed25519');
+        sigObj.Add('pubkey', sig_pubkey_b64);
+        sigObj.Add('sig', sig_b64);
+        root.Add('sig', sigObj);
+      end;
+
+      Result := UTF8String(root.FormatJSON([]));
+    finally
+      root.Free;
+    end;
+  end;
 begin
   Result := -1;
   if list = nil then
@@ -336,6 +473,7 @@ begin
   FillChar(secEntr, SizeOf(secEntr), 0);
   FillChar(secData, SizeOf(secData), 0);
   FillChar(secIndex, SizeOf(secIndex), 0);
+  FillChar(secManf, SizeOf(secManf), 0);
   FillChar(secZero, SizeOf(secZero), 0);
 
   fs := TFileStream.Create(output_file, fmCreate);
@@ -530,6 +668,21 @@ begin
     end;
     secIndex.ssize := cuint64(fs.Position) - secIndex.soffset;
 
+    // MANF
+    secManf.stype := QAR_V2_SECTION_MANF;
+    secManf.soffset := cuint64(fs.Position);
+    manifestStr := BuildManifestJson;
+    if manifestStr <> '' then
+    begin
+      SetLength(manifestBytes, Length(manifestStr));
+      if Length(manifestBytes) > 0 then
+      begin
+        Move(manifestStr[1], manifestBytes[0], Length(manifestBytes));
+        fs.WriteBuffer(manifestBytes[0], Length(manifestBytes));
+      end;
+    end;
+    secManf.ssize := cuint64(fs.Position) - secManf.soffset;
+
     // Write section table
     fs.Position := table_pos;
     fs.WriteBuffer(secIndex, SizeOf(secIndex));
@@ -537,7 +690,7 @@ begin
     fs.WriteBuffer(secZero, SizeOf(secZero)); // SIGN omitted
     fs.WriteBuffer(secPath, SizeOf(secPath));
     fs.WriteBuffer(secEntr, SizeOf(secEntr));
-    fs.WriteBuffer(secZero, SizeOf(secZero)); // MANF omitted
+    fs.WriteBuffer(secManf, SizeOf(secManf));
 
     Result := 0;
   finally
@@ -3049,6 +3202,9 @@ var
   compressed_bytecode_size, compressed_source_size: uint64;
   is_asset_flag: boolean;
   bytecode_orig_size, source_orig_size: uint64;
+  fs_magic: TFileStream;
+  magicBuf: array[0..3] of AnsiChar;
+  magicStr: AnsiString;
 begin
   // Initialize result
   Result.qar_file := qar_filename;
@@ -3068,6 +3224,24 @@ begin
   begin
     Result.compatibility_message := 'QAR file not found: ' + qar_filename;
     Exit;
+  end;
+
+  try
+    fs_magic := TFileStream.Create(qar_filename, fmOpenRead or fmShareDenyNone);
+    try
+      if fs_magic.Read(magicBuf[0], 4) = 4 then
+      begin
+        SetString(magicStr, PAnsiChar(@magicBuf[0]), 4);
+        if magicStr = QAR_MAGIC_V2 then
+          Result.qar_format_version := 2
+        else if magicStr = QAR_MAGIC_V1 then
+          Result.qar_format_version := 1;
+      end;
+    finally
+      fs_magic.Free;
+    end;
+  except
+    // ignore magic read errors; keep default 0
   end;
   
   qar := qar_open(PChar(qar_filename));
@@ -3095,14 +3269,16 @@ begin
       // Parse manifest to get format version (simple parsing)
       // Look for "version": number in JSON
       // This is a simple parser - for production, use a proper JSON parser
-      Result.qar_format_version := QAR_FORMAT_VERSION; // Default
+      if Result.qar_format_version = 0 then
+        Result.qar_format_version := QAR_FORMAT_VERSION;
       // Try to extract version from manifest string
       // Format: "version": 1
       // We'll use a simple search for now
     end
     else
     begin
-      Result.qar_format_version := QAR_FORMAT_VERSION; // Default if no manifest
+      if Result.qar_format_version = 0 then
+        Result.qar_format_version := QAR_FORMAT_VERSION;
     end;
     
     // Get current QuickJS version
@@ -3147,9 +3323,14 @@ begin
         is_asset_flag := False;
         bytecode_orig_size := 0;
         source_orig_size := 0;
-        if ReadEntryFlagsFromQarFile(qar_filename, i, is_compressed, compressed_bytecode_size, compressed_source_size,
-                                     is_asset_flag, bytecode_orig_size, source_orig_size) then
+        if qar^.is_v2 then
         begin
+          is_compressed := (qar^.entries[i].flags and 2) <> 0;
+          if is_compressed then
+          begin
+            compressed_bytecode_size := qar^.entries[i].bytecode_size;
+            compressed_source_size := qar^.entries[i].source_size;
+          end;
           Result.entries[i].is_compressed := is_compressed;
           Result.entries[i].compressed_bytecode_size := compressed_bytecode_size;
           Result.entries[i].compressed_source_size := compressed_source_size;
@@ -3158,9 +3339,21 @@ begin
         end
         else
         begin
-          Result.entries[i].is_compressed := False;
-          Result.entries[i].compressed_bytecode_size := 0;
-          Result.entries[i].compressed_source_size := 0;
+          if ReadEntryFlagsFromQarFile(qar_filename, i, is_compressed, compressed_bytecode_size, compressed_source_size,
+                                       is_asset_flag, bytecode_orig_size, source_orig_size) then
+          begin
+            Result.entries[i].is_compressed := is_compressed;
+            Result.entries[i].compressed_bytecode_size := compressed_bytecode_size;
+            Result.entries[i].compressed_source_size := compressed_source_size;
+            if is_compressed then
+              Result.has_compressed_entries := True;
+          end
+          else
+          begin
+            Result.entries[i].is_compressed := False;
+            Result.entries[i].compressed_bytecode_size := 0;
+            Result.entries[i].compressed_source_size := 0;
+          end;
         end;
         
         // Load entry data to get sizes (uncompressed)

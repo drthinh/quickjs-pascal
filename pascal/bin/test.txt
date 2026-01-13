@@ -2,9 +2,11 @@ duc thinh
 nguyen duc thinh
 
 nguyễn đức thịnh
-
+hello 2
+hello
+thêm vào
 hello nguyễn
-
+chào các bạn
 nguyễn đức thịnh
 xin chào các vị đồng chí
 nguyễn
@@ -13,9 +15,7 @@ nguyễn đức thịnh
 viết nhiều dòng:wq
 123
 456
-
-
+789
 đức
 thịnh
-
 

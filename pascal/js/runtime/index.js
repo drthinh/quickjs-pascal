@@ -1,6 +1,7 @@
 export { installTextEncoding } from "qjsp:polyfills/text_encoding.js";
 export { installRuntimeGlobals } from "qjsp:runtime/globals.js";
 export * as runtime from "qjsp:runtime/index.js";
+export { QjspError, toQjspError } from "qjsp:runtime/error.js";
 
 export { Files } from "qjsp:io/Files.js";
 export { Paths } from "qjsp:io/Paths.js";

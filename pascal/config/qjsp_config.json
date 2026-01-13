@@ -50,6 +50,7 @@
     "spawn_profile_defaults_test.js": true,
     "http_policy_test.js": true,
     "fs_watch_policy_test.js": true,
+    "error_model_test.js": true,
     "daemon_isolation_test.js": true
   }
 }

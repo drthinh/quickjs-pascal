@@ -4,6 +4,21 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg || "assert failed");
 }
 
+function assertString(v, msg) {
+  assert(typeof v === "string", msg || "expected string");
+}
+
+function assertHostError(e, expectedCode) {
+  assert(e && typeof e === "object", "expected error object");
+  assertString(e.code, "expected error.code string");
+  assertString(e.name, "expected error.name string");
+  assertString(e.message, "expected error.message string");
+  if (expectedCode !== void 0) assert(e.code === expectedCode, `expected code ${expectedCode}`);
+  // Host errors created by Pascal binding should have name=HostError
+  assert(e.name === "HostError", "expected HostError.name");
+  if (typeof e.stack === "string") assert(e.stack.length >= 0, "expected stack string");
+}
+
 function getErrCode(e) {
   try {
     return e && typeof e === "object" ? e.code : void 0;
@@ -19,6 +34,7 @@ function getErrCode(e) {
   try {
     net.http.get("https://google.com", { responseType: "text" });
   } catch (e) {
+    assertHostError(e, "QJSP_E_HTTP_HOST_DENIED");
     ok = getErrCode(e) === "QJSP_E_HTTP_HOST_DENIED";
   }
   assert(ok, "expected host deny for google.com");
@@ -30,6 +46,7 @@ function getErrCode(e) {
   try {
     net.http.get("https://example.com", { timeoutMs: 999999, responseType: "text" });
   } catch (e) {
+    assertHostError(e, "QJSP_E_HTTP_LIMIT_DENIED");
     ok = getErrCode(e) === "QJSP_E_HTTP_LIMIT_DENIED";
   }
   assert(ok, "expected timeout limit deny");

@@ -1,5 +1,22 @@
-import * as native from "qjsp:crypto/native.js";
+const nativeCrypto = globalThis.__qjsp_native_crypto;
 
-export const sha256Hex = native.sha256Hex;
-export const base64Encode = native.base64Encode;
-export const base64Decode = native.base64Decode;
+export function sha256Hex(data) {
+  if (!nativeCrypto || typeof nativeCrypto.sha256Hex !== "function") {
+    throw new Error("crypto.sha256Hex: native shim not installed");
+  }
+  return nativeCrypto.sha256Hex(data);
+}
+
+export function base64Encode(data) {
+  if (!nativeCrypto || typeof nativeCrypto.base64Encode !== "function") {
+    throw new Error("crypto.base64Encode: native shim not installed");
+  }
+  return nativeCrypto.base64Encode(data);
+}
+
+export function base64Decode(str) {
+  if (!nativeCrypto || typeof nativeCrypto.base64Decode !== "function") {
+    throw new Error("crypto.base64Decode: native shim not installed");
+  }
+  return nativeCrypto.base64Decode(String(str));
+}

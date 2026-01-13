@@ -133,9 +133,9 @@ Việc cần làm:
 
 Checklist hoàn thành:
 
-- [ ] Có 1 file/module lỗi chung trong `qjsp:runtime/*` hoặc `qjsp:util/*`.
-- [ ] Các domain chính (`net`, `os`/`spawn`, `io`/`watch`) trả lỗi có `code` nhất quán.
-- [ ] Test có assert `code` cho các case policy reject.
+- [x] Có 1 file/module lỗi chung trong `qjsp:runtime/*` hoặc `qjsp:util/*`.
+- [x] Các domain chính (`net`, `os`/`spawn`, `io`/`watch`) trả lỗi có `code` nhất quán.
+- [x] Test có assert `code` cho các case policy reject.
 
 ### Milestone M2 - Chuẩn hoá façade cho các native helpers hiện có
 
@@ -158,9 +158,9 @@ Việc cần làm:
 
 Checklist hoàn thành:
 
-- [ ] Mỗi domain có `index.js` export rõ.
-- [ ] Public export chỉ đi qua `pascal/js/runtime/index.js`.
-- [ ] Có test smoke cho mỗi domain (ít nhất 1 happy path + 1 error path).
+- [x] Mỗi domain có `index.js` export rõ.
+- [x] Public export chỉ đi qua `pascal/js/runtime/index.js`.
+- [x] Có test smoke cho mỗi domain (ít nhất 1 happy path + 1 error path).
 
 ### Milestone M3 - Tối ưu hoá load (lazy load + giảm overhead)
 
@@ -176,9 +176,19 @@ Việc cần làm:
 
 Checklist hoàn thành:
 
-- [ ] `globals.js` không import các module nặng không cần thiết.
-- [ ] Các domain nặng có entrypoint nhẹ, lazy khi gọi.
+- [x] `globals.js` không import các module nặng không cần thiết.
+- [x] Các domain nặng có entrypoint nhẹ, lazy khi gọi.
 - [ ] Có benchmark thủ công: startup/repl import `qjsp:index.js` không tăng đáng kể so với baseline.
+
+Benchmark thủ công (gợi ý):
+
+- Đo thời gian import `qjsp:index.js`:
+  - `const t0 = Date.now(); await import('qjsp:index.js'); const dt = Date.now() - t0; console.log('import qjsp:index.js ms=', dt);`
+- Đo thời gian import `qjsp:runtime/globals.js`:
+  - `const t0 = Date.now(); await import('qjsp:runtime/globals.js'); const dt = Date.now() - t0; console.log('import globals ms=', dt);`
+- Kiểm tra lazy `fetch` (không gọi thì không load phần net/fetch):
+  - `console.log('typeof fetch=', typeof fetch);`
+  - `await fetch('https://example.com').then(r => r.status).catch(e => e && e.code);`
 
 ### Milestone M4 - QAR packaging strategy (tuỳ nhu cầu)
 

@@ -28,6 +28,26 @@ const
 var
   APP_VERSION: string = APP_VERSION_CONST;
 
+var
+  g_print_exec_time: boolean = False;
+  g_exec_start_tick: QWord = 0;
+  g_exec_time_exitproc_installed: boolean = False;
+
+procedure PrintExecTimeAtExit;
+var
+  elapsed: QWord;
+begin
+  if not g_print_exec_time then
+    Exit;
+  if g_exec_start_tick = 0 then
+    Exit;
+  elapsed := GetTickCount64 - g_exec_start_tick;
+  try
+    WriteLn(StdErr, '[TIME] elapsed_ms=', elapsed);
+  except
+  end;
+end;
+
 function GetAppVersion: string;
 begin
   Result := APP_VERSION;
@@ -1337,6 +1357,10 @@ var
   ReplGuardMode: TReplGuardMode;
   GuardExplicit: boolean;
   script: string;
+  suite_tick0: QWord;
+  suite_tick1: QWord;
+  test_tick0: QWord;
+  test_tick1: QWord;
   result_val: JSValue;
   run_script_mode: boolean;
   script_filename: string;
@@ -1449,6 +1473,7 @@ var
   cmdArgs: TStringList;
   subcmd: string;
   init_default_lib_qar: boolean;
+  qar_file: string;
   qar_output: string;
   qar_input: string;
   qar_inputs: array of string;
@@ -2041,6 +2066,9 @@ begin
   daemon_mode := False;
   daemon_in_file := '';
   daemon_out_file := '';
+  g_print_exec_time := False;
+  if g_exec_start_tick = 0 then
+    g_exec_start_tick := GetTickCount64;
   lib_add_specs := TStringList.Create;
   lib_rm_prefixes := TStringList.Create;
   qar_meta := TStringList.Create;
@@ -2129,6 +2157,15 @@ begin
     else if (ParamStr(i) = '--daemon') then
     begin
       daemon_mode := True;
+    end
+    else if (ParamStr(i) = '--time') or (ParamStr(i) = '--print-time') then
+    begin
+      g_print_exec_time := True;
+      if not g_exec_time_exitproc_installed then
+      begin
+        AddExitProc(@PrintExecTimeAtExit);
+        g_exec_time_exitproc_installed := True;
+      end;
     end
     else if (ParamStr(i) = '--daemon-in') then
     begin
@@ -2308,6 +2345,7 @@ begin
       WriteLn('  --meta K=V           QAR manifest metadata: add key/value (repeatable)');
       WriteLn('  --verify MODE        QAR verification mode: off | warn | strict (default: warn)');
       WriteLn('  -d, --debug [LEVEL]  Enable debug output (0=off, 1=basic, 2=verbose, default=1)');
+      WriteLn('  --time, --print-time Print total execution time on exit (stderr)');
       WriteLn('  -e CODE              Evaluate JavaScript CODE');
       WriteLn('  --guard MODE         REPL crash guard: strict | friendly');
       WriteLn('  --mode NAME          Start interactive REPL with REPL mode enabled (e.g. sh)');
@@ -3344,7 +3382,7 @@ RestartRuntime:
       WriteLn('  .build <out.qar> <inputs..> - Build QAR from JS files/folder');
       WriteLn('  .qar / .tool / .verify      - QAR tooling commands');
       WriteLn('  .lib ...                    - Manage libraries (mounts)');
-      WriteLn('  .test ...                   - Run/manage example tests');
+      WriteLn('  .test ...                   - Run/manage example tests (prints [TIME] per test to stderr)');
       WriteLn('  .debug [on|off|0|1|2|3|4]   - Toggle debug');
       WriteLn('  .guard [strict|friendly]    - REPL crash guard mode');
       WriteLn('  .mode <name> on|off         - Toggle REPL mode (plugin-driven)');
@@ -3614,6 +3652,12 @@ RestartRuntime:
           WriteLn('  --created-by STR / --tool STR / --meta K=V');
           WriteLn('    Add build metadata into QAR manifest when using -o/--build-qar.');
           WriteLn;
+
+          WriteLn('QAR build format selection (REPL):');
+          WriteLn('  .build <out.qar> [--v1|--v2|--format N] [--no-source|--omit-source] [--sign-key <file>] <inputs...>');
+          WriteLn('  .qar build <out.qar> [--v1|--v2|--format N] [--no-source|--omit-source] [--sign-key <file>] <inputs...>');
+          WriteLn('    Default is v1; use --v2 to emit QAR v2.');
+          WriteLn;
           WriteLn('  .load <file.js>');
           WriteLn('    Load and execute a JavaScript file.');
           WriteLn('  .import <module> [name]');
@@ -3675,6 +3719,9 @@ RestartRuntime:
           WriteLn('      remove <name>           - Remove a test');
           WriteLn('      enable <name>           - Enable a test');
           WriteLn('      disable <name>          - Disable a test');
+          WriteLn('    Notes:');
+          WriteLn('      - .test run prints timing to stderr as: [TIME] test=<name> elapsed_ms=<ms>');
+          WriteLn('      - Suite total is printed as: [TIME] suite=tests elapsed_ms=<ms>');
           WriteLn;
           WriteLn('  .debug [on|off|0|1|2|3|4]');
           WriteLn('    Control debug output and runtime debug settings.');
@@ -4508,6 +4555,7 @@ RestartRuntime:
           // No subcommand or "run" - run enabled examples
           if (cmdArgs.Count = 0) or ((cmdArgs.Count = 1) and (LowerCase(cmdArgs[0]) = 'run')) then
           begin
+            suite_tick0 := GetTickCount64;
             // Run enabled examples based on config
             for i := 0 to Length(ExampleConfigs) - 1 do
             begin
@@ -4521,6 +4569,7 @@ RestartRuntime:
                   test_file := test_path;
 
                 WriteLn('=== Running: ', test_key, ' ===');
+                test_tick0 := GetTickCount64;
                 if LoadAndExecuteJSFile(ctx, test_file) then
                 begin
                   if qjs_log.DebugLevel > 0 then
@@ -4530,8 +4579,18 @@ RestartRuntime:
                 begin
                   WriteLn('Warning: Could not load ', test_file);
                 end;
+                test_tick1 := GetTickCount64;
+                try
+                  WriteLn(StdErr, '[TIME] test=', test_key, ' elapsed_ms=', (test_tick1 - test_tick0));
+                except
+                end;
                 WriteLn;
               end;
+            end;
+            suite_tick1 := GetTickCount64;
+            try
+              WriteLn(StdErr, '[TIME] suite=tests elapsed_ms=', (suite_tick1 - suite_tick0));
+            except
             end;
           end
           else if (cmdArgs.Count >= 1) and (LowerCase(cmdArgs[0]) = 'list') then
@@ -4656,6 +4715,7 @@ RestartRuntime:
                 WriteLn('Error: .build requires at least 2 arguments: output.qar and input file(s)');
                 WriteLn('Usage: .build output.qar file1.js file2.js');
                 WriteLn('   or: .build output.qar src/');
+                WriteLn('Options: --v1 | --v2 | --format <n> | --no-source/--omit-source | --sign-key <file> | --minify ...');
                 Flush(Output);
               end
               else
@@ -4880,7 +4940,7 @@ RestartRuntime:
           if cmdArgs.Count = 0 then
           begin
             WriteLn('QAR Tool commands (.qar / .tool):');
-            WriteLn('  info [--init-lib]           - QAR/QuickJS information');
+            WriteLn('  info <file.qar> [--init-lib] - Show QAR file information (detect v1/v2)');
             WriteLn('  build <out.qar> <files...>  - Create QAR from file JS/folder');
             WriteLn('  inspect <file.qar>          - Check detail file QAR');
             WriteLn('  rebuild <in.qar> <out.qar>  - Rebuild QAR');
@@ -4890,9 +4950,10 @@ RestartRuntime:
             WriteLn('  help                        - Display help');
             WriteLn;
             WriteLn('Examples:');
-            WriteLn('  .qar info --init-lib');
+            WriteLn('  .qar info qa3.qar');
+            WriteLn('  .qar info qa3.qar --init-lib');
             WriteLn('  .qar keygen mykey');
-            WriteLn('  .qar build output.qar src/ --sign-key mykey.bin');
+            WriteLn('  .qar build --v2 output.qar src/ --sign-key mykey.bin');
             WriteLn('  .qar inspect file.qar');
             WriteLn('  .qar rebuild old.qar new.qar --sign-key mykey.pem');
             Flush(Output);
@@ -4904,8 +4965,9 @@ RestartRuntime:
           if (subcmd = 'help') then
           begin
             WriteLn('QAR Tool commands (.qar / .tool):');
-            WriteLn('  info [--init-lib]           - QAR/QuickJS infomation');
+            WriteLn('  info <file.qar> [--init-lib] - Show QAR file information (detect v1/v2)');
             WriteLn('  build <out.qar> <files...>  - Create QAR from file JS/folder');
+            WriteLn('    Options: --v1 | --v2 | --format <n> | --no-source/--omit-source | --sign-key <file> | --minify ...');
             WriteLn('  inspect <file.qar>          - Check detail file QAR');
             WriteLn('  rebuild <in.qar> <out.qar>  - Rebuild QAR');
             WriteLn('  keygen <out> [--raw64 <file>] [--pem <file>] - Generate Ed25519 key');
@@ -5001,12 +5063,31 @@ RestartRuntime:
           else if (subcmd = 'info') then
           begin
             init_default_lib_qar := False;
+            qar_file := '';
             for k_qar := 1 to cmdArgs.Count - 1 do
             begin
               if (cmdArgs[k_qar] = '--init-lib') or (cmdArgs[k_qar] = '-i') then
                 init_default_lib_qar := True;
+              if (qar_file = '') and (Length(cmdArgs[k_qar]) > 0) and (cmdArgs[k_qar][1] <> '-') then
+                qar_file := cmdArgs[k_qar];
             end;
-            qar.PrintQarInfo(init_default_lib_qar);
+            if qar_file <> '' then
+            begin
+              qar_inspection := qar.InspectQarFile(qar_file);
+              WriteLn('QAR Version: ', qar.GetQarVersion);
+              WriteLn('QAR Format Version: ', qar_inspection.qar_format_version);
+              if qar_inspection.quickjs_version <> '' then
+                WriteLn('QuickJS Version: ', qar_inspection.quickjs_version)
+              else
+                WriteLn('QuickJS Version: ', qar.GetQuickJsVersion);
+              WriteLn('Entry Count: ', qar_inspection.entry_count);
+              if init_default_lib_qar then
+                WriteLn('QuickJS Runtime: Initialized')
+              else
+                WriteLn('QuickJS Runtime: Not initialized');
+            end
+            else
+              qar.PrintQarInfo(init_default_lib_qar);
           end
           else if (subcmd = 'version') then
           begin
@@ -5016,15 +5097,6 @@ RestartRuntime:
           end
           else if (subcmd = 'build') then
           begin
-            if cmdArgs.Count < 3 then
-            begin
-              WriteLn('Usage: .qar build <output.qar> <file1.js> [file2.js ...]');
-              WriteLn('   or: .qar build <output.qar> <directory/>');
-              Flush(Output);
-              Continue;
-            end;
-            qar_output := cmdArgs[1];
-
             do_minify := False;
             keep_temp := False;
             minify_safe := False;
@@ -5035,7 +5107,9 @@ RestartRuntime:
             SetLength(minify_flags, 0);
             SetLength(qar_inputs_list, 0);
 
-            k_qar := 2;
+            qar_output := '';
+
+            k_qar := 1;
             while k_qar <= cmdArgs.Count - 1 do
             begin
               if cmdArgs[k_qar] = '--minify' then
@@ -5078,12 +5152,26 @@ RestartRuntime:
               end
               else
               begin
-                SetLength(qar_inputs_list, Length(qar_inputs_list) + 1);
-                qar_inputs_list[Length(qar_inputs_list) - 1] := cmdArgs[k_qar];
+                if (qar_output = '') and (cmdArgs[k_qar] <> '') and (cmdArgs[k_qar][1] <> '-') then
+                  qar_output := cmdArgs[k_qar]
+                else
+                begin
+                  SetLength(qar_inputs_list, Length(qar_inputs_list) + 1);
+                  qar_inputs_list[Length(qar_inputs_list) - 1] := cmdArgs[k_qar];
+                end;
               end;
               Inc(k_qar);
             end;
             qar_inputs := qar_inputs_list;
+
+            if (qar_output = '') or (Length(qar_inputs) = 0) then
+            begin
+              WriteLn('Usage: .qar build <output.qar> <file1.js> [file2.js ...]');
+              WriteLn('   or: .qar build <output.qar> <directory/>');
+              WriteLn('Options: --v1 | --v2 | --format <n> | --no-source/--omit-source | --sign-key <file> | --minify ...');
+              Flush(Output);
+              Continue;
+            end;
 
             if Length(qar_inputs) = 0 then
             begin
@@ -5115,6 +5203,7 @@ RestartRuntime:
             end;
 
             WriteLn('Building QAR file: ', qar_output);
+            WriteLn('QAR Format Version: ', qar_format_version);
             WriteLn('Input files/directories:');
             for k_qar := 0 to Length(qar_inputs) - 1 do
               WriteLn('  ', qar_inputs[k_qar]);

@@ -1,6 +1,7 @@
 import { toU8 } from "qjsp:util/bytes.js";
 import { URL } from "qjsp:url/url.js";
 import { acquirePump, releasePump } from "qjsp:runtime/pump.js";
+import { QjspError } from "qjsp:runtime/error.js";
 
 function _normalizeHeaders(h) {
   if (h === void 0 || h === null) return void 0;
@@ -86,7 +87,11 @@ export function fetch(input, init) {
 
   // Sync fallback
   if (typeof globalThis.HttpRequest !== "function") {
-    return Promise.reject(new Error("net:fetch.fetch: HttpRequest/HttpRequestAsync is not available (http_helpers not registered)"));
+    return Promise.reject(new QjspError(
+      "QJSP_E_RUNTIME_MISSING_NATIVE",
+      "net:fetch.fetch: HttpRequest/HttpRequestAsync is not available (http_helpers not registered)",
+      { feature: "net:fetch.fetch", fn: "HttpRequest" }
+    ));
   }
 
   const r = globalThis.HttpRequest(method, u, headers, body, nativeOpts);

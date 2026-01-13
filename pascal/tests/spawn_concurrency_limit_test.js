@@ -5,6 +5,20 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg || "assert failed");
 }
 
+function assertString(v, msg) {
+  assert(typeof v === "string", msg || "expected string");
+}
+
+function assertHostError(e, expectedCode) {
+  assert(e && typeof e === "object", "expected error object");
+  assertString(e.code, "expected error.code string");
+  assertString(e.name, "expected error.name string");
+  assertString(e.message, "expected error.message string");
+  if (expectedCode !== void 0) assert(e.code === expectedCode, `expected code ${expectedCode}`);
+  assert(e.name === "HostError", "expected HostError.name");
+  if (typeof e.stack === "string") assert(e.stack.length >= 0, "expected stack string");
+}
+
 const platform = os.system.platform;
 
 if (platform !== "win32") {
@@ -25,8 +39,7 @@ if (platform !== "win32") {
     });
   } catch (e) {
     ok = true;
-    assert(e && typeof e === "object", "expected error object");
-    assert(e.code === "QJSP_E_SPAWN_CONCURRENCY_LIMIT", "expected QJSP_E_SPAWN_CONCURRENCY_LIMIT");
+    assertHostError(e, "QJSP_E_SPAWN_CONCURRENCY_LIMIT");
   }
 
   try {

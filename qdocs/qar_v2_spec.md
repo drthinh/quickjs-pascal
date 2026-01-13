@@ -19,6 +19,45 @@
 - Not intended to support in-place editing; rebuild is the expected workflow.
 - Not defining a cross-language standard beyond this repo’s Pascal implementation.
 
+## Implementation status (repo progress)
+
+### Completed
+
+- **REPL tooling**
+  - `.build` supports `--v1`, `--v2`, `--format N` and forwards to `qar.BuildQar(..., format_version)`.
+  - `.qar build` supports `--v1`, `--v2`, `--format N` (options can appear before/after output).
+  - `.qar info <file>` reports archive format by inspecting the file magic (`QAR\x01` vs `QAR\x02`).
+  - Help/menu updated to document format selection options.
+
+- **Writer v2 (minimal but functional)**
+  - Writes v2 header + section table.
+  - Sections emitted: `PATH`, `ENTR`, `DATA`, `INDEX`, `MANF`.
+  - `MANF` now contains JSON metadata including `quickjs_version`, optional build metadata, and signature block fields.
+  - `sig_payload_b64` is now included in `MANF` when signature info is present.
+
+- **Reader v2 (minimal but functional)**
+  - Loader branches by magic and parses v2 via section table.
+  - Parses `PATH`, `ENTR`, `DATA` offsets, `INDEX`.
+  - Reads `MANF` (if present) and exposes `qar_get_manifest` / `qar_get_quickjs_version`.
+
+- **Inspection tooling**
+  - `.qar inspect` detects v2 compression status from v2 entry metadata (not v1 layout parsing).
+
+### Known gaps / next steps
+
+- **SIGN section**
+  - `SIGN` section is still omitted (placeholder). Signature verification is currently manifest-based only.
+
+- **Manifest schema & verification**
+  - `MANF` is JSON; loader extraction uses lightweight parsing for `quickjs_version`.
+  - Full validation of manifest fields and schema evolution rules still TODO.
+
+- **Compression policy**
+  - Current compression behavior depends on builder heuristics; no “force compress” option yet.
+
+- **Full v2 spec coverage**
+  - Remaining robustness/verification policy details (limits, strict checks, unknown sections) should be audited against this document.
+
 ---
 
 ## 3) File model: header + section table
