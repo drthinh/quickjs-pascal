@@ -246,11 +246,11 @@ end;
 procedure unpackneg(out r: array of gf; const p: array of u8);
 var
   t, chk, num, den, den2, den4, den6: gf;
-  i: Integer;
+  j: Integer;
   rr: array[0..3] of gf;
   pNeg: Integer;
 begin
-  for i := 0 to 3 do set25519(rr[i], gf0);
+  for j := 0 to 3 do set25519(rr[j], gf0);
   unpack25519(rr[1], p);
   S(num, rr[1]);
   M(den, num, D);
@@ -286,14 +286,13 @@ begin
   M(rr[3], rr[0], rr[1]);
   set25519(rr[2], gf1);
 
-  for i := 0 to 3 do set25519(r[i], rr[i]);
+  for j := 0 to 3 do set25519(r[j], rr[j]);
 end;
 
-procedure scalarmult(out p: array of gf; const q: array of gf; const s: array of u8);
+procedure scalarmult(out p: array of gf; const q: array of gf; const scalar: array of u8);
 var
   i: Integer;
   b: Integer;
-  a: Integer;
   x: array[0..3] of gf;
 begin
   for i := 0 to 3 do set25519(p[i], gf0);
@@ -304,7 +303,7 @@ begin
 
   for i := 255 downto 0 do
   begin
-    b := (s[i shr 3] shr (i and 7)) and 1;
+    b := (scalar[i shr 3] shr (i and 7)) and 1;
     sel25519(p[0], p[1], b);
     sel25519(p[2], p[3], b);
 
@@ -336,7 +335,7 @@ begin
   for i := 0 to 3 do set25519(p[i], x[i]);
 end;
 
-procedure scalarbase(out p: array of gf; const s: array of u8);
+procedure scalarbase(out p: array of gf; const scalar: array of u8);
 var
   q: array[0..3] of gf;
   i: Integer;
@@ -346,33 +345,33 @@ begin
   set25519(q[1], Y);
   set25519(q[2], gf1);
   M(q[3], X, Y);
-  scalarmult(p, q, s);
+  scalarmult(p, q, scalar);
 end;
 
 procedure add(out p: array of gf; const q, r: array of gf);
 var
-  a, b, c, d, e, f, g, h_: gf;
+  t0, t1, t2, t3, t4, t5, t6, t7: gf;
   t: array[0..3] of gf;
   i: Integer;
 begin
   for i := 0 to 3 do set25519(t[i], gf0);
 
-  A(a, q[1], q[0]);
-  Z(b, q[1], q[0]);
-  A(c, r[1], r[0]);
-  Z(d, r[1], r[0]);
+  A(t0, q[1], q[0]);
+  Z(t1, q[1], q[0]);
+  A(t2, r[1], r[0]);
+  Z(t3, r[1], r[0]);
 
-  M(e, a, d);
-  M(f, b, c);
-  M(g, q[3], r[3]);
-  M(g, g, D2);
-  M(h_, q[2], r[2]);
-  A(h_, h_, h_);
+  M(t4, t0, t3);
+  M(t5, t1, t2);
+  M(t6, q[3], r[3]);
+  M(t6, t6, D2);
+  M(t7, q[2], r[2]);
+  A(t7, t7, t7);
 
-  A(t[0], e, f);
-  Z(t[1], e, f);
-  A(t[2], h_, g);
-  Z(t[3], h_, g);
+  A(t[0], t4, t5);
+  Z(t[1], t4, t5);
+  A(t[2], t7, t6);
+  Z(t[3], t7, t6);
 
   M(p[0], t[0], t[3]);
   M(p[1], t[2], t[1]);
@@ -509,22 +508,22 @@ var
     Result := (x and y) xor (x and z) xor (y and z);
   end;
 
-  function S064(x: u64): u64; inline;
+  function BigSigma0(x: u64): u64; inline;
   begin
     Result := ROR64(x,28) xor ROR64(x,34) xor ROR64(x,39);
   end;
 
-  function S164(x: u64): u64; inline;
+  function BigSigma1(x: u64): u64; inline;
   begin
     Result := ROR64(x,14) xor ROR64(x,18) xor ROR64(x,41);
   end;
 
-  function s064(x: u64): u64; inline;
+  function SmallSigma0(x: u64): u64; inline;
   begin
     Result := ROR64(x,1) xor ROR64(x,8) xor (x shr 7);
   end;
 
-  function s164(x: u64): u64; inline;
+  function SmallSigma1(x: u64): u64; inline;
   begin
     Result := ROR64(x,19) xor ROR64(x,61) xor (x shr 6);
   end;
@@ -545,22 +544,24 @@ var
   end;
 
   procedure Compress(const blk: array of u8);
-  var pp2: PByte;
+  var
+    pp2: PByte;
+    k2: Integer;
   begin
     pp2 := @blk[0];
-    for i := 0 to 15 do
+    for k2 := 0 to 15 do
     begin
-      w[i] := ReadBE64(pp2);
+      w[k2] := ReadBE64(pp2);
       Inc(pp2, 8);
     end;
-    for i := 16 to 79 do
-      w[i] := s164(w[i-2]) + w[i-7] + s064(w[i-15]) + w[i-16];
+    for k2 := 16 to 79 do
+      w[k2] := SmallSigma1(w[k2-2]) + w[k2-7] + SmallSigma0(w[k2-15]) + w[k2-16];
 
     a := h[0]; b := h[1]; c := h[2]; d := h[3]; e := h[4]; f := h[5]; g := h[6]; hv := h[7];
-    for i := 0 to 79 do
+    for k2 := 0 to 79 do
     begin
-      t1 := hv + S164(e) + Ch64(e,f,g) + K512[i] + w[i];
-      t2 := S064(a) + Maj64(a,b,c);
+      t1 := hv + BigSigma1(e) + Ch64(e,f,g) + K512[k2] + w[k2];
+      t2 := BigSigma0(a) + Maj64(a,b,c);
       hv := g;
       g := f;
       f := e;
@@ -692,7 +693,7 @@ var
   Sbytes: array[0..31] of u8;
   Aneg: array[0..3] of gf;
   h32: array[0..31] of u8;
-  a: array[0..31] of u8;
+  aBytes: array[0..31] of u8;
   t: array[0..3] of gf;
   p: array[0..3] of gf;
   s: array[0..31] of u8;
@@ -718,7 +719,7 @@ var
   Pb: array[0..3] of gf;
   left: array[0..3] of gf;
   right: array[0..3] of gf;
-  Psum: array[0..3] of gf;
+  pSumWork: array[0..3] of gf;
   outp: array[0..31] of u8;
   chk: Integer;
   Ss: array[0..63] of u8;
@@ -729,7 +730,7 @@ var
   hfull: array[0..63] of u8;
   hred: array[0..63] of u8;
   s32: array[0..31] of u8;
-  Rcalc: array[0..31] of u8;
+  rcalc2: array[0..31] of u8;
   Rsig: array[0..31] of u8;
   geA: array[0..3] of gf;
   geR: array[0..3] of gf;
@@ -740,7 +741,7 @@ var
   pleft: array[0..3] of gf;
   pright: array[0..3] of gf;
   sum: array[0..3] of gf;
-  packed: array[0..31] of u8;
+  packedBytes: array[0..31] of u8;
   sigRbytes: array[0..31] of u8;
   sigSbytes: array[0..31] of u8;
   Scheck: array[0..31] of u8;
@@ -770,7 +771,7 @@ var
 var
   h: array[0..63] of u8;
   h32_: array[0..31] of u8;
-  A: array[0..3] of gf;
+  Apoint: array[0..3] of gf;
   R: array[0..3] of gf;
   SB: array[0..3] of gf;
   hA: array[0..3] of gf;
@@ -782,7 +783,7 @@ var
   hram32: array[0..31] of u8;
   sScalar: array[0..31] of u8;
   sbytes_: array[0..31] of u8;
-  pSum: array[0..3] of gf;
+  pSum2: array[0..3] of gf;
   negA: array[0..3] of gf;
   pTmp: array[0..3] of gf;
   hh: array[0..63] of u8;
@@ -802,7 +803,7 @@ begin
 
   // decode public key
   try
-    unpackneg(A, pk);
+    unpackneg(Apoint, pk);
   except
     Exit(False);
   end;
@@ -816,7 +817,7 @@ begin
   scalarbase(SB, sScalar);
 
   // compute hA = h * A
-  scalarmult(hA, A, h);
+  scalarmult(hA, Apoint, h);
 
   // compute R' = SB + (-hA)
   // negate hA: (X,Y,Z,T) -> (-X,Y,Z,-T)
@@ -826,8 +827,8 @@ begin
   set25519(negA[2], hA[2]);
   Z(negA[3], gf0, hA[3]);
 
-  add(pSum, SB, negA);
-  pack(packedR, pSum);
+  add(pSumWork, SB, negA);
+  pack(packedR, pSumWork);
 
   // compare packedR with sigR (with sign bit preserved)
   for i2 := 0 to 31 do Renc[i2] := sigRbytes[i2];

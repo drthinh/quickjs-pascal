@@ -43,7 +43,7 @@ interface
 uses
   ctypes, SysUtils, Classes, quickjs_types, quickjs_core, quickjs_std, fpjson, zlib,
   qcrypto_sha256, qcrypto_base64, qcrypto_ed25519_sign, qcrypto_ed25519_keyload,
-  qjsp_zip_shim;
+  qcrypto_ed25519_verify, qjsp_zip_shim;
 
 const
   {$IFDEF WINDOWS}
@@ -59,6 +59,27 @@ const
   QAR_FORMAT_VERSION = 1;  // Format version trong file QAR
   QAR_VERSION_STRING = '1.0.0';
 
+  QAR_MAGIC_V1: AnsiString = 'QAR' + #1;
+  QAR_MAGIC_V2: AnsiString = 'QAR' + #2;
+
+  QAR_V2_FORMAT_MAJOR = 2;
+  QAR_V2_FORMAT_MINOR = 0;
+  QAR_V2_HEADER_SIZE = 64;
+
+  QAR_MAX_ENTRY_COUNT = 100000;
+  QAR_MAX_PATH_LEN = 65536;
+  QAR_MAX_ORIG_SIZE = 268435456; // 256 MiB
+
+  QAR_V2_SECTION_INDEX = 1;
+  QAR_V2_SECTION_DATA = 2;
+  QAR_V2_SECTION_SIGN = 3;
+  QAR_V2_SECTION_PATH = 4;
+  QAR_V2_SECTION_ENTR = 5;
+  QAR_V2_SECTION_MANF = 6;
+
+  QAR_V2_INDEX_ENTRY_SIZE = 16;
+  QAR_V2_INDEX_HASH_SIZE = 32;
+
 type
   // QAR reading types
   TQarEntry = record
@@ -67,18 +88,25 @@ type
     offset: cuint64;
     bytecode_offset: cuint64;
     flags: cuint32;
+    codec_bc: cuint8;
+    codec_src: cuint8;
+    sha_flags: cuint16;
     bytecode_size: cuint64;
     source_size: cuint64;
     bytecode_orig_size: cuint64;
     source_orig_size: cuint64;
+    sha256_bytecode: TSHA256Digest;
+    sha256_source: TSHA256Digest;
     bytecode_cache: TBytes;
     source_cache: TBytes;
   end;
+
   PQarEntry = ^TQarEntry;
 
   TQarFile = record
     file_stream: TFileStream;
     version: cuint32;
+    is_v2: cbool;
     manifest_offset: cuint64;
     manifest_size: cuint64;
     manifest_json: UTF8String;
@@ -86,6 +114,21 @@ type
     entries: array of TQarEntry;
     entry_count: cint;
     entries_offset: cuint64;
+
+    // v2 only
+    v2_data_offset: cuint64;
+    v2_data_size: cuint64;
+    v2_paths: array of UTF8String;
+    v2_index_capacity: cuint32;
+    v2_index_hash: array of cuint64;
+    v2_index_entry_index: array of cuint32;
+    v2_index_path_id: array of cuint32;
+
+    // signature (v1 from manifest, v2 from SIGN section)
+    sig_present: cbool;
+    sig_payload: TBytes;
+    sig_pubkey: TBytes;
+    sig_sig: TBytes;
   end;
   PQarFile = ^TQarFile;
 
@@ -146,7 +189,7 @@ function BuildQar(const output_file: string; const input_files: array of string;
   const entry_main: string = ''; const entry_init: string = '';
   const created_by: string = ''; const tool: string = ''; const meta: TStrings = nil;
   const sig_pubkey_b64: string = ''; const sig_b64: string = '';
-  const sign_key_file: string = ''; const omit_source: boolean = False): cint;
+  const sign_key_file: string = ''; const omit_source: boolean = False; const format_version: integer = 1): cint;
 
 // Version and information functions
 function GetQarVersion: string;
@@ -191,6 +234,19 @@ implementation
 const
   QAR_MAGIC: AnsiString = 'QAR' + #1;
 
+type
+  TQarV2Section = packed record
+    stype: cuint32;
+    sflags: cuint32;
+    soffset: cuint64;
+    ssize: cuint64;
+  end;
+
+function ReadU16(s: TStream; out v: cuint16): boolean;
+begin
+  Result := s.Read(v, SizeOf(v)) = SizeOf(v);
+end;
+
 function ReadU32(s: TStream; out v: cuint32): boolean;
 begin
   Result := s.Read(v, SizeOf(v)) = SizeOf(v);
@@ -199,6 +255,16 @@ end;
 function ReadU64(s: TStream; out v: cuint64): boolean;
 begin
   Result := s.Read(v, SizeOf(v)) = SizeOf(v);
+end;
+
+function ReadU8(s: TStream; out v: cuint8): boolean;
+begin
+  Result := s.Read(v, SizeOf(v)) = SizeOf(v);
+end;
+
+function ReadSha256(s: TStream; out d: TSHA256Digest): boolean;
+begin
+  Result := s.Read(d[0], SizeOf(d)) = SizeOf(d);
 end;
 
 function ReadBytes(s: TStream; var buf; len: NativeInt): boolean;
@@ -213,6 +279,668 @@ begin
   if sz > cuint64(High(NativeInt)) then
     Exit(False);
   n := NativeInt(sz);
+  Result := True;
+end;
+
+function NextPow2(v: cuint32): cuint32; forward;
+function Fnv1a64(const s: UTF8String): cuint64; forward;
+function CanonicalizePathUtf8(const s: UTF8String): UTF8String; forward;
+procedure CompressEntry(entry: PQarBuildEntry); forward;
+function HexToSha256Digest(const hex: string; out d: TSHA256Digest): boolean; forward;
+
+function CreateQarV2(const output_file: string; list: TQarEntryList; const qjs_version: string;
+  const entry_main: string; const entry_init: string;
+  const created_by: string; const tool: string; const meta: TStrings;
+  const built_at: string;
+  const sig_pubkey_b64: string; const sig_b64: string): cint;
+var
+  fs: TFileStream;
+  major, minor: cuint16;
+  header_size: cuint32;
+  flags: cuint32;
+  section_count: cuint32;
+  section_table_offset: cuint64;
+  section_table_size: cuint64;
+  archive_size: cuint64;
+  table_pos: Int64;
+  secPath, secEntr, secData, secIndex: TQarV2Section;
+  secZero: TQarV2Section;
+  i: Integer;
+  entry: PQarBuildEntry;
+  pathUtf8: UTF8String;
+  pathBytes: TBytes;
+  pathLen: cuint32;
+  data_cursor: cuint64;
+  kind: cuint8;
+  codec_bc, codec_src: cuint8;
+  eflags: cuint8;
+  path_id: cuint32;
+  bc_off: cuint64;
+  bc_size_c, src_size_c: cuint64;
+  bc_size_o, src_size_o: cuint64;
+  sha_bc, sha_src: TSHA256Digest;
+  cnt, cap: cuint32;
+  h: cuint64;
+  slot, steps: cuint32;
+  slot_hash: cuint64;
+  index_hash: array of cuint64;
+  index_ei: array of cuint32;
+  index_pid: array of cuint32;
+  magic: array[0..3] of AnsiChar;
+begin
+  Result := -1;
+  if list = nil then
+    Exit;
+
+  FillChar(secPath, SizeOf(secPath), 0);
+  FillChar(secEntr, SizeOf(secEntr), 0);
+  FillChar(secData, SizeOf(secData), 0);
+  FillChar(secIndex, SizeOf(secIndex), 0);
+  FillChar(secZero, SizeOf(secZero), 0);
+
+  fs := TFileStream.Create(output_file, fmCreate);
+  try
+    // Header
+    magic[0] := 'Q'; magic[1] := 'A'; magic[2] := 'R'; magic[3] := #2;
+    fs.WriteBuffer(magic[0], 4);
+
+    major := QAR_V2_FORMAT_MAJOR;
+    minor := QAR_V2_FORMAT_MINOR;
+    header_size := QAR_V2_HEADER_SIZE;
+    flags := 0;
+    section_count := 6; // INDEX, DATA, SIGN(0), PATH, ENTR, MANF(0)
+    section_table_offset := QAR_V2_HEADER_SIZE;
+    section_table_size := cuint64(section_count) * cuint64(SizeOf(TQarV2Section));
+    archive_size := 0;
+
+    fs.WriteBuffer(major, SizeOf(major));
+    fs.WriteBuffer(minor, SizeOf(minor));
+    fs.WriteBuffer(header_size, SizeOf(header_size));
+    fs.WriteBuffer(flags, SizeOf(flags));
+    fs.WriteBuffer(section_count, SizeOf(section_count));
+    fs.WriteBuffer(section_table_offset, SizeOf(section_table_offset));
+    fs.WriteBuffer(section_table_size, SizeOf(section_table_size));
+    fs.WriteBuffer(archive_size, SizeOf(archive_size));
+
+    while fs.Position < QAR_V2_HEADER_SIZE do
+      fs.WriteByte(0);
+
+    // Reserve section table
+    table_pos := fs.Position;
+    for i := 1 to Integer(section_table_size) do
+      fs.WriteByte(0);
+
+    // PATH
+    secPath.stype := QAR_V2_SECTION_PATH;
+    secPath.soffset := cuint64(fs.Position);
+    fs.WriteBuffer(cuint32(list.Count), SizeOf(cuint32));
+    for i := 0 to list.Count - 1 do
+    begin
+      entry := list.GetEntry(i);
+      pathUtf8 := CanonicalizePathUtf8(UTF8String(entry^.path));
+      if pathUtf8 = '' then
+        pathUtf8 := UTF8String(entry^.path);
+      pathBytes := BytesOf(pathUtf8);
+      pathLen := cuint32(Length(pathBytes));
+      fs.WriteBuffer(pathLen, SizeOf(pathLen));
+      if pathLen > 0 then
+        fs.WriteBuffer(pathBytes[0], pathLen);
+    end;
+    secPath.ssize := cuint64(fs.Position) - secPath.soffset;
+
+    // ENTR
+    secEntr.stype := QAR_V2_SECTION_ENTR;
+    secEntr.soffset := cuint64(fs.Position);
+    fs.WriteBuffer(cuint32(list.Count), SizeOf(cuint32));
+
+    // Precompute offsets in DATA (relative)
+    data_cursor := 0;
+    for i := 0 to list.Count - 1 do
+    begin
+      entry := list.GetEntry(i);
+      CompressEntry(entry);
+      if entry^.bytecode_compressed <> nil then
+        bc_size_c := entry^.bytecode_compressed_len
+      else
+        bc_size_c := entry^.bytecode_len;
+      if entry^.source_compressed <> nil then
+        src_size_c := entry^.source_compressed_len
+      else
+        src_size_c := entry^.source_len;
+      data_cursor := data_cursor + cuint64(bc_size_c) + cuint64(src_size_c);
+    end;
+
+    data_cursor := 0;
+    for i := 0 to list.Count - 1 do
+    begin
+      entry := list.GetEntry(i);
+      CompressEntry(entry);
+
+      if entry^.is_asset <> 0 then
+        kind := 2
+      else if entry^.is_module <> 0 then
+        kind := 1
+      else
+        kind := 0;
+
+      codec_bc := 0;
+      codec_src := 0;
+      if entry^.bytecode_compressed <> nil then codec_bc := 1;
+      if entry^.source_compressed <> nil then codec_src := 1;
+      eflags := 0;
+
+      path_id := cuint32(i);
+      bc_off := data_cursor;
+
+      if entry^.bytecode_compressed <> nil then
+        bc_size_c := entry^.bytecode_compressed_len
+      else
+        bc_size_c := entry^.bytecode_len;
+      if entry^.source_compressed <> nil then
+        src_size_c := entry^.source_compressed_len
+      else
+        src_size_c := entry^.source_len;
+
+      bc_size_o := entry^.bytecode_len;
+      src_size_o := entry^.source_len;
+
+      HexToSha256Digest(entry^.sha256_bytecode, sha_bc);
+      HexToSha256Digest(entry^.sha256_source, sha_src);
+
+      fs.WriteBuffer(path_id, SizeOf(path_id));
+      fs.WriteBuffer(kind, SizeOf(kind));
+      fs.WriteBuffer(codec_bc, SizeOf(codec_bc));
+      fs.WriteBuffer(codec_src, SizeOf(codec_src));
+      fs.WriteBuffer(eflags, SizeOf(eflags));
+      fs.WriteBuffer(bc_off, SizeOf(bc_off));
+      fs.WriteBuffer(bc_size_c, SizeOf(bc_size_c));
+      fs.WriteBuffer(src_size_c, SizeOf(src_size_c));
+      fs.WriteBuffer(bc_size_o, SizeOf(bc_size_o));
+      fs.WriteBuffer(src_size_o, SizeOf(src_size_o));
+      fs.WriteBuffer(sha_bc[0], SizeOf(sha_bc));
+      fs.WriteBuffer(sha_src[0], SizeOf(sha_src));
+
+      data_cursor := data_cursor + cuint64(bc_size_c) + cuint64(src_size_c);
+    end;
+    secEntr.ssize := cuint64(fs.Position) - secEntr.soffset;
+
+    // DATA
+    secData.stype := QAR_V2_SECTION_DATA;
+    secData.soffset := cuint64(fs.Position);
+    for i := 0 to list.Count - 1 do
+    begin
+      entry := list.GetEntry(i);
+      CompressEntry(entry);
+      if entry^.bytecode_compressed <> nil then
+        fs.WriteBuffer(entry^.bytecode_compressed^, entry^.bytecode_compressed_len)
+      else if entry^.bytecode <> nil then
+        fs.WriteBuffer(entry^.bytecode^, entry^.bytecode_len);
+
+      if entry^.source_compressed <> nil then
+        fs.WriteBuffer(entry^.source_compressed^, entry^.source_compressed_len)
+      else if entry^.source <> nil then
+        fs.WriteBuffer(entry^.source^, entry^.source_len);
+    end;
+    secData.ssize := cuint64(fs.Position) - secData.soffset;
+
+    // INDEX
+    secIndex.stype := QAR_V2_SECTION_INDEX;
+    secIndex.soffset := cuint64(fs.Position);
+    cnt := cuint32(list.Count);
+    cap := NextPow2(cnt * 2);
+    if cap < 8 then cap := 8;
+
+    SetLength(index_hash, cap);
+    SetLength(index_ei, cap);
+    SetLength(index_pid, cap);
+    for i := 0 to cap - 1 do
+      index_hash[i] := 0;
+
+    for i := 0 to list.Count - 1 do
+    begin
+      entry := list.GetEntry(i);
+      pathUtf8 := CanonicalizePathUtf8(UTF8String(entry^.path));
+      if pathUtf8 = '' then
+        pathUtf8 := UTF8String(entry^.path);
+      h := Fnv1a64(pathUtf8);
+      slot := cuint32(h and cuint64(cap - 1));
+      steps := 0;
+      while steps < cap do
+      begin
+        slot_hash := index_hash[slot];
+        if slot_hash = 0 then
+        begin
+          index_hash[slot] := h;
+          index_ei[slot] := cuint32(i);
+          index_pid[slot] := cuint32(i);
+          Break;
+        end;
+        slot := (slot + 1) and (cap - 1);
+        Inc(steps);
+      end;
+    end;
+
+    fs.WriteBuffer(cap, SizeOf(cap));
+    fs.WriteBuffer(cnt, SizeOf(cnt));
+    for i := 0 to cap - 1 do
+    begin
+      fs.WriteBuffer(index_hash[i], SizeOf(cuint64));
+      fs.WriteBuffer(index_ei[i], SizeOf(cuint32));
+      fs.WriteBuffer(index_pid[i], SizeOf(cuint32));
+    end;
+    secIndex.ssize := cuint64(fs.Position) - secIndex.soffset;
+
+    // Write section table
+    fs.Position := table_pos;
+    fs.WriteBuffer(secIndex, SizeOf(secIndex));
+    fs.WriteBuffer(secData, SizeOf(secData));
+    fs.WriteBuffer(secZero, SizeOf(secZero)); // SIGN omitted
+    fs.WriteBuffer(secPath, SizeOf(secPath));
+    fs.WriteBuffer(secEntr, SizeOf(secEntr));
+    fs.WriteBuffer(secZero, SizeOf(secZero)); // MANF omitted
+
+    Result := 0;
+  finally
+    fs.Free;
+  end;
+end;
+
+function StreamSizeU64(s: TStream): cuint64;
+begin
+  if s = nil then
+    Exit(0);
+  if s.Size < 0 then
+    Exit(0);
+  Result := cuint64(s.Size);
+end;
+
+function Fnv1a64(const s: UTF8String): cuint64;
+var
+  i: SizeInt;
+  h: cuint64;
+begin
+  h := cuint64($CBF29CE484222325);
+  for i := 1 to Length(s) do
+  begin
+    h := h xor cuint64(Byte(s[i]));
+    h := h * cuint64($100000001B3);
+  end;
+  if h = 0 then
+    h := 1;
+  Result := h;
+end;
+
+function NextPow2(v: cuint32): cuint32;
+begin
+  if v = 0 then
+    Exit(1);
+  Dec(v);
+  v := v or (v shr 1);
+  v := v or (v shr 2);
+  v := v or (v shr 4);
+  v := v or (v shr 8);
+  v := v or (v shr 16);
+  Inc(v);
+  Result := v;
+end;
+
+function CanonicalizePathUtf8(const s: UTF8String): UTF8String;
+var
+  i: SizeInt;
+  seg: UTF8String;
+  parts: array of UTF8String;
+  partCount: SizeInt;
+  c: Char;
+  cur: UTF8String;
+  procedure PushPart(const p: UTF8String);
+  begin
+    if p = '' then
+      Exit;
+    if p = '.' then
+      Exit;
+    if p = '..' then
+    begin
+      if partCount > 0 then
+        Dec(partCount);
+      Exit;
+    end;
+    if partCount >= Length(parts) then
+      SetLength(parts, partCount + 16);
+    parts[partCount] := p;
+    Inc(partCount);
+  end;
+begin
+  cur := '';
+  SetLength(parts, 0);
+  partCount := 0;
+
+  i := 1;
+  while i <= Length(s) do
+  begin
+    c := Char(s[i]);
+    if (c = '\\') or (c = '/') then
+    begin
+      seg := cur;
+      cur := '';
+      PushPart(seg);
+      Inc(i);
+      Continue;
+    end;
+    if Ord(c) < 32 then
+    begin
+      Inc(i);
+      Continue;
+    end;
+    cur := cur + UTF8String(c);
+    Inc(i);
+  end;
+  PushPart(cur);
+
+  Result := '';
+  for i := 0 to partCount - 1 do
+  begin
+    if Result <> '' then
+      Result := Result + '/';
+    Result := Result + parts[i];
+  end;
+  if (Length(Result) > 0) and (Result[1] = '/') then
+    Delete(Result, 1, 1);
+end;
+
+function ExtractQuickJsVersion(const manifest_json: UTF8String): UTF8String; forward;
+
+function QarV2ReadSections(qar: PQarFile; const section_table_offset: cuint64; const section_count: cuint32;
+  out secPath, secEntr, secData, secManf, secSign, secIndex: TQarV2Section): boolean;
+var
+  i: cuint32;
+  sec: TQarV2Section;
+begin
+  Result := False;
+  FillChar(secPath, SizeOf(secPath), 0);
+  FillChar(secEntr, SizeOf(secEntr), 0);
+  FillChar(secData, SizeOf(secData), 0);
+  FillChar(secManf, SizeOf(secManf), 0);
+  FillChar(secSign, SizeOf(secSign), 0);
+  FillChar(secIndex, SizeOf(secIndex), 0);
+
+  if (qar = nil) or (qar^.file_stream = nil) then
+    Exit;
+  qar^.file_stream.Position := Int64(section_table_offset);
+  for i := 0 to section_count - 1 do
+  begin
+    if qar^.file_stream.Read(sec, SizeOf(sec)) <> SizeOf(sec) then
+      Exit;
+    case sec.stype of
+      1: secIndex := sec;
+      2: secData := sec;
+      3: secSign := sec;
+      4: secPath := sec;
+      5: secEntr := sec;
+      6: secManf := sec;
+    end;
+  end;
+  Result := True;
+end;
+
+function QarV2Parse(qar: PQarFile): boolean;
+var
+  major, minor: cuint16;
+  header_size: cuint32;
+  flags: cuint32;
+  section_count: cuint32;
+  section_table_offset: cuint64;
+  section_table_size: cuint64;
+  archive_size: cuint64;
+  file_size: cuint64;
+  secPath, secEntr, secData, secManf, secSign, secIndex: TQarV2Section;
+  i: cuint32;
+  n: NativeInt;
+  pathCount: cuint32;
+  pathLen: cuint32;
+  pathBytes: TBytes;
+  entryCount: cuint32;
+  path_id: cuint32;
+  kind: cuint8;
+  codec_bc: cuint8;
+  codec_src: cuint8;
+  eflags: cuint8;
+  bc_off: cuint64;
+  bc_size_c: cuint64;
+  src_size_c: cuint64;
+  bc_size_o: cuint64;
+  src_size_o: cuint64;
+  sha_bc: TSHA256Digest;
+  sha_src: TSHA256Digest;
+  cap: cuint32;
+  cnt: cuint32;
+  h: cuint64;
+  ei: cuint32;
+  pid: cuint32;
+  payload_len: cuint32;
+  pubkey_len: cuint32;
+  sig_len: cuint32;
+begin
+  Result := False;
+  if (qar = nil) or (qar^.file_stream = nil) then
+    Exit;
+
+  file_size := StreamSizeU64(qar^.file_stream);
+  if not ReadU16(qar^.file_stream, major) then
+    Exit;
+  if not ReadU16(qar^.file_stream, minor) then
+    Exit;
+  if not ReadU32(qar^.file_stream, header_size) then
+    Exit;
+  if not ReadU32(qar^.file_stream, flags) then
+    Exit;
+  if not ReadU32(qar^.file_stream, section_count) then
+    Exit;
+  if not ReadU64(qar^.file_stream, section_table_offset) then
+    Exit;
+  if not ReadU64(qar^.file_stream, section_table_size) then
+    Exit;
+  if not ReadU64(qar^.file_stream, archive_size) then
+    Exit;
+
+  if (major <> QAR_V2_FORMAT_MAJOR) then
+    Exit;
+  if (header_size < QAR_V2_HEADER_SIZE) then
+    Exit;
+  if (section_count = 0) or (section_count > 100000) then
+    Exit;
+
+  if (archive_size = 0) or (archive_size > file_size) then
+    archive_size := file_size;
+
+  if (section_table_offset >= archive_size) then
+    Exit;
+  if (section_table_size = 0) then
+    Exit;
+  if (section_table_offset + section_table_size > archive_size) then
+    Exit;
+  if (section_table_size <> cuint64(section_count) * cuint64(SizeOf(TQarV2Section))) then
+    Exit;
+
+  if not QarV2ReadSections(qar, section_table_offset, section_count, secPath, secEntr, secData, secManf, secSign, secIndex) then
+    Exit;
+
+  if (secData.ssize = 0) or (secEntr.ssize = 0) or (secPath.ssize = 0) then
+    Exit;
+  if (secData.soffset + secData.ssize > archive_size) then
+    Exit;
+  if (secEntr.soffset + secEntr.ssize > archive_size) then
+    Exit;
+  if (secPath.soffset + secPath.ssize > archive_size) then
+    Exit;
+  if (secIndex.soffset <> 0) and (secIndex.soffset + secIndex.ssize > archive_size) then
+    Exit;
+  if (secManf.soffset <> 0) and (secManf.soffset + secManf.ssize > archive_size) then
+    Exit;
+  if (secSign.soffset <> 0) and (secSign.soffset + secSign.ssize > archive_size) then
+    Exit;
+
+  qar^.v2_data_offset := secData.soffset;
+  qar^.v2_data_size := secData.ssize;
+
+  // PATH
+  qar^.file_stream.Position := Int64(secPath.soffset);
+  if not ReadU32(qar^.file_stream, pathCount) then
+    Exit;
+  if pathCount > QAR_MAX_ENTRY_COUNT then
+    Exit;
+  SetLength(qar^.v2_paths, pathCount);
+  for i := 0 to pathCount - 1 do
+  begin
+    if not ReadU32(qar^.file_stream, pathLen) then
+      Exit;
+    if (pathLen = 0) or (pathLen > QAR_MAX_PATH_LEN) then
+      Exit;
+    SetLength(pathBytes, pathLen);
+    if not ReadBytes(qar^.file_stream, pathBytes[0], pathLen) then
+      Exit;
+    SetString(qar^.v2_paths[i], PChar(@pathBytes[0]), pathLen);
+  end;
+
+  // ENTR
+  qar^.file_stream.Position := Int64(secEntr.soffset);
+  if not ReadU32(qar^.file_stream, entryCount) then
+    Exit;
+  if entryCount > QAR_MAX_ENTRY_COUNT then
+    Exit;
+  qar^.entry_count := cint(entryCount);
+  SetLength(qar^.entries, qar^.entry_count);
+
+  for i := 0 to entryCount - 1 do
+  begin
+    if not ReadU32(qar^.file_stream, path_id) then
+      Exit;
+    if not ReadU8(qar^.file_stream, kind) then
+      Exit;
+    if not ReadU8(qar^.file_stream, codec_bc) then
+      Exit;
+    if not ReadU8(qar^.file_stream, codec_src) then
+      Exit;
+    if not ReadU8(qar^.file_stream, eflags) then
+      Exit;
+    if not ReadU64(qar^.file_stream, bc_off) then
+      Exit;
+    if not ReadU64(qar^.file_stream, bc_size_c) then
+      Exit;
+    if not ReadU64(qar^.file_stream, src_size_c) then
+      Exit;
+    if not ReadU64(qar^.file_stream, bc_size_o) then
+      Exit;
+    if not ReadU64(qar^.file_stream, src_size_o) then
+      Exit;
+    if not ReadSha256(qar^.file_stream, sha_bc) then
+      Exit;
+    if not ReadSha256(qar^.file_stream, sha_src) then
+      Exit;
+
+    if path_id >= cuint32(Length(qar^.v2_paths)) then
+      Exit;
+
+    qar^.entries[i].path := AnsiString(qar^.v2_paths[path_id]);
+    qar^.entries[i].path_len := cuint32(Length(qar^.entries[i].path));
+    qar^.entries[i].flags := 0;
+    if kind = 1 then
+      qar^.entries[i].flags := qar^.entries[i].flags or 1
+    else if kind = 2 then
+      qar^.entries[i].flags := qar^.entries[i].flags or 4;
+    // bit1 compressed if codec is zlib
+    if (codec_bc <> 0) or (codec_src <> 0) then
+      qar^.entries[i].flags := qar^.entries[i].flags or 2;
+    qar^.entries[i].codec_bc := codec_bc;
+    qar^.entries[i].codec_src := codec_src;
+    qar^.entries[i].sha_flags := 1;
+    qar^.entries[i].sha256_bytecode := sha_bc;
+    qar^.entries[i].sha256_source := sha_src;
+
+    qar^.entries[i].bytecode_size := bc_size_c;
+    qar^.entries[i].source_size := src_size_c;
+    qar^.entries[i].bytecode_orig_size := bc_size_o;
+    qar^.entries[i].source_orig_size := src_size_o;
+
+    if (bc_off + bc_size_c + src_size_c) > secData.ssize then
+      Exit;
+    qar^.entries[i].bytecode_offset := secData.soffset + bc_off;
+    SetLength(qar^.entries[i].bytecode_cache, 0);
+    SetLength(qar^.entries[i].source_cache, 0);
+  end;
+
+  // INDEX
+  if secIndex.soffset <> 0 then
+  begin
+    qar^.file_stream.Position := Int64(secIndex.soffset);
+    if not ReadU32(qar^.file_stream, cap) then
+      Exit;
+    if not ReadU32(qar^.file_stream, cnt) then
+      Exit;
+    if (cap = 0) or (cap > 1 shl 30) then
+      Exit;
+    qar^.v2_index_capacity := cap;
+    SetLength(qar^.v2_index_hash, cap);
+    SetLength(qar^.v2_index_entry_index, cap);
+    SetLength(qar^.v2_index_path_id, cap);
+    for i := 0 to cap - 1 do
+    begin
+      if not ReadU64(qar^.file_stream, h) then
+        Exit;
+      if not ReadU32(qar^.file_stream, ei) then
+        Exit;
+      if not ReadU32(qar^.file_stream, pid) then
+        Exit;
+      qar^.v2_index_hash[i] := h;
+      qar^.v2_index_entry_index[i] := ei;
+      qar^.v2_index_path_id[i] := pid;
+    end;
+  end;
+
+  // MANF
+  if (secManf.soffset <> 0) and (secManf.ssize > 0) then
+  begin
+    qar^.file_stream.Position := Int64(secManf.soffset);
+    if not SizeToNativeInt(secManf.ssize, n) then
+      Exit;
+    SetLength(qar^.manifest_json, n);
+    if qar^.file_stream.Read(qar^.manifest_json[1], n) <> n then
+      Exit;
+    qar^.quickjs_version := ExtractQuickJsVersion(qar^.manifest_json);
+  end;
+
+  // SIGN
+  qar^.sig_present := False;
+  if (secSign.soffset <> 0) and (secSign.ssize > 0) then
+  begin
+    qar^.file_stream.Position := Int64(secSign.soffset);
+    if not ReadU32(qar^.file_stream, payload_len) then
+      Exit;
+    if payload_len > QAR_MAX_ORIG_SIZE then
+      Exit;
+    SetLength(qar^.sig_payload, payload_len);
+    if payload_len > 0 then
+      if qar^.file_stream.Read(qar^.sig_payload[0], payload_len) <> payload_len then
+        Exit;
+    if not ReadU32(qar^.file_stream, pubkey_len) then
+      Exit;
+    if pubkey_len > 1024 then
+      Exit;
+    SetLength(qar^.sig_pubkey, pubkey_len);
+    if pubkey_len > 0 then
+      if qar^.file_stream.Read(qar^.sig_pubkey[0], pubkey_len) <> pubkey_len then
+        Exit;
+    if not ReadU32(qar^.file_stream, sig_len) then
+      Exit;
+    if sig_len > 1024 then
+      Exit;
+    SetLength(qar^.sig_sig, sig_len);
+    if sig_len > 0 then
+      if qar^.file_stream.Read(qar^.sig_sig[0], sig_len) <> sig_len then
+        Exit;
+    if (payload_len > 0) and (pubkey_len = 32) and (sig_len = 64) then
+      qar^.sig_present := True;
+  end;
+
   Result := True;
 end;
 
@@ -253,6 +981,7 @@ var
   qar: PQarFile;
   magicBuf: array[0..3] of AnsiChar;
   magicStr: AnsiString;
+  file_size: cuint64;
   entryCountU32: cuint32;
   i: cint;
   pathLen: cuint32;
@@ -270,12 +999,24 @@ begin
   FillChar(qar^, SizeOf(qar^), 0);
   try
     qar^.file_stream := TFileStream.Create(string(filename), fmOpenRead or fmShareDenyNone);
+    file_size := StreamSizeU64(qar^.file_stream);
 
     if not ReadBytes(qar^.file_stream, magicBuf[0], 4) then
       Exit;
     SetString(magicStr, PAnsiChar(@magicBuf[0]), 4);
-    if magicStr <> QAR_MAGIC then
+    qar^.is_v2 := False;
+    if magicStr = QAR_MAGIC_V2 then
+      qar^.is_v2 := True;
+    if (magicStr <> QAR_MAGIC_V1) and (magicStr <> QAR_MAGIC_V2) then
       Exit;
+
+    if qar^.is_v2 then
+    begin
+      if not QarV2Parse(qar) then
+        Exit;
+      Result := qar;
+      Exit;
+    end;
 
     if not ReadU32(qar^.file_stream, qar^.version) then
       Exit;
@@ -286,7 +1027,7 @@ begin
     if not ReadU32(qar^.file_stream, entryCountU32) then
       Exit;
 
-    if (entryCountU32 > 100000) then
+    if (entryCountU32 > QAR_MAX_ENTRY_COUNT) then
       Exit;
 
     qar^.entry_count := cint(entryCountU32);
@@ -297,7 +1038,7 @@ begin
     begin
       if not ReadU32(qar^.file_stream, pathLen) then
         Exit;
-      if (pathLen = 0) or (pathLen > 65536) then
+      if (pathLen = 0) or (pathLen > QAR_MAX_PATH_LEN) then
         Exit;
 
       SetLength(pathBytes, pathLen);
@@ -323,10 +1064,18 @@ begin
         sorig := ssz;
       end;
 
+      if (borig > QAR_MAX_ORIG_SIZE) or (sorig > QAR_MAX_ORIG_SIZE) then
+        Exit;
+
       qar^.entries[i].offset := 0;
       qar^.entries[i].path_len := pathLen;
       SetString(qar^.entries[i].path, PAnsiChar(@pathBytes[0]), pathLen);
       qar^.entries[i].flags := flags;
+      qar^.entries[i].codec_bc := 0;
+      qar^.entries[i].codec_src := 0;
+      qar^.entries[i].sha_flags := 0;
+      FillChar(qar^.entries[i].sha256_bytecode, SizeOf(qar^.entries[i].sha256_bytecode), 0);
+      FillChar(qar^.entries[i].sha256_source, SizeOf(qar^.entries[i].sha256_source), 0);
       qar^.entries[i].bytecode_size := bsz;
       qar^.entries[i].source_size := ssz;
       qar^.entries[i].bytecode_orig_size := borig;
@@ -335,6 +1084,8 @@ begin
       SetLength(qar^.entries[i].bytecode_cache, 0);
       SetLength(qar^.entries[i].source_cache, 0);
 
+      if (cuint64(qar^.file_stream.Position) + bsz + ssz) > file_size then
+        Exit;
       qar^.file_stream.Seek(Int64(bsz + ssz), soCurrent);
     end;
 
@@ -372,6 +1123,13 @@ begin
   SetLength(qar^.entries, 0);
   qar^.manifest_json := '';
   qar^.quickjs_version := '';
+  SetLength(qar^.v2_paths, 0);
+  SetLength(qar^.v2_index_hash, 0);
+  SetLength(qar^.v2_index_entry_index, 0);
+  SetLength(qar^.v2_index_path_id, 0);
+  SetLength(qar^.sig_payload, 0);
+  SetLength(qar^.sig_pubkey, 0);
+  SetLength(qar^.sig_sig, 0);
   Dispose(qar);
 end;
 
@@ -394,10 +1152,51 @@ function qar_find_entry(qar: PQarFile; path: PChar): PQarEntry; cdecl;
 var
   i: cint;
   p: AnsiString;
+  pu: UTF8String;
+  canon: UTF8String;
+  h: cuint64;
+  idx: cuint32;
+  cap: cuint32;
+  steps: cuint32;
+  slot_hash: cuint64;
+  entry_index: cuint32;
+  path_id: cuint32;
 begin
   Result := nil;
   if (qar = nil) or (path = nil) then
     Exit;
+
+  if (qar^.is_v2) and (qar^.v2_index_capacity > 0) and (Length(qar^.v2_index_hash) = qar^.v2_index_capacity) then
+  begin
+    pu := UTF8String(path);
+    canon := CanonicalizePathUtf8(pu);
+    if canon = '' then
+      Exit(nil);
+    h := Fnv1a64(canon);
+    cap := qar^.v2_index_capacity;
+    idx := cuint32(h and cuint64(cap - 1));
+    steps := 0;
+    while steps < cap do
+    begin
+      slot_hash := qar^.v2_index_hash[idx];
+      if slot_hash = 0 then
+        Exit(nil);
+      if slot_hash = h then
+      begin
+        entry_index := qar^.v2_index_entry_index[idx];
+        path_id := qar^.v2_index_path_id[idx];
+        if (entry_index < cuint32(qar^.entry_count)) and (path_id < cuint32(Length(qar^.v2_paths))) then
+        begin
+          if UTF8String(qar^.v2_paths[path_id]) = canon then
+            Exit(@qar^.entries[entry_index]);
+        end;
+      end;
+      idx := (idx + 1) and (cap - 1);
+      Inc(steps);
+    end;
+    Exit(nil);
+  end;
+
   p := AnsiString(path);
   for i := 0 to qar^.entry_count - 1 do
     if qar^.entries[i].path = p then
@@ -433,6 +1232,9 @@ var
 begin
   Result := -1;
   if (qar = nil) or (entry = nil) or (qar^.file_stream = nil) then
+    Exit;
+
+  if (entry^.bytecode_orig_size > QAR_MAX_ORIG_SIZE) or (entry^.source_orig_size > QAR_MAX_ORIG_SIZE) then
     Exit;
 
   bcStart := Int64(entry^.bytecode_offset);
@@ -1297,6 +2099,37 @@ begin
   Result := Sha256DigestHex(p^, NativeUInt(len));
 end;
 
+function HexToSha256Digest(const hex: string; out d: TSHA256Digest): boolean;
+var
+  i: Integer;
+  b: Byte;
+  hi, lo: Integer;
+  c: Char;
+  function HexVal(ch: Char): Integer; inline;
+  begin
+    if (ch >= '0') and (ch <= '9') then Exit(Ord(ch) - Ord('0'));
+    if (ch >= 'a') and (ch <= 'f') then Exit(10 + Ord(ch) - Ord('a'));
+    if (ch >= 'A') and (ch <= 'F') then Exit(10 + Ord(ch) - Ord('A'));
+    Exit(-1);
+  end;
+begin
+  FillChar(d, SizeOf(d), 0);
+  if Length(hex) <> 64 then
+    Exit(False);
+  for i := 0 to 31 do
+  begin
+    c := hex[1 + i * 2];
+    hi := HexVal(c);
+    c := hex[1 + i * 2 + 1];
+    lo := HexVal(c);
+    if (hi < 0) or (lo < 0) then
+      Exit(False);
+    b := Byte((hi shl 4) or lo);
+    d[i] := b;
+  end;
+  Result := True;
+end;
+
 function TryLoadModuleFromOpaqueQars(ctx: PJSContext; const module_name: string; opaque: pointer): PJSModuleDef; forward;
 
 // Custom module loader wrapper for BuildQar with fallback path resolution
@@ -1529,7 +2362,7 @@ function BuildQar(const output_file: string; const input_files: array of string;
   const entry_main: string = ''; const entry_init: string = '';
   const created_by: string = ''; const tool: string = ''; const meta: TStrings = nil;
   const sig_pubkey_b64: string = ''; const sig_b64: string = '';
-  const sign_key_file: string = ''; const omit_source: boolean = False): cint;
+  const sign_key_file: string = ''; const omit_source: boolean = False; const format_version: integer = 1): cint;
 var
   list: TQarEntryList;
   rt: PJSRuntime;
@@ -1792,6 +2625,15 @@ begin
       // Create QAR file
       WriteLn('Creating QAR file: ', output_file);
       // Truyền thêm entry_main / entry_init vào manifest
+      if format_version = 2 then
+      begin
+        if CreateQarV2(output_file, list, qjs_version, entry_main, entry_init, created_by, tool, meta, built_at, sigPubB64, sigB64) < 0 then
+        begin
+          WriteLn('Failed to create QAR file');
+          Exit;
+        end;
+      end
+      else
       if CreateQar(output_file, list, qjs_version, entry_main, entry_init, created_by, tool, meta, built_at, sigPubB64, sigB64) < 0 then
       begin
         WriteLn('Failed to create QAR file');

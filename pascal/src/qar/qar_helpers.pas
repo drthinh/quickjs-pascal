@@ -17,10 +17,10 @@ var
   CurrentScriptDir: string = '';
 
 type
-  TQarVerifyMode = (qvmOff, qvmWarn, qvmStrict);
+  TQarVerifyMode = (qvmAuto, qvmOff, qvmWarn, qvmStrict);
 
 var
-  QarVerifyMode: TQarVerifyMode = qvmWarn;
+  QarVerifyMode: TQarVerifyMode = qvmAuto;
 
 procedure SetQarVerifyModeFromString(const s: string);
 
@@ -170,7 +170,9 @@ var
   v: string;
 begin
   v := LowerCase(Trim(s));
-  if v = 'off' then
+  if (v = '') or (v = 'auto') then
+    QarVerifyMode := qvmAuto
+  else if v = 'off' then
     QarVerifyMode := qvmOff
   else if v = 'strict' then
     QarVerifyMode := qvmStrict
@@ -1049,6 +1051,8 @@ begin
   bopts.tool := '';
   bopts.sign_key_file := '';
   bopts.meta := nil;
+  bopts.omit_source := False;
+  bopts.format_version := 1;
 
   opts := JS_UNDEFINED;
   if argc >= 3 then
@@ -1059,6 +1063,9 @@ begin
     bopts.sign_key_file := GetOptString(ctx, opts, 'signKey');
     bopts.created_by := GetOptString(ctx, opts, 'createdBy');
     bopts.tool := GetOptString(ctx, opts, 'tool');
+    if LowerCase(GetOptString(ctx, opts, 'omitSource')) = 'true' then
+      bopts.omit_source := True;
+    bopts.format_version := StrToIntDef(GetOptString(ctx, opts, 'format'), 1);
 
     metaObj := GetOptObject(ctx, opts, 'meta');
     metaList := nil;

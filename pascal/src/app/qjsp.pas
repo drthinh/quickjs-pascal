@@ -1437,10 +1437,12 @@ var
   build_inputs_list: array of string;
   qar_inputs_list: array of string;
   qar_inputs_stage: array of string;
+  qar_format_version: integer;
   // For .build command
   build_args: TStringList;
   build_output: string;
   build_inputs: array of string;
+  build_format_version: integer;
   j: integer;
   // For .qar/.tool/.verify commands
   cmdLine: string;
@@ -4665,6 +4667,7 @@ RestartRuntime:
                 omit_source := False;
                 minify_script := '';
                 qar_sign_key_file := '';
+                build_format_version := 1;
                 SetLength(minify_flags, 0);
                 SetLength(build_inputs_list, 0);
 
@@ -4677,6 +4680,15 @@ RestartRuntime:
                   begin
                     do_minify := True;
                     minify_safe := True;
+                  end
+                  else if build_args[j] = '--v2' then
+                    build_format_version := 2
+                  else if build_args[j] = '--v1' then
+                    build_format_version := 1
+                  else if (build_args[j] = '--format') and (j + 1 <= build_args.Count - 1) then
+                  begin
+                    Inc(j);
+                    build_format_version := StrToIntDef(build_args[j], 1);
                   end
                   else if (build_args[j] = '--no-source') or (build_args[j] = '--omit-source') then
                     omit_source := True
@@ -4756,7 +4768,7 @@ RestartRuntime:
                       Continue;
                     end;
                     build_inputs_stage := staged;
-                    if qar.BuildQar(build_output, build_inputs_stage, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file, omit_source) < 0 then
+                    if qar.BuildQar(build_output, build_inputs_stage, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file, omit_source, build_format_version) < 0 then
                     begin
                       WriteLn('Error: Failed to build QAR file');
                       Flush(Output);
@@ -4779,7 +4791,7 @@ RestartRuntime:
                 end
                 else
                 begin
-                  if qar.BuildQar(build_output, build_inputs, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file, omit_source) < 0 then
+                  if qar.BuildQar(build_output, build_inputs, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file, omit_source, build_format_version) < 0 then
                   begin
                     WriteLn('Error: Failed to build QAR file');
                     Flush(Output);
@@ -5019,6 +5031,7 @@ RestartRuntime:
             omit_source := False;
             minify_script := '';
             qar_sign_key_file := '';
+            qar_format_version := 1;
             SetLength(minify_flags, 0);
             SetLength(qar_inputs_list, 0);
 
@@ -5044,6 +5057,15 @@ RestartRuntime:
                 Inc(k_qar);
                 SetLength(minify_flags, Length(minify_flags) + 1);
                 minify_flags[Length(minify_flags) - 1] := cmdArgs[k_qar];
+              end
+              else if cmdArgs[k_qar] = '--v2' then
+                qar_format_version := 2
+              else if cmdArgs[k_qar] = '--v1' then
+                qar_format_version := 1
+              else if (cmdArgs[k_qar] = '--format') and (k_qar + 1 <= cmdArgs.Count - 1) then
+              begin
+                Inc(k_qar);
+                qar_format_version := StrToIntDef(cmdArgs[k_qar], 1);
               end
               else if (cmdArgs[k_qar] = '--sign-key') and (k_qar + 1 <= cmdArgs.Count - 1) then
               begin
@@ -5111,7 +5133,7 @@ RestartRuntime:
                   Continue;
                 end;
                 qar_inputs_stage := staged;
-                qar_ret := qar.BuildQar(qar_output, qar_inputs_stage, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file, omit_source);
+                qar_ret := qar.BuildQar(qar_output, qar_inputs_stage, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file, omit_source, qar_format_version);
               finally
                 if temp_stage_dir <> '' then
                 begin
@@ -5124,7 +5146,7 @@ RestartRuntime:
               end;
             end
             else
-              qar_ret := qar.BuildQar(qar_output, qar_inputs, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file, omit_source);
+              qar_ret := qar.BuildQar(qar_output, qar_inputs, '', '', qar_created_by, qar_tool, qar_meta, '', '', qar_sign_key_file, omit_source, qar_format_version);
 
             if qar_ret < 0 then
               WriteLn('Error: Failed to build QAR file')

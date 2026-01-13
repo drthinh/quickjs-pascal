@@ -18,6 +18,8 @@ type
     tool: string;
     sign_key_file: string;
     meta: TStrings; // optional, not owned
+    omit_source: boolean;
+    format_version: integer;
   end;
 
 function QarBuildWithOptions(const output_file: string; const input_files: array of string; const opts: TQarBuildOptions): cint;
@@ -265,7 +267,9 @@ begin
     opts.meta,
     '',
     '',
-    opts.sign_key_file);
+    opts.sign_key_file,
+    opts.omit_source,
+    opts.format_version);
 end;
 
 function QarRebuildWithOptions(const input_file: string; const output_file: string; const opts: TQarBuildOptions): cint;
