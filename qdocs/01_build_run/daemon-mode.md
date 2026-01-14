@@ -16,6 +16,11 @@ Tài liệu này mô tả chế độ `--daemon` của host `qjsp.exe` để ch�
 - `--daemon-out <file>`
   - File output dạng **JSONL** (mỗi dòng là một JSON object kết quả).
 
+Nếu không truyền `--daemon-in` / `--daemon-out`:
+
+- input sẽ đọc từ `stdin`
+- output sẽ ghi ra `stdout`
+
 Ví dụ (Windows):
 
 ```text

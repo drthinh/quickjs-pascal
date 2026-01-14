@@ -49,7 +49,7 @@ Các file/điểm bám:
 - Host chương trình `qjsp` (khởi tạo runtime, config, commands, wiring):
   - `pascal/src/app/qjsp.pas`
 
-(Chi tiết tổng quan QAR: xem thêm `qdocs/IMPLEMENTATION.md`.)
+(Chi tiết tổng quan QAR: xem thêm `implementation.md`.)
 
 ## Module loader policy (host-side)
 
@@ -171,7 +171,7 @@ Tóm tắt thay đổi và kiến trúc:
 
 Tài liệu chi tiết:
 
-- `qdocs/pascal_async_runtime.md`
+- `pascal-async-runtime.md`
 
 ## Logging/Debug policy (giảm nhiễu, tăng chẩn đoán khi cần)
 
@@ -228,6 +228,6 @@ Tài liệu chi tiết:
 
 ## Tài liệu liên quan
 
-- `qdocs/IMPLEMENTATION.md` (QAR implementation overview)
-- `qdocs/pascal_async_runtime.md` (async runtime refactor notes)
-- `qdocs/qar_guide.md`, `qdocs/qar_structure.md`, `qdocs/qar_signing.md` (QAR usage/format/signing)
+- `implementation.md` (QAR implementation overview)
+- `pascal-async-runtime.md` (async runtime refactor notes)
+- `../02_qar/guide.md`, `../02_qar/structure_v1.md`, `../02_qar/signing.md` (QAR usage/format/signing)

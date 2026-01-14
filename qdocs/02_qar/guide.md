@@ -4,7 +4,7 @@
 
 **VI/EN (important):** Trong repo này, QAR được implement bằng **Pascal** (`pascal/std/qar/qar.pas`, `pascal/std/qar/qar_helpers.pas`). Các ví dụ/tooling kiểu C (`qjar`, `qar.c/qar.h`, `js_register_qar_file`) là **legacy / không dùng** trong luồng hiện tại.
 
-**VI/EN (important):** `qar_tool` đã **deprecated**. Hãy dùng `qjsp` REPL với lệnh `.qar ...`.
+**VI/EN (important):** Hãy dùng `qjsp` REPL với lệnh `.qar ...`.
 
 ### Tạo QAR file đơn giản
 ```bash
@@ -121,8 +121,9 @@ console.log(greet("QuickJS"));
 ### Chạy ví dụ
 ```bash
 # Tạo QAR files
-qar_tool build mathlib.qar tests/qar_test_lib/math.js
-qar_tool build utilslib.qar tests/qar_test_lib/utils.js
+qjsp
+js> .qar build mathlib.qar tests/qar_test_lib/math.js
+js> .qar build utilslib.qar tests/qar_test_lib/utils.js
 
 # Run with qjsp (Pascal runtime)
 qjsp example.js

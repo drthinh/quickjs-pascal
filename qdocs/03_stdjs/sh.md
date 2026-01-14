@@ -41,6 +41,7 @@ Filesystem/Path helpers:
 
 Text/file:
 - `cat(file) -> string`
+- `view(file, n?) -> string`
 - `head(file, n=10) -> string`
 - `tail(file, n=10) -> string`
 - `grep(pattern, path, opts?) -> string|number`
@@ -61,13 +62,13 @@ REPL adapter:
 - `repl(line)`
   - Dùng trong `qjsp.exe` khi bật `.sh on`: map input line thành builtin/pipeline/system command.
 
-## Editor (vi/nano/edit) trong sh mode
+## Editor (nano) trong sh mode
 
-Trong `qjsp.exe`, khi đang ở `sh>` mode, các lệnh `vi <file>`, `nano <file>`, `edit <file>` sẽ được host intercept và chạy editor Pascal line-based (Unicode/IME-friendly).
+Trong `qjsp.exe`, khi đang ở `sh>` mode, host sẽ intercept `nano <file>` và chạy `nano.exe` (bundled) trực tiếp.
 
-Xem chi tiết:
-
-- `qdocs/REPL_SH_EDITOR.md`
+- Xem chi tiết:
+ 
+- `../01_build_run/repl-sh-editor.md`
 
 ## Builtin commands hỗ trợ trong pipeline
 

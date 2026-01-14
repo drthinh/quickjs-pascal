@@ -58,13 +58,13 @@ fpc -B -Mobjfpc -Scghi -O2 -Xs -XX -l -vewnhibq -Fu. -Fu./std -Fu./std/platform 
 
 ## Kiểm tra Build
 
-Sau khi build thành công, bạn sẽ có file:
-- Windows: `QuickJSPascal.exe`
-- Linux: `QuickJSPascal`
+Sau khi build thành công, bạn sẽ có file (thường dùng):
+- Windows: `qjsp.exe`
+- Linux: `qjsp`
 
 Chạy thử:
 ```bash
-./QuickJSPascal.exe
+./qjsp.exe
 ```
 
 Nếu thiếu `libqjs.dll`, bạn sẽ thấy lỗi:
@@ -150,7 +150,8 @@ console.log("Hello World");
 2. **QAR test**:
 ```bash
 # Tạo QAR file test
-qar_tool build test.qar test.js
+qjsp
+js> .qar build test.qar test.js
 
 # Chạy chương trình và gõ:
 LoadLibrary('test.qar');

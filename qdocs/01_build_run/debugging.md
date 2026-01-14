@@ -19,7 +19,7 @@ QuickJS có hệ thống dump nội bộ, điều khiển bằng `JS_SetDumpFlag
 - Điều khiển trong REPL bằng `.dump` (alias: `.dumpflags`).
 - Chỉ có tác dụng khi `libqjs` được build với `-DENABLE_DUMPS`.
 
-Xem thêm: `qdocs/DUMP_FLAGS.md`.
+Xem thêm: `dump-flags.md`.
 
 ## 2. DebugLevel / log levels
 

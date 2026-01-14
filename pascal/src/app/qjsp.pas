@@ -4,6 +4,9 @@ program qjsp;
 
 uses
   SysUtils, Classes, Types, ctypes, process,
+  {$IFDEF WINDOWS}
+  Windows,
+  {$ENDIF}
   quickjs_types, quickjs_core, quickjs_std,
   qjs_log,
   qcrypto_base64,
@@ -13,7 +16,6 @@ uses
   fpjson, jsonparser,
   qar_helpers, dll_helpers, compression_helpers,
   console_utf8,
-  qjsp_line_editor,
   tests_config,
   file_utils,
   qjsp_module_loader, http_helpers, http_async_helpers, fs_watch_helpers,
@@ -45,6 +47,72 @@ begin
   try
     WriteLn(StdErr, '[TIME] elapsed_ms=', elapsed);
   except
+  end;
+
+end;
+
+procedure PrependAppFolderToPath;
+var
+  appDir: string;
+  oldPath: string;
+  sep: string;
+  appDirNorm: string;
+  oldPathNorm: string;
+begin
+  appDir := ExcludeTrailingPathDelimiter(ExtractFilePath(ExpandFileName(ParamStr(0))));
+  if appDir = '' then
+    Exit;
+
+  sep := ';';
+  oldPath := SysUtils.GetEnvironmentVariable('PATH');
+
+  appDirNorm := LowerCase(appDir);
+  oldPathNorm := LowerCase(oldPath);
+
+  if (oldPathNorm <> '') and ((Pos(sep + appDirNorm + sep, sep + oldPathNorm + sep) > 0) or (Pos(sep + appDirNorm, sep + oldPathNorm) = Length(sep + oldPathNorm) - Length(sep + appDirNorm) + 1)) then
+    Exit;
+
+  if oldPath = '' then
+  begin
+    {$IFDEF WINDOWS}
+    Windows.SetEnvironmentVariable(PChar('PATH'), PChar(appDir));
+    {$ELSE}
+    SetEnvironmentVariable('PATH', appDir);
+    {$ENDIF}
+  end
+  else
+  begin
+    {$IFDEF WINDOWS}
+    Windows.SetEnvironmentVariable(PChar('PATH'), PChar(appDir + sep + oldPath));
+    {$ELSE}
+    SetEnvironmentVariable('PATH', appDir + sep + oldPath);
+    {$ENDIF}
+  end;
+end;
+
+procedure RunBundledNano(const FilePath: string);
+var
+  p: string;
+  nanoPath: string;
+  proc: TProcess;
+begin
+  p := ExpandFileName(FilePath);
+  nanoPath := IncludeTrailingPathDelimiter(ExtractFilePath(ExpandFileName(ParamStr(0)))) + 'nano.exe';
+  if not FileExists(nanoPath) then
+  begin
+    WriteLn('Error: nano.exe not found: ', nanoPath);
+    Exit;
+  end;
+
+  proc := TProcess.Create(nil);
+  try
+    proc.Executable := nanoPath;
+    proc.Parameters.Clear;
+    proc.Parameters.Add(p);
+    proc.Options := [poWaitOnExit];
+    proc.Execute;
+  finally
+    proc.Free;
   end;
 end;
 
@@ -884,14 +952,14 @@ begin
       else
       begin
         try
-          if not DeleteFile(p) then
+          if not SysUtils.DeleteFile(p) then
             Result := False;
         except
           Result := False;
         end;
       end;
     until FindNext(sr) <> 0;
-    FindClose(sr);
+    SysUtils.FindClose(sr);
   end;
 
   try
@@ -962,7 +1030,7 @@ begin
       begin
         if not CopyDirRecursive(minify_script, minify_flags, do_minify, src_path, dst_path) then
         begin
-          FindClose(sr);
+          SysUtils.FindClose(sr);
           Exit;
         end;
       end
@@ -973,7 +1041,7 @@ begin
         begin
           if not RunMinifyScript(minify_script, minify_flags, src_path, dst_path) then
           begin
-            FindClose(sr);
+            SysUtils.FindClose(sr);
             Exit;
           end;
         end
@@ -981,13 +1049,13 @@ begin
         begin
           if not CopyFileTo(src_path, dst_path) then
           begin
-            FindClose(sr);
+            SysUtils.FindClose(sr);
             Exit;
           end;
         end;
       end;
     until FindNext(sr) <> 0;
-    FindClose(sr);
+    SysUtils.FindClose(sr);
   end;
   Result := True;
 end;
@@ -2639,7 +2707,7 @@ begin
   begin
     // Fallback defaults for manifest metadata (only used when building QAR)
     if qar_created_by = '' then
-      qar_created_by := GetEnvironmentVariable('USERNAME') + '@' + GetEnvironmentVariable('COMPUTERNAME');
+      qar_created_by := SysUtils.GetEnvironmentVariable('USERNAME') + '@' + SysUtils.GetEnvironmentVariable('COMPUTERNAME');
     if qar_tool = '' then
       qar_tool := ExtractFileName(ParamStr(0)) + ' ' + GetAppVersion + ' (build ' + GetAppBuildDateTime + ')';
   end;
@@ -2824,7 +2892,7 @@ begin
         out_path := StringReplace(out_path, '/', PathDelim, [rfReplaceAll]);
         remove_found := FileExists(out_path);
         if remove_found then
-          DeleteFile(out_path);
+          SysUtils.DeleteFile(out_path);
         if not remove_found then
         begin
           WriteLn('Error: Entry not found in QAR: ', qar_edit_entry);
@@ -2874,7 +2942,7 @@ begin
           WriteLn('Error: Failed to replace input QAR');
           Halt(1);
         end;
-        DeleteFile(qar_tmp_out);
+        SysUtils.DeleteFile(qar_tmp_out);
       end;
     finally
       if (do_minify) and (temp_stage_dir <> '') then
@@ -3182,6 +3250,8 @@ begin
   dll_helpers.LoadedDynamicLibraries := TStringList.Create;
   dll_helpers.LoadedDynamicLibraries.Sorted := False;
 
+  PrependAppFolderToPath;
+
 RestartRuntime:
   reload_requested := False;
 
@@ -3404,12 +3474,12 @@ RestartRuntime:
       if script = '' then
         Continue;
 
-      // P1: Host-level Unicode line editor (Pascal) for sh mode.
-      // Intercept vi/nano/edit <file> and run editor directly (no JS/raw console dependency).
+      // Run nano as a host-launched interactive console app.
+      // Avoid JS spawn/exec fallback which captures stdout/stderr and can hang/crash for TUI apps.
       if (ActiveReplMode <> '') and SameText(ActiveReplMode, 'sh') and (Length(script) > 0) and (script[1] <> '.') then
       begin
         cmdLine := Trim(script);
-        if (Copy(LowerCase(cmdLine), 1, 3) = 'vi ') or (Copy(LowerCase(cmdLine), 1, 5) = 'nano ') or (Copy(LowerCase(cmdLine), 1, 5) = 'edit ') then
+        if (Copy(LowerCase(cmdLine), 1, 5) = 'nano ') then
         begin
           cmdArgs := TStringList.Create;
           try
@@ -3418,13 +3488,13 @@ RestartRuntime:
             cmdArgs.DelimitedText := cmdLine;
             if cmdArgs.Count >= 2 then
             begin
-              RunUnicodeLineEditor(cmdArgs[1]);
+              RunBundledNano(cmdArgs[1]);
               Flush(Output);
               Continue;
             end
             else
             begin
-              WriteLn('Usage: vi <file>  (aliases: nano, edit)');
+              WriteLn('Usage: nano <file>');
               Flush(Output);
               Continue;
             end;
@@ -3644,7 +3714,7 @@ RestartRuntime:
           WriteLn('    Set QuickJS dump flags (bitmask).');
           WriteLn('    Alias: .dumpflags');
           WriteLn('    Common flags: 1=bytecode(final), 2=bytecode(pass2), 32=gc, 128=mem');
-          WriteLn('    See: qdocs/DUMP_FLAGS.md');
+          WriteLn('    See: qdocs/01_build_run/dump-flags.md');
           WriteLn;
           WriteLn('QAR security flags (CLI):');
           WriteLn('  --verify off|warn|strict');
@@ -3961,7 +4031,7 @@ RestartRuntime:
             WriteLn('Usage: .dump <0|on|off|number>');
             WriteLn('Alias: .dumpflags');
             WriteLn('Common flags: 1=bytecode(final), 2=bytecode(pass2), 32=gc, 128=mem');
-            WriteLn('See: qdocs/DUMP_FLAGS.md');
+            WriteLn('See: qdocs/01_build_run/dump-flags.md');
             Flush(Output);
           end
           else

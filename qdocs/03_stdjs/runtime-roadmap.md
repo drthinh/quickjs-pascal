@@ -243,7 +243,7 @@ Bạn có thể dùng bảng này để tự chấm theo tuần/sprint.
 ### 5.5 Documentation
 
 - [ ] Có 1 trang doc cho domain lớn (net/spawn/io/crypto/zip...).
-- [ ] Cập nhật `STDJ_OVERVIEW.md` khi thêm nhóm module mới.
+- [ ] Cập nhật `README.md` khi thêm nhóm module mới.
 
 ---
 
@@ -266,9 +266,9 @@ Khi thêm feature mới, làm theo thứ tự:
 
 ## 7) Liên kết tài liệu liên quan
 
-- `STDJ_OVERVIEW.md`
-- `QJSP_CONFIG.md`
-- `DAEMON_MODE.md`
-- `pascal_async_runtime.md`
-- `README_QAR.md`, `QAR_FAQ.md`
-- `qar_v2_spec.md`
+- `README.md`
+- `../01_build_run/qjsp-config.md`
+- `../01_build_run/daemon-mode.md`
+- `../04_internals/pascal-async-runtime.md`
+- `../02_qar/README.md`, `../02_qar/faq.md`
+- `../02_qar/spec_v2.md`

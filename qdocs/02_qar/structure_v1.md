@@ -81,8 +81,8 @@ N+32          8?    (chỉ khi nén) Original source size (uint64_t)
 ### ❌ WinZip/Không thể đọc được
 - QAR là định dạng binary tùy chỉnh, không phải ZIP format
 - WinZip, 7-Zip, hoặc các công cụ nén khác **KHÔNG THỂ** đọc được file QAR
- - **VI:** Cần sử dụng `qar_tool` (Pascal) để tạo/inspect/rebuild, hoặc dùng `qjsp` helpers (`GetQarInfo`, `GetQarAsset`, ...).
- - **EN:** Use `qar_tool` (Pascal) to build/inspect/rebuild, or use the `qjsp` helpers (`GetQarInfo`, `GetQarAsset`, ...).
+ - **VI:** Cần sử dụng `qjsp` REPL (`.qar build/inspect/rebuild/code`) hoặc dùng `qjsp` helpers (`GetQarInfo`, `GetQarAsset`, ...).
+ - **EN:** Use the `qjsp` REPL (`.qar build/inspect/rebuild/code`) or the `qjsp` helpers (`GetQarInfo`, `GetQarAsset`, ...).
 
 ## So sánh với các format khác
 
@@ -96,13 +96,15 @@ N+32          8?    (chỉ khi nén) Original source size (uint64_t)
 
 ### Tạo QAR file
 ```bash
-qar_tool build mylib.qar src/math.js src/utils.js
+qjsp
+js> .qar build mylib.qar src/math.js src/utils.js
 ```
 
 ### Đọc/inspect QAR (khuyến nghị) / Read/inspect QAR (recommended)
 ```bash
-qar_tool inspect mylib.qar
-qar_tool code mylib.qar math.js
+qjsp
+js> .qar inspect mylib.qar
+js> .qar code mylib.qar math.js
 ```
 
 ```javascript

@@ -35,19 +35,20 @@ import { util, io, time, concurrent, log } from "qjsp:index.js";
 
 ## Tài liệu tham khảo
 
-- `STDJ_UTIL.md`
-- `STDJ_ENCODING.md`
-- `STDJ_CONFIG.md`
-- `STDJ_IO.md`
-- `STDJ_TIME_CONCURRENT.md`
-- `STDJ_LOG.md`
-- `STDJ_NET_HTTP.md`
-- `STDJ_NET_FETCH.md`
-- `STDJ_EVENTS.md`
-- `STDJ_OS.md`
-- `STDJ_URL.md`
-- `STDJ_SH.md`
-- `CRYPTO_MODULE.md`
+- `util.md`
+- `encoding.md`
+- `config.md`
+- `io.md`
+- `time-concurrent.md`
+- `log.md`
+- `net-http.md`
+- `net-fetch.md`
+- `events.md`
+- `os.md`
+- `url.md`
+- `sh.md`
+- `crypto.md`
+- `zip.md`
 
 ## Tests
 

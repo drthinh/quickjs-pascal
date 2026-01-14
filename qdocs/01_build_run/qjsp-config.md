@@ -6,9 +6,13 @@ Tài liệu này mô tả cơ chế config persistent của host `qjsp` (Pascal)
 
 `qjsp` lưu config local tại:
 
-- `pascal/config/qjsp_config.json`
+- `config/qjsp_config.json`
 
-Vị trí này được resolve dựa trên executable của `qjsp` (portable/local).
+Vị trí này được resolve dựa trên executable của `qjsp` (portable/local). Logic hiện tại:
+
+- Ưu tiên `pascal_root/config/qjsp_config.json` (tức thư mục `config/` nằm cạnh `src/` khi chạy từ tree)
+- Fallback: `./config/qjsp_config.json`
+- Fallback: `<exe_dir>/config/qjsp_config.json`
 
 Bạn có thể override bằng CLI:
 
@@ -73,6 +77,10 @@ Trong REPL, dùng lệnh `.config` để xem/chỉnh/persist settings.
 
 In ra file config đang dùng và các giá trị `settings.*` đang active.
 
+Lưu ý:
+
+- `settings.dump` được in dạng `on/off` dựa trên trạng thái “explicit dump flags” trong phiên (không in số bitmask).
+
 ### 4.2. Set giá trị
 
 Cú pháp:
@@ -102,7 +110,8 @@ Các key hỗ trợ:
 - `.config unset dump` (hoặc `dump_flags`)
   - Không còn “explicit dump_flags” trong config.
 - `.config unset guard`
-  - Bỏ trạng thái “explicit guard”, `qjsp` sẽ quay về guard mặc định theo policy.
+  - Bỏ trạng thái “explicit guard” (không persist guard vào config nữa).
+  - Guard mode đang active trong phiên không nhất thiết bị đổi ngay; nó chỉ không còn được coi là “explicit” để ghi ra file.
 
 ### 4.4. Lưu ngay
 
@@ -157,8 +166,8 @@ Ngoài ra file config còn có thể chứa các block policy/runtime khác (tù
 
 Xem thêm:
 
-- `qdocs/DAEMON_MODE.md` (daemon runner và test isolation)
-- `qdocs/STDJ_SH.md` và `qdocs/REPL_SH_EDITOR.md` (shell mode + editor)
+- `daemon-mode.md` (daemon runner và test isolation)
+- `../03_stdjs/sh.md` và `repl-sh-editor.md` (shell mode + editor)
 
 ## 7. Ghi chú dump flags
 
@@ -166,4 +175,4 @@ Nếu bạn set `dump_flags` khác 0 nhưng đọc lại vẫn ra 0, nhiều kh�
 
 Xem thêm:
 
-- `qdocs/DUMP_FLAGS.md`
+- `dump-flags.md`

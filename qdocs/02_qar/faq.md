@@ -51,21 +51,22 @@
 - ❌ Windows Explorer (như ZIP file)
 
 ### Công cụ có thể đọc QAR:
-- ✅ `qar_tool` - CLI tool Pascal (build/inspect/rebuild/code)
+- ✅ `qjsp` REPL (`.qar build/inspect/rebuild/code`)
 - ✅ `qjsp` + helpers (`GetQarInfo`, `ExecuteQarEntry`, `GetQarAsset`) để đọc/inspect trong runtime
 - ✅ Custom tools dùng Pascal units `pascal/std/qar/qar.pas` và `pascal/std/qar/qar_helpers.pas`
 
 ## 5. Làm sao để xem nội dung QAR file?
 
-**VI:** Dùng `qar_tool inspect` hoặc helper trong `qjsp`.
+**VI:** Dùng `.qar inspect` hoặc helper trong `qjsp`.
 
-**EN:** Use `qar_tool inspect` or the `qjsp` helpers.
+**EN:** Use `.qar inspect` or the `qjsp` helpers.
 
 ### Cách 1: CLI (khuyến nghị) / CLI (recommended)
 
 ```bash
-qar_tool inspect mylib.qar
-qar_tool code mylib.qar assets/logo.png
+qjsp
+js> .qar inspect mylib.qar
+js> .qar code mylib.qar assets/logo.png
 ```
 
 ### Cách 2: Trong `qjsp` / Inside `qjsp`
@@ -99,9 +100,9 @@ print(buf.byteLength);
 
 ## 8. Có thể convert QAR sang ZIP không?
 
-**VI:** Có thể extract source/payload từ QAR rồi zip lại. Với repo này, dùng `qar_tool code` để lấy source entry.
+**VI:** Có thể extract source/payload từ QAR rồi zip lại. Với repo này, dùng `.qar code` để lấy source entry.
 
-**EN:** Yes. You can extract source/payload from QAR and then zip them. In this repo, use `qar_tool code` to print an entry's source.
+**EN:** Yes. You can extract source/payload from QAR and then zip them. In this repo, use `.qar code` to print an entry's source.
 
 Sau đó có thể zip các file đã extract.
 
@@ -110,7 +111,7 @@ Sau đó có thể zip các file đã extract.
 Có thể edit bằng cách:
 1. Extract source code từ QAR
 2. Edit source code
-3. Tạo lại QAR file bằng `qar_tool build` (hoặc `qar_tool rebuild`)
+3. Tạo lại QAR file bằng `.qar build` (hoặc `.qar rebuild`)
 
 **Không thể** edit trực tiếp QAR file như text editor vì là binary format.
 

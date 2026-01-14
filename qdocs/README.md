@@ -30,7 +30,6 @@ pascal/
 ├── std/qar/qar.pas              # QAR format + build/inspect/rebuild (Pascal)
 ├── std/qar/qar_helpers.pas      # QAR registry + JS bindings + loader wrapper
 ├── app/qjsp.pas                 # Host runtime (REPL + run-script)
-├── app/qar_tool.pas             # CLI: build/inspect/rebuild/code
 ├── QuickJSPascal.lpr    # File project Lazarus
 └── README.md            # File này
 ```
@@ -63,13 +62,16 @@ Trước tiên, bạn cần tạo QAR file từ JavaScript files:
 
 ```bash
 # Tạo QAR file từ một file
-qar_tool build mylib.qar math.js
+qjsp
+js> .qar build mylib.qar math.js
 
 # Tạo QAR file từ nhiều files
-qar_tool build mylib.qar math.js utils.js
+qjsp
+js> .qar build mylib.qar math.js utils.js
 
 # Tạo QAR file từ thư mục
-qar_tool build mylib.qar src/
+qjsp
+js> .qar build mylib.qar src/
 ```
 
 ### 3. Sử dụng QAR trong JavaScript:
@@ -179,8 +181,8 @@ Xem `quickjs_core.pas` (các hàm) và `quickjs_types.pas` (kiểu/const) để 
 
 ## Ghi chú
 
-- **VI:** QAR files được tạo bằng `qar_tool` (Pascal) và được load bằng `LoadLibrary()` trong `qjsp`.
-- **EN:** QAR files are built with `qar_tool` (Pascal) and loaded via `LoadLibrary()` in `qjsp`.
+- **VI:** QAR files được tạo bằng `.qar build` (trong `qjsp`) và được load bằng `LoadLibrary()` trong `qjsp`.
+- **EN:** QAR files are built with `.qar build` (in `qjsp`) and loaded via `LoadLibrary()` in `qjsp`.
 - Bytecode format phụ thuộc vào phiên bản QuickJS
 - Nếu bytecode không tương thích, hệ thống sẽ tự động compile lại từ source code
 

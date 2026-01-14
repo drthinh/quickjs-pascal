@@ -33,9 +33,12 @@ QAR File
 
 ### 1. Tạo QAR file
 ```bash
-# Build with Pascal tool
-qar_tool build mylib.qar src/math.js src/utils.js
+# Build with qjsp REPL
+qjsp
+js> .qar build mylib.qar src/math.js src/utils.js
 ```
+
+Xem thêm: `usage.md` (section: "QAR tooling trong REPL").
 
 ### 2. Đăng ký QAR từ JavaScript (Đơn giản nhất!)
 ```javascript
@@ -83,18 +86,21 @@ import { greet } from 'utils:utils.js';
 Xem các file:
 - `tests/test_qar_usage.js` - Ví dụ JavaScript
 - `tests/test_multiple_qar.c` - Ví dụ C với nhiều QAR files
-- `qdocs/qar_guide.md` - Hướng dẫn chi tiết
-- `qdocs/qar_structure.md` - Cấu trúc file chi tiết
-- `qdocs/QAR_FAQ.md` - Câu hỏi thường gặp
+- `guide.md` - Hướng dẫn chi tiết
+- `structure_v1.md` - Cấu trúc file chi tiết
+- `faq.md` - Câu hỏi thường gặp
+ - `usage.md` - Usage + tooling reference
 
 ## Test
 
 ```bash
 # Tạo QAR
-qar_tool build qar_test.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
+qjsp
+js> .qar build qar_test.qar tests/qar_test_lib/math.js tests/qar_test_lib/utils.js
 
 # Inspect
-qar_tool inspect qar_test.qar
+qjsp
+js> .qar inspect qar_test.qar
 ```
 
 ## Module Resolution

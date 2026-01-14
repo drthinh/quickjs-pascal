@@ -14,13 +14,13 @@
 - Build QAR từ file/thư mục JS + asset.
 - Compile JS thành bytecode bằng QuickJS (`JS_Eval(..., COMPILE_ONLY)` + `JS_WriteObject`).
 - Nén bytecode/source (miniz) và ghi manifest.
-- CLI tool: `pascal/app/qar_tool.pas`.
+- Tooling entrypoint: `qjsp` REPL (`.qar ...`).
 
 **EN:**
 - Build QAR from JS files/folders + assets.
 - Compile JS into bytecode via QuickJS (`JS_Eval(..., COMPILE_ONLY)` + `JS_WriteObject`).
 - Compress bytecode/source (miniz) and write a manifest.
-- CLI tool: `pascal/app/qar_tool.pas`.
+- Tooling entrypoint: `qjsp` REPL (`.qar ...`).
 
 **Source / Nguồn:** `pascal/std/qar/qar.pas` (`BuildQar`, `InspectQarFile`, `RebuildQarFile`).
 
@@ -60,27 +60,28 @@ quickjs-master/
 │   ├── app/
 │   │   ├── qjsp.pas                 # Host runtime (REPL + run-script)
 │   │   ├── qjsp_module_loader.pas   # Policy loader: qjsp: + QAR wrapper
-│   │   └── qar_tool.pas             # CLI: build/inspect/rebuild/code
+│   │   └── (legacy cli)             # build/inspect/rebuild/code
 │   └── std/
 │       └── qar/
 │           ├── qar.pas              # QAR format + build/inspect/rebuild
 │           └── qar_helpers.pas      # QAR registry + JS bindings + loader wrapper
 └── qdocs/
-    └── IMPLEMENTATION.md            # This document
+    └── 04_internals/implementation.md  # This document
 ```
 
 ## Cách sử dụng / Usage
 
 ### 1) Build QAR bằng CLI tool / Build QAR via CLI tool
 
-**VI/EN:** (chạy executable `qar_tool` sau khi build Pascal app)
+**VI/EN:** (dùng `qjsp` REPL với lệnh `.qar ...`)
 
 ```bash
-qar_tool build out.qar path/to/file.js
-qar_tool build out.qar path/to/folder/
-qar_tool inspect out.qar
-qar_tool rebuild in.qar out_new.qar
-qar_tool code out.qar entry/path.js
+qjsp
+js> .qar build out.qar path/to/file.js
+js> .qar build out.qar path/to/folder/
+js> .qar inspect out.qar
+js> .qar rebuild in.qar out_new.qar
+js> .qar code out.qar entry/path.js
 ```
 
 ### 2) Dùng QAR trong `qjsp` (JavaScript) / Use QAR from `qjsp` (JavaScript)
@@ -140,8 +141,8 @@ print(add(2, 3));
 
 ## Notes
 
-- **VI:** Bytecode format phụ thuộc vào phiên bản QuickJS. Dùng `qar_tool inspect` để xem version/compatibility và `qar_tool rebuild` để rebuild.
-- **EN:** Bytecode format depends on the QuickJS version. Use `qar_tool inspect` to view version/compatibility and `qar_tool rebuild` to rebuild.
+- **VI:** Bytecode format phụ thuộc vào phiên bản QuickJS. Dùng `.qar inspect` để xem version/compatibility và `.qar rebuild` để rebuild.
+- **EN:** Bytecode format depends on the QuickJS version. Use `.qar inspect` to view version/compatibility and `.qar rebuild` to rebuild.
 - **VI:** Các file C `qjar.c`, `qar.c`, `qar.h` là legacy/không dùng trong luồng hiện tại.
 - **EN:** The C files `qjar.c`, `qar.c`, `qar.h` are legacy/not used in the current flow.
 
