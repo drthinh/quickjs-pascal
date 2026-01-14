@@ -150,7 +150,3 @@ Không thấy điểm nào “anti‑pattern” rõ ràng như copy dữ liệu 
 - **quickjs_*.pas + các unit liên quan chưa cover 100% 323 hàm export của [libqjs.dll](cci:7://file:///d:/Projects/quickjs/quickjs-master/pascal/libqjs.dll:0:0-0:0)**.  
   Chúng bao phủ gần hết API embed chính (runtime, context, value, object, module, promises, libc, QAR, miniz đơn giản), nhưng bỏ qua khá nhiều hàm nội bộ/intrinsic, debug/memory, và miniz nâng cao.
 - **libqjs.dll và binding hiện tại không lộ lỗi logic/tối ưu rõ ràng** từ những gì có trong repo; thiết kế đi theo upstream QuickJS, với vài trade‑off (ví dụ QAR luôn nén) thiên về an toàn và đơn giản hơn là tối ưu hiệu năng cực hạn.
-
-Nếu bạn muốn, mình có thể:
-- Liệt kê cụ thể danh sách những export *chưa có* trong Pascal (ít nhất các nhóm chính).
-- Hoặc viết thêm 1–2 unit Pascal để wrap thêm các nhóm hàm bạn đang cần (ví dụ `JS_AddIntrinsic*` hoặc các hàm memory/debug).
